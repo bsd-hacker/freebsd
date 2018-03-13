@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2009-2011 Spectra Logic Corporation
  * All rights reserved.
  *
@@ -489,7 +491,7 @@ struct xnb_softc {
 	 */
 	vm_offset_t		kva;
 
-	/** Psuedo-physical address corresponding to kva. */
+	/** Pseudo-physical address corresponding to kva. */
 	uint64_t		gnt_base_addr;
 
 	/** Various configuration and state bit flags. */
@@ -1101,14 +1103,13 @@ xnb_attach_failed(struct xnb_softc *xnb, int err, const char *fmt, ...)
 	xs_vprintf(XST_NIL, xenbus_get_node(xnb->dev),
 		  "hotplug-error", fmt, ap_hotplug);
 	va_end(ap_hotplug);
-	xs_printf(XST_NIL, xenbus_get_node(xnb->dev),
+	(void)xs_printf(XST_NIL, xenbus_get_node(xnb->dev),
 		  "hotplug-status", "error");
 
 	xenbus_dev_vfatal(xnb->dev, err, fmt, ap);
 	va_end(ap);
 
-	xs_printf(XST_NIL, xenbus_get_node(xnb->dev),
-		  "online", "0");
+	(void)xs_printf(XST_NIL, xenbus_get_node(xnb->dev), "online", "0");
 	xnb_detach(xnb->dev);
 }
 
@@ -1233,11 +1234,7 @@ create_netdev(device_t dev)
 		if_initname(ifp, xnb->if_name,  IF_DUNIT_NONE);
 		ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 		ifp->if_ioctl = xnb_ioctl;
-		ifp->if_output = ether_output;
 		ifp->if_start = xnb_start;
-#ifdef notyet
-		ifp->if_watchdog = xnb_watchdog;
-#endif
 		ifp->if_init = xnb_ifinit;
 		ifp->if_mtu = ETHERMTU;
 		ifp->if_snd.ifq_maxlen = NET_RX_RING_SIZE - 1;

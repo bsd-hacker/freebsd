@@ -56,6 +56,22 @@ typedef void (evdev_keycode_t)(struct evdev_dev *, void *,
 #define	EVDEV_RCPT_HW_MOUSE	(1<<2)
 #define	EVDEV_RCPT_HW_KBD	(1<<3)
 extern int evdev_rcpt_mask;
+/*
+ * Sysmouse protocol does not support horizontal wheel movement reporting.
+ * To overcome this limitation different drivers use different sysmouse proto
+ * extensions. Set kern.evdev.sysmouse_t_axis to tell sysmouse evdev driver
+ * which protocol extension is used.
+ * 0 - do not extract horizontal wheel movement (default).
+ * 1 - ums(4) horizontal wheel encoding. T-axis is mapped to buttons 6 and 7
+ * 2 - psm(4) wheels encoding: z = 1,-1 - vert. wheel, z = 2,-2 - horiz. wheel
+ */
+enum
+{
+	EVDEV_SYSMOUSE_T_AXIS_NONE = 0,
+	EVDEV_SYSMOUSE_T_AXIS_UMS = 1,
+	EVDEV_SYSMOUSE_T_AXIS_PSM = 2,
+};
+extern int evdev_sysmouse_t_axis;
 
 #define	ABS_MT_FIRST	ABS_MT_TOUCH_MAJOR
 #define	ABS_MT_LAST	ABS_MT_TOOL_Y
@@ -97,8 +113,6 @@ int evdev_register(struct evdev_dev *);
 int evdev_register_mtx(struct evdev_dev *, struct mtx *);
 int evdev_unregister(struct evdev_dev *);
 int evdev_push_event(struct evdev_dev *, uint16_t, uint16_t, int32_t);
-int evdev_sync(struct evdev_dev *);
-int evdev_mt_sync(struct evdev_dev *);
 void evdev_support_prop(struct evdev_dev *, uint16_t);
 void evdev_support_event(struct evdev_dev *, uint16_t);
 void evdev_support_key(struct evdev_dev *, uint16_t);
@@ -128,5 +142,69 @@ void evdev_push_mouse_btn(struct evdev_dev *, int);
 void evdev_push_leds(struct evdev_dev *, int);
 void evdev_push_repeats(struct evdev_dev *, keyboard_t *);
 evdev_event_t evdev_ev_kbd_event;
+
+/* Event reporting shortcuts: */
+static __inline int
+evdev_sync(struct evdev_dev *evdev)
+{
+
+	return (evdev_push_event(evdev, EV_SYN, SYN_REPORT, 1));
+}
+
+static __inline int
+evdev_mt_sync(struct evdev_dev *evdev)
+{
+
+	return (evdev_push_event(evdev, EV_SYN, SYN_MT_REPORT, 1));
+}
+
+static __inline int
+evdev_push_key(struct evdev_dev *evdev, uint16_t code, int32_t value)
+{
+
+	return (evdev_push_event(evdev, EV_KEY, code, value != 0));
+}
+
+static __inline int
+evdev_push_rel(struct evdev_dev *evdev, uint16_t code, int32_t value)
+{
+
+	return (evdev_push_event(evdev, EV_REL, code, value));
+}
+
+static __inline int
+evdev_push_abs(struct evdev_dev *evdev, uint16_t code, int32_t value)
+{
+
+	return (evdev_push_event(evdev, EV_ABS, code, value));
+}
+
+static __inline int
+evdev_push_msc(struct evdev_dev *evdev, uint16_t code, int32_t value)
+{
+
+	return (evdev_push_event(evdev, EV_MSC, code, value));
+}
+
+static __inline int
+evdev_push_led(struct evdev_dev *evdev, uint16_t code, int32_t value)
+{
+
+	return (evdev_push_event(evdev, EV_LED, code, value != 0));
+}
+
+static __inline int
+evdev_push_snd(struct evdev_dev *evdev, uint16_t code, int32_t value)
+{
+
+	return (evdev_push_event(evdev, EV_SND, code, value));
+}
+
+static __inline int
+evdev_push_sw(struct evdev_dev *evdev, uint16_t code, int32_t value)
+{
+
+	return (evdev_push_event(evdev, EV_SW, code, value != 0));
+}
 
 #endif	/* _DEV_EVDEV_EVDEV_H */

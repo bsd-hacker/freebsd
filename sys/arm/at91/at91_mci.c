@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2006 Bernd Walter.  All rights reserved.
  * Copyright (c) 2006 M. Warner Losh.  All rights reserved.
  * Copyright (c) 2010 Greg Ansley.  All rights reserved.
@@ -32,23 +34,16 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
-#include <sys/bio.h>
 #include <sys/bus.h>
-#include <sys/conf.h>
 #include <sys/endian.h>
 #include <sys/kernel.h>
-#include <sys/kthread.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/module.h>
 #include <sys/mutex.h>
-#include <sys/queue.h>
 #include <sys/resource.h>
 #include <sys/rman.h>
 #include <sys/sysctl.h>
-#include <sys/time.h>
-#include <sys/timetc.h>
-#include <sys/watchdog.h>
 
 #include <machine/bus.h>
 #include <machine/resource.h>
@@ -59,11 +54,9 @@ __FBSDID("$FreeBSD$");
 #include <arm/at91/at91_pdcreg.h>
 
 #include <dev/mmc/bridge.h>
-#include <dev/mmc/mmcreg.h>
 #include <dev/mmc/mmcbrvar.h>
 
 #ifdef FDT
-#include <dev/fdt/fdt_common.h>
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
 #endif
@@ -1409,5 +1402,5 @@ DRIVER_MODULE(at91_mci, simplebus, at91_mci_driver, at91_mci_devclass, NULL,
 DRIVER_MODULE(at91_mci, atmelarm, at91_mci_driver, at91_mci_devclass, NULL,
     NULL);
 #endif
-DRIVER_MODULE(mmc, at91_mci, mmc_driver, mmc_devclass, NULL, NULL);
-MODULE_DEPEND(at91_mci, mmc, 1, 1, 1);
+
+MMC_DECLARE_BRIDGE(at91_mci);

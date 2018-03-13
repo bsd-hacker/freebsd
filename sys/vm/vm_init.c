@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: (BSD-3-Clause AND MIT-CMU)
+ *
  * Copyright (c) 1991, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -13,7 +15,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -79,21 +81,30 @@ __FBSDID("$FreeBSD$");
 #include <sys/bio.h>
 #include <sys/buf.h>
 #include <sys/vmem.h>
+#include <sys/vmmeter.h>
 
 #include <vm/vm.h>
 #include <vm/vm_param.h>
 #include <vm/vm_kern.h>
 #include <vm/vm_object.h>
 #include <vm/vm_page.h>
+#include <vm/vm_phys.h>
+#include <vm/vm_pagequeue.h>
 #include <vm/vm_map.h>
 #include <vm/vm_pager.h>
 #include <vm/vm_extern.h>
 
-long physmem;
+extern void	uma_startup1(void);
+extern void	uma_startup2(void);
+extern void	vm_radix_reserve_kva(void);
 
-static int exec_map_entries = 16;
-SYSCTL_INT(_vm, OID_AUTO, exec_map_entries, CTLFLAG_RDTUN, &exec_map_entries, 0,
-    "Maximum number of simultaneous execs");
+#if VM_NRESERVLEVEL > 0
+#define	KVA_QUANTUM	(1 << (VM_LEVEL_0_ORDER + PAGE_SHIFT))
+#else
+	/* On non-superpage architectures want large import sizes. */
+#define	KVA_QUANTUM	(PAGE_SIZE * 1024)
+#endif
+long physmem;
 
 /*
  * System initialization
@@ -109,7 +120,10 @@ kva_import(void *unused, vmem_size_t size, int flags, vmem_addr_t *addrp)
 {
 	vm_offset_t addr;
 	int result;
- 
+
+	KASSERT((size % KVA_QUANTUM) == 0,
+	    ("kva_import: Size %jd is not a multiple of %d",
+	    (intmax_t)size, (int)KVA_QUANTUM));
 	addr = vm_map_min(kernel_map);
 	result = vm_map_find(kernel_map, NULL, 0, &addr, size, 0,
 	    VMFS_SUPER_SPACE, VM_PROT_ALL, VM_PROT_ALL, MAP_NOFAULT);
@@ -132,6 +146,7 @@ static void
 vm_mem_init(dummy)
 	void *dummy;
 {
+	int domain;
 
 	/*
 	 * Initializes resident memory structures. From here on, all physical
@@ -139,7 +154,11 @@ vm_mem_init(dummy)
 	 */
 	vm_set_page_size();
 	virtual_avail = vm_page_startup(virtual_avail);
-	
+
+#ifdef	UMA_MD_SMALL_ALLOC
+	/* Announce page availability to UMA. */
+	uma_startup1();
+#endif
 	/*
 	 * Initialize other VM packages
 	 */
@@ -152,14 +171,22 @@ vm_mem_init(dummy)
 	 * Initialize the kernel_arena.  This can grow on demand.
 	 */
 	vmem_init(kernel_arena, "kernel arena", 0, 0, PAGE_SIZE, 0, 0);
-	vmem_set_import(kernel_arena, kva_import, NULL, NULL,
-#if VM_NRESERVLEVEL > 0
-	    1 << (VM_LEVEL_0_ORDER + PAGE_SHIFT));
-#else
-	    /* On non-superpage architectures want large import sizes. */
-	    PAGE_SIZE * 1024);
-#endif
+	vmem_set_import(kernel_arena, kva_import, NULL, NULL, KVA_QUANTUM);
 
+	for (domain = 0; domain < vm_ndomains; domain++) {
+		vm_dom[domain].vmd_kernel_arena = vmem_create(
+		    "kernel arena domain", 0, 0, PAGE_SIZE, 0, M_WAITOK);
+		vmem_set_import(vm_dom[domain].vmd_kernel_arena,
+		    (vmem_import_t *)vmem_alloc, NULL, kernel_arena,
+		    KVA_QUANTUM);
+	}
+
+#ifndef	UMA_MD_SMALL_ALLOC
+	/* Set up radix zone to use noobj_alloc. */
+	vm_radix_reserve_kva();
+#endif
+	/* Announce full page availability to UMA. */
+	uma_startup2();
 	kmem_init_zero_region();
 	pmap_init();
 	vm_pager_init();
@@ -271,10 +298,19 @@ again:
 		panic("Clean map calculation incorrect");
 
 	/*
- 	 * Allocate the pageable submaps.
+	 * Allocate the pageable submaps.  We may cache an exec map entry per
+	 * CPU, so we therefore need to reserve space for at least ncpu+1
+	 * entries to avoid deadlock.  The exec map is also used by some image
+	 * activators, so we leave a fixed number of pages for their use.
 	 */
+#ifdef __LP64__
+	exec_map_entries = 8 * mp_ncpus;
+#else
+	exec_map_entries = 2 * mp_ncpus + 4;
+#endif
+	exec_map_entry_size = round_page(PATH_MAX + ARG_MAX);
 	exec_map = kmem_suballoc(kernel_map, &minaddr, &maxaddr,
-	    exec_map_entries * round_page(PATH_MAX + ARG_MAX), FALSE);
+	    exec_map_entries * exec_map_entry_size + 64 * PAGE_SIZE, FALSE);
 	pipe_map = kmem_suballoc(kernel_map, &minaddr, &maxaddr, maxpipekva,
 	    FALSE);
 }

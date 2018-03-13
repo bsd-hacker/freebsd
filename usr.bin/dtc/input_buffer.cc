@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2013 David Chisnall
  * All rights reserved.
  *
@@ -32,6 +34,7 @@
 
 #include "input_buffer.hh"
 #include <ctype.h>
+#include <errno.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -101,7 +104,7 @@ struct stream_input_buffer : public dtc::input_buffer
 	stream_input_buffer();
 };
 
-mmap_input_buffer::mmap_input_buffer(int fd, std::string &&filename)
+mmap_input_buffer::mmap_input_buffer(int fd, string &&filename)
 	: input_buffer(0, 0), fn(filename)
 {
 	struct stat sb;
@@ -203,9 +206,9 @@ text_input_buffer::handle_include()
 	{
 		next_token();
 		string name = parse_property_name();
-		if (defines.count(name) > 0)
+		if (defines.count(name) == 0)
 		{
-			reallyInclude = true;
+			reallyInclude = false;
 		}
 		consume('/');
 	}
@@ -215,6 +218,7 @@ text_input_buffer::handle_include()
 		parse_error("Expected quoted filename");
 		return;
 	}
+	auto loc = location();
 	string file = parse_to('"');
 	consume('"');
 	if (!reallyInclude)
@@ -242,10 +246,52 @@ text_input_buffer::handle_include()
 	}
 	if (!include_buffer)
 	{
-		parse_error("Unable to locate input file");
+		loc.report_error("Unable to locate input file");
 		return;
 	}
 	input_stack.push(std::move(include_buffer));
+}
+
+bool text_input_buffer::read_binary_file(const std::string &filename, byte_buffer &b)
+{
+	bool try_include_paths = true;
+	string include_file;
+	if (filename[0] == '/')
+	{
+		include_file = filename;
+		// Don't try include paths if we're given an absolute path.
+		// Failing is better so that we don't accidentally do the wrong thing,
+		// but make it seem like everything is alright.
+		try_include_paths = false;
+	}
+	else
+	{
+		include_file = dir + '/' + filename;
+	}
+	auto include_buffer = input_buffer::buffer_for_file(include_file, false);
+	if (include_buffer == 0 && try_include_paths)
+	{
+		for (auto i : include_paths)
+		{
+			include_file = i + '/' + filename;
+			include_buffer = input_buffer::buffer_for_file(include_file, false);
+			if (include_buffer != 0)
+			{
+				break;
+			}
+		}
+	}
+	if (!include_buffer)
+	{
+		return false;
+	}
+	if (depfile)
+	{
+		putc(' ', depfile);
+		fputs(include_file.c_str(), depfile);
+	}
+	b.insert(b.begin(), include_buffer->begin(), include_buffer->end());
+	return true;
 }
 
 input_buffer
@@ -544,7 +590,8 @@ struct binary_operator : public binary_operator_base
 	 * Constructor.  Takes the name of the operator as an argument, for
 	 * debugging.  Only stores it in debug mode.
 	 */
-	binary_operator(source_location l, const char *) : expression(l) {}
+	binary_operator(source_location l, const char *) :
+		binary_operator_base(l) {}
 #else
 	const char *opName;
 	binary_operator(source_location l, const char *o) :
@@ -651,7 +698,7 @@ template<typename T>
 struct divmod : public binary_operator<5, T>
 {
 	using binary_operator<5, T>::binary_operator;
-	using binary_operator_base::result;
+	using typename binary_operator_base::result;
 	result operator()() override
 	{
 		result r = (*binary_operator_base::rhs)();
@@ -1212,7 +1259,7 @@ input_buffer::buffer_for_file(const string &path, bool warn)
 		close(source);
 		return 0;
 	}
-	std::unique_ptr<input_buffer> b(new mmap_input_buffer(source, std::string(path)));
+	std::unique_ptr<input_buffer> b(new mmap_input_buffer(source, string(path)));
 	close(source);
 	return b;
 }

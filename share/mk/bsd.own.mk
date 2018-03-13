@@ -32,8 +32,6 @@
 #
 # LIBEXECDIR	Base path for system daemons and utilities. [/usr/libexec]
 #
-# LINTLIBDIR	Base path for lint libraries. [/usr/libdata/lint]
-#
 # SHLIBDIR	Base path for shared libraries. [${LIBDIR}]
 #
 # LIBOWN	Library owner. [${BINOWN}]
@@ -116,6 +114,9 @@
 # NLSMODE	National Language Support files mode. [${NOBINMODE}]
 #
 # INCLUDEDIR	Base path for standard C include files [/usr/include]
+#
+# PKG_CMD	Program for creating and manipulating packages.
+#               [pkg] 
 
 .if !target(__<bsd.own.mk>__)
 __<bsd.own.mk>__:
@@ -131,31 +132,6 @@ CTFCONVERT_CMD=
 .else
 CTFCONVERT_CMD=	@:
 .endif 
-
-.if ${MK_INSTALL_AS_USER} != "no"
-.if !defined(_uid)
-_uid!=	id -u
-.export _uid
-.endif
-.if ${_uid} != 0
-.if !defined(USER)
-# Avoid exporting USER
-.if !defined(_USER)
-_USER!=	id -un
-.export _USER
-.endif
-USER=	${_USER}
-.endif
-.if !defined(_gid)
-_gid!=	id -g
-.export _gid
-.endif
-.for x in BIN CONF DOC DTB INFO KMOD LIB MAN NLS SHARE
-$xOWN=	${USER}
-$xGRP=	${_gid}
-.endfor
-.endif
-.endif
 
 .endif # !_WITHOUT_SRCCONF
 
@@ -174,11 +150,16 @@ DTBOWN?=	root
 DTBGRP?=	wheel
 DTBMODE?=	444
 
-LIBDIR?=	/usr/lib
+# Use make.conf / environment LIBDIR as default if set...
+.if !empty(_PREMK_LIBDIR)
+LIBDIR_BASE?=	${_PREMK_LIBDIR}
+.endif
+# otherwise use our expected default value.
+LIBDIR_BASE?=	/usr/lib
+LIBDIR?=	${LIBDIR_BASE}
 LIBCOMPATDIR?=	/usr/lib/compat
 LIBDATADIR?=	/usr/libdata
 LIBEXECDIR?=	/usr/libexec
-LINTLIBDIR?=	/usr/libdata/lint
 SHLIBDIR?=	${LIBDIR}
 LIBOWN?=	${BINOWN}
 LIBGRP?=	${BINGRP}
@@ -248,6 +229,8 @@ XZ_CMD?=	xz -T ${XZ_THREADS}
 .else
 XZ_CMD?=	xz
 .endif
+
+PKG_CMD?=	pkg
 
 # Pointer to the top directory into which tests are installed.  Should not be
 # overriden by Makefiles, but the user may choose to set this in src.conf(5).

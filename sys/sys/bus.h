@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1997,1998,2003 Doug Rabson
  * All rights reserved.
  *
@@ -265,6 +267,7 @@ enum intr_type {
 };
 
 enum intr_trigger {
+	INTR_TRIGGER_INVALID = -1,
 	INTR_TRIGGER_CONFORM = 0,
 	INTR_TRIGGER_EDGE = 1,
 	INTR_TRIGGER_LEVEL = 2
@@ -392,14 +395,14 @@ int	resource_list_print_type(struct resource_list *rl,
 				 const char *format);
 
 /*
- * The root bus, to which all top-level busses are attached.
+ * The root bus, to which all top-level buses are attached.
  */
 extern device_t root_bus;
 extern devclass_t root_devclass;
 void	root_bus_configure(void);
 
 /*
- * Useful functions for implementing busses.
+ * Useful functions for implementing buses.
  */
 
 int	bus_generic_activate_resource(device_t dev, device_t child, int type,
@@ -490,6 +493,7 @@ struct resource_spec {
 	int	rid;
 	int	flags;
 };
+#define	RESOURCE_SPEC_END	{-1, 0, 0}
 
 int	bus_alloc_resources(device_t dev, struct resource_spec *rs,
 			    struct resource **res);
@@ -631,7 +635,6 @@ struct sysctl_oid *devclass_get_sysctl_tree(devclass_t dc);
 /*
  * Access functions for device resources.
  */
-
 int	resource_int_value(const char *name, int unit, const char *resname,
 			   int *result);
 int	resource_long_value(const char *name, int unit, const char *resname,
@@ -643,12 +646,6 @@ int	resource_find_match(int *anchor, const char **name, int *unit,
 			    const char *resname, const char *value);
 int	resource_find_dev(int *anchor, const char *name, int *unit,
 			  const char *resname, const char *value);
-int	resource_set_int(const char *name, int unit, const char *resname,
-			 int value);
-int	resource_set_long(const char *name, int unit, const char *resname,
-			  long value);
-int	resource_set_string(const char *name, int unit, const char *resname,
-			    const char *value);
 int	resource_unset_value(const char *name, int unit, const char *resname);
 
 /*
@@ -662,7 +659,7 @@ void	bus_data_generation_update(void);
  * Some convenience defines for probe routines to return.  These are just
  * suggested values, and there's nothing magical about them.
  * BUS_PROBE_SPECIFIC is for devices that cannot be reprobed, and that no
- * possible other driver may exist (typically legacy drivers who don't fallow
+ * possible other driver may exist (typically legacy drivers who don't follow
  * all the rules, or special needs drivers).  BUS_PROBE_VENDOR is the
  * suggested value that vendor supplied drivers use.  This is for source or
  * binary drivers that are not yet integrated into the FreeBSD tree.  Its use
@@ -675,7 +672,7 @@ void	bus_data_generation_update(void);
  * supports the newer ones would return BUS_PROBE_DEFAULT.  BUS_PROBE_GENERIC
  * is for drivers that wish to have a generic form and a specialized form,
  * like is done with the pci bus and the acpi pci bus.  BUS_PROBE_HOOVER is
- * for those busses that implement a generic device place-holder for devices on
+ * for those buses that implement a generic device placeholder for devices on
  * the bus that have no more specific driver for them (aka ugen).
  * BUS_PROBE_NOWILDCARD or lower means that the device isn't really bidding
  * for a device node, but accepts only devices that its parent has told it
@@ -699,12 +696,13 @@ void	bus_data_generation_update(void);
  * probed in earlier passes.
  */
 #define	BUS_PASS_ROOT		0	/* Used to attach root0. */
-#define	BUS_PASS_BUS		10	/* Busses and bridges. */
+#define	BUS_PASS_BUS		10	/* Buses and bridges. */
 #define	BUS_PASS_CPU		20	/* CPU devices. */
 #define	BUS_PASS_RESOURCE	30	/* Resource discovery. */
 #define	BUS_PASS_INTERRUPT	40	/* Interrupt controllers. */
 #define	BUS_PASS_TIMER		50	/* Timers and clocks. */
 #define	BUS_PASS_SCHEDULER	60	/* Start scheduler. */
+#define	BUS_PASS_SUPPORTDEV	100000	/* Drivers which support DEFAULT drivers. */
 #define	BUS_PASS_DEFAULT	__INT_MAX /* Everything else. */
 
 #define	BUS_PASS_ORDER_FIRST	0
@@ -734,7 +732,7 @@ struct	module;
 int	driver_module_handler(struct module *, int, void *);
 
 /**
- * Module support for automatically adding drivers to busses.
+ * Module support for automatically adding drivers to buses.
  */
 struct driver_module_data {
 	int		(*dmd_chainevh)(struct module *, int, void *);

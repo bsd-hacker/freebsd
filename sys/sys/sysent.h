@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1982, 1988, 1991 The Regents of the University of California.
  * All rights reserved.
  *
@@ -10,7 +12,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -92,7 +94,7 @@ struct sysentvec {
 	struct sysent	*sv_table;	/* pointer to sysent */
 	u_int		sv_mask;	/* optional mask to index */
 	int		sv_errsize;	/* size of errno translation table */
-	int 		*sv_errtbl;	/* errno translation table */
+	const int 	*sv_errtbl;	/* errno translation table */
 	int		(*sv_transtrap)(int, int);
 					/* translate trap-to-signal mapping */
 	int		(*sv_fixup)(register_t **, struct image_params *);
@@ -119,8 +121,7 @@ struct sysentvec {
 	u_long		*sv_maxssiz;
 	u_int		sv_flags;
 	void		(*sv_set_syscall_retval)(struct thread *, int);
-	int		(*sv_fetch_syscall_args)(struct thread *, struct
-			    syscall_args *);
+	int		(*sv_fetch_syscall_args)(struct thread *);
 	const char	**sv_syscallnames;
 	vm_offset_t	sv_timekeep_base;
 	vm_offset_t	sv_shared_page_base;
@@ -130,6 +131,8 @@ struct sysentvec {
 	void		(*sv_schedtail)(struct thread *);
 	void		(*sv_thread_detach)(struct thread *);
 	int		(*sv_trap)(struct thread *);
+	u_long		*sv_hwcap;	/* Value passed in AT_HWCAP. */
+	u_long		*sv_hwcap2;	/* Value passed in AT_HWCAP2. */
 };
 
 #define	SV_ILP32	0x000100	/* 32-bit executable. */
@@ -138,7 +141,7 @@ struct sysentvec {
 #define	SV_AOUT		0x008000	/* a.out executable. */
 #define	SV_SHP		0x010000	/* Shared page. */
 #define	SV_CAPSICUM	0x020000	/* Force cap_enter() on startup. */
-#define	SV_TIMEKEEP	0x040000
+#define	SV_TIMEKEEP	0x040000	/* Shared page timehands. */
 
 #define	SV_ABI_MASK	0xff
 #define	SV_ABI_ERRNO(p, e)	((p)->p_sysent->sv_errsize <= 0 ? e :	\
@@ -231,34 +234,48 @@ struct syscall_helper_data {
 	int syscall_no;
 	int registered;
 };
-#define SYSCALL_INIT_HELPER(syscallname) {			\
+#define SYSCALL_INIT_HELPER_F(syscallname, flags) {		\
     .new_sysent = {						\
 	.sy_narg = (sizeof(struct syscallname ## _args )	\
 	    / sizeof(register_t)),				\
 	.sy_call = (sy_call_t *)& sys_ ## syscallname,		\
-	.sy_auevent = SYS_AUE_##syscallname			\
+	.sy_auevent = SYS_AUE_##syscallname,			\
+	.sy_flags = (flags)					\
     },								\
     .syscall_no = SYS_##syscallname				\
 }
-#define SYSCALL_INIT_HELPER_COMPAT(syscallname) {		\
+#define SYSCALL_INIT_HELPER_COMPAT_F(syscallname, flags) {	\
     .new_sysent = {						\
 	.sy_narg = (sizeof(struct syscallname ## _args )	\
 	    / sizeof(register_t)),				\
 	.sy_call = (sy_call_t *)& syscallname,			\
-	.sy_auevent = SYS_AUE_##syscallname			\
+	.sy_auevent = SYS_AUE_##syscallname,			\
+	.sy_flags = (flags)					\
     },								\
     .syscall_no = SYS_##syscallname				\
 }
+#define SYSCALL_INIT_HELPER(syscallname)			\
+    SYSCALL_INIT_HELPER_F(syscallname, 0)
+#define SYSCALL_INIT_HELPER_COMPAT(syscallname)			\
+    SYSCALL_INIT_HELPER_COMPAT_F(syscallname, 0)
 #define SYSCALL_INIT_LAST {					\
     .syscall_no = NO_SYSCALL					\
 }
 
-int	syscall_register(int *offset, struct sysent *new_sysent,
-	    struct sysent *old_sysent, int flags);
-int	syscall_deregister(int *offset, struct sysent *old_sysent);
 int	syscall_module_handler(struct module *mod, int what, void *arg);
 int	syscall_helper_register(struct syscall_helper_data *sd, int flags);
 int	syscall_helper_unregister(struct syscall_helper_data *sd);
+/* Implementation, exposed for COMPAT code */
+int	kern_syscall_register(struct sysent *sysents, int *offset,
+	    struct sysent *new_sysent, struct sysent *old_sysent, int flags);
+int	kern_syscall_deregister(struct sysent *sysents, int offset,
+	    const struct sysent *old_sysent);
+int	kern_syscall_module_handler(struct sysent *sysents,
+	    struct module *mod, int what, void *arg);
+int	kern_syscall_helper_register(struct sysent *sysents,
+	    struct syscall_helper_data *sd, int flags);
+int	kern_syscall_helper_unregister(struct sysent *sysents,
+	    struct syscall_helper_data *sd);
 
 struct proc;
 const char *syscallname(struct proc *p, u_int code);

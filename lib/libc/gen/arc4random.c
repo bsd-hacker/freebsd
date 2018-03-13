@@ -59,7 +59,6 @@ struct arc4_stream {
 
 static pthread_mutex_t	arc4random_mtx = PTHREAD_MUTEX_INITIALIZER;
 
-#define	RANDOMDEV	"/dev/random"
 #define	KEYSIZE		128
 #define	_ARC4_LOCK()						\
 	do {							\
@@ -160,7 +159,7 @@ arc4_stir(void)
 	 * Discard early keystream, as per recommendations in:
 	 * "(Not So) Random Shuffles of RC4" by Ilya Mironov.
 	 */
-	for (i = 0; i < 1024; i++)
+	for (i = 0; i < 3072; i++)
 		(void)arc4_getbyte();
 	arc4_count = 1600000;
 }

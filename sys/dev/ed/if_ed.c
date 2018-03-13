@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1995, David Greenman
  * All rights reserved.
  *
@@ -751,7 +753,7 @@ outloop:
 		return;
 	}
 	IFQ_DRV_DEQUEUE(&ifp->if_snd, m);
-	if (m == 0) {
+	if (m == NULL) {
 
 		/*
 		 * We are using the !OACTIVE flag to indicate to the outside

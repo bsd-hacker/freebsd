@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2002-2009 Luigi Rizzo, Universita` di Pisa
  * Copyright (c) 2014 Yandex LLC
  * Copyright (c) 2014 Alexander V. Chernikov
@@ -58,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/syslog.h>
 #include <sys/fnv_hash.h>
 #include <net/if.h>
+#include <net/pfil.h>
 #include <net/route.h>
 #include <net/vnet.h>
 #include <vm/vm.h>
@@ -352,7 +355,7 @@ get_map(struct ip_fw_chain *chain, int extra, int locked)
 
 	for (;;) {
 		struct ip_fw **map;
-		int i, mflags;
+		u_int i, mflags;
 
 		mflags = M_ZERO | ((locked != 0) ? M_NOWAIT : M_WAITOK);
 
@@ -789,6 +792,30 @@ commit_rules(struct ip_fw_chain *chain, struct rule_check_info *rci, int count)
 	return (0);
 }
 
+int
+ipfw_add_protected_rule(struct ip_fw_chain *chain, struct ip_fw *rule,
+    int locked)
+{
+	struct ip_fw **map;
+
+	map = get_map(chain, 1, locked);
+	if (map == NULL)
+		return (ENOMEM);
+	if (chain->n_rules > 0)
+		bcopy(chain->map, map,
+		    chain->n_rules * sizeof(struct ip_fw *));
+	map[chain->n_rules] = rule;
+	rule->rulenum = IPFW_DEFAULT_RULE;
+	rule->set = RESVD_SET;
+	rule->id = chain->id + 1;
+	/* We add rule in the end of chain, no need to update skipto cache */
+	map = swap_map(chain, map, chain->n_rules + 1);
+	chain->static_len += RULEUSIZE0(rule);
+	IPFW_UH_WUNLOCK(chain);
+	free(map, M_IPFW);
+	return (0);
+}
+
 /*
  * Adds @rule to the list of rules to reap
  */
@@ -996,10 +1023,9 @@ delete_range(struct ip_fw_chain *chain, ipfw_range_tlv *rt, int *ndel)
 	if ((rt->flags & IPFW_RCFLAG_RANGE) != 0) {
 		start = ipfw_find_rule(chain, rt->start_rule, 0);
 
-		end = ipfw_find_rule(chain, rt->end_rule, 0);
-		if (rt->end_rule != IPFW_DEFAULT_RULE)
-			while (chain->map[end]->rulenum == rt->end_rule)
-				end++;
+		if (rt->end_rule >= IPFW_DEFAULT_RULE)
+			rt->end_rule = IPFW_DEFAULT_RULE - 1;
+		end = ipfw_find_rule(chain, rt->end_rule, UINT32_MAX);
 	}
 
 	/* Allocate new map of the same size */
@@ -1036,7 +1062,7 @@ delete_range(struct ip_fw_chain *chain, ipfw_range_tlv *rt, int *ndel)
 	map = swap_map(chain, map, chain->n_rules - n);
 	/* 6. Remove all dynamic states originated by deleted rules */
 	if (ndyn > 0)
-		ipfw_expire_dyn_rules(chain, rt);
+		ipfw_expire_dyn_states(chain, rt);
 	/* 7. now remove the rules deleted from the old map */
 	for (i = start; i < end; i++) {
 		rule = map[i];
@@ -1736,11 +1762,16 @@ check_ipfw_rule_body(ipfw_insn *cmd, int cmd_len, struct rule_check_info *ci)
 				return (EINVAL);
 			}
 			ci->object_opcodes++;
-			/* Do we have O_EXTERNAL_INSTANCE opcode? */
+			/*
+			 * Do we have O_EXTERNAL_INSTANCE or O_EXTERNAL_DATA
+			 * opcode?
+			 */
 			if (l != cmdlen) {
 				l -= cmdlen;
 				cmd += cmdlen;
 				cmdlen = F_LEN(cmd);
+				if (cmd->opcode == O_EXTERNAL_DATA)
+					goto check_action;
 				if (cmd->opcode != O_EXTERNAL_INSTANCE) {
 					printf("ipfw: invalid opcode "
 					    "next to external action %u\n",
@@ -1826,6 +1857,8 @@ check_ipfw_rule_body(ipfw_insn *cmd, int cmd_len, struct rule_check_info *ci)
 			break;
 
 		case O_IP_SRC_LOOKUP:
+			if (cmdlen > F_INSN_SIZE(ipfw_insn_u32))
+				goto bad_size;
 		case O_IP_DST_LOOKUP:
 			if (cmd->arg1 >= V_fw_tables_max) {
 				printf("ipfw: invalid table number %d\n",
@@ -2369,9 +2402,9 @@ dump_config(struct ip_fw_chain *chain, ip_fw3_opheader *op3,
 		if ((rnum = hdr->start_rule) > IPFW_DEFAULT_RULE)
 			rnum = IPFW_DEFAULT_RULE;
 		da.b = ipfw_find_rule(chain, rnum, 0);
-		rnum = hdr->end_rule;
-		rnum = (rnum < IPFW_DEFAULT_RULE) ? rnum+1 : IPFW_DEFAULT_RULE;
-		da.e = ipfw_find_rule(chain, rnum, 0) + 1;
+		rnum = (hdr->end_rule < IPFW_DEFAULT_RULE) ?
+		    hdr->end_rule + 1: IPFW_DEFAULT_RULE;
+		da.e = ipfw_find_rule(chain, rnum, UINT32_MAX) + 1;
 	}
 
 	if (hdr->flags & IPFW_CFG_GET_STATIC) {
@@ -2616,11 +2649,11 @@ unref_rule_objects(struct ip_fw_chain *ch, struct ip_fw *rule)
 			continue;
 		no = rw->find_bykidx(ch, kidx);
 
-		KASSERT(no != NULL, ("table id %d not found", kidx));
+		KASSERT(no != NULL, ("object id %d not found", kidx));
 		KASSERT(no->subtype == subtype,
-		    ("wrong type %d (%d) for table id %d",
+		    ("wrong type %d (%d) for object id %d",
 		    no->subtype, subtype, kidx));
-		KASSERT(no->refcnt > 0, ("refcount for table %d is %d",
+		KASSERT(no->refcnt > 0, ("refcount for object %d is %d",
 		    kidx, no->refcnt));
 
 		if (no->refcnt == 1 && rw->destroy_object != NULL)
@@ -2669,7 +2702,14 @@ ref_opcode_object(struct ip_fw_chain *ch, ipfw_insn *cmd, struct tid_info *ti,
 		return (0);
 	}
 
-	/* Found. Bump refcount and update kidx. */
+	/*
+	 * Object is already exist.
+	 * Its subtype should match with expected value.
+	 */
+	if (ti->type != no->subtype)
+		return (EINVAL);
+
+	/* Bump refcount and update kidx. */
 	no->refcnt++;
 	rw->update(cmd, no->kidx);
 	return (0);
@@ -3135,7 +3175,7 @@ int
 classify_opcode_kidx(ipfw_insn *cmd, uint16_t *puidx)
 {
 
-	if (find_op_rw(cmd, puidx, NULL) == 0)
+	if (find_op_rw(cmd, puidx, NULL) == NULL)
 		return (1);
 	return (0);
 }

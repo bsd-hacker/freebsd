@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1988 University of Utah.
  * Copyright (c) 1991, 1993
  *	The Regents of the University of California.  All rights reserved.
@@ -15,7 +17,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -71,9 +73,7 @@ struct obreak_args {
  */
 /* ARGSUSED */
 int
-sys_obreak(td, uap)
-	struct thread *td;
-	struct obreak_args *uap;
+sys_obreak(struct thread *td, struct obreak_args *uap)
 {
 	struct vmspace *vm = td->td_proc->p_vmspace;
 	vm_map_t map = &vm->vm_map;
@@ -245,9 +245,7 @@ struct ovadvise_args {
  */
 /* ARGSUSED */
 int
-sys_ovadvise(td, uap)
-	struct thread *td;
-	struct ovadvise_args *uap;
+sys_ovadvise(struct thread *td, struct ovadvise_args *uap)
 {
 	/* START_GIANT_OPTIONAL */
 	/* END_GIANT_OPTIONAL */

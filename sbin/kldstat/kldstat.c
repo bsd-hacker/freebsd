@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1997 Doug Rabson
  * All rights reserved.
  *
@@ -97,7 +99,7 @@ printfile(int fileid, int verbose, int humanized)
 static void
 usage(void)
 {
-    fprintf(stderr, "usage: kldstata[-d] [-h] [-q] [-v] [-i id] [-n filename]\n");
+    fprintf(stderr, "usage: kldstat [-d] [-h] [-q] [-v] [-i id] [-n filename]\n");
     fprintf(stderr, "       kldstat [-d] [-q] [-m modname]\n");
     exit(1);
 }

@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
  * Copyright (c) 2001 Daniel Hartmeier
  * All rights reserved.
  *
@@ -153,6 +155,8 @@ extern struct rwlock pf_rules_lock;
 #define	PF_RULES_ASSERT()	rw_assert(&pf_rules_lock, RA_LOCKED)
 #define	PF_RULES_RASSERT()	rw_assert(&pf_rules_lock, RA_RLOCKED)
 #define	PF_RULES_WASSERT()	rw_assert(&pf_rules_lock, RA_WLOCKED)
+
+extern struct sx pf_end_lock;
 
 #define	PF_MODVER	1
 #define	PFLOG_MODVER	1
@@ -1463,6 +1467,7 @@ struct pf_idhash {
 extern u_long		pf_hashmask;
 extern u_long		pf_srchashmask;
 #define	PF_HASHSIZ	(32768)
+#define	PF_SRCHASHSIZ	(PF_HASHSIZ/4)
 VNET_DECLARE(struct pf_keyhash *, pf_keyhash);
 VNET_DECLARE(struct pf_idhash *, pf_idhash);
 #define V_pf_keyhash	VNET(pf_keyhash)
@@ -1615,6 +1620,7 @@ int	pf_normalize_tcp_stateful(struct mbuf *, int, struct pf_pdesc *,
 u_int32_t
 	pf_state_expires(const struct pf_state *);
 void	pf_purge_expired_fragments(void);
+void	pf_purge_fragments(uint32_t);
 int	pf_routable(struct pf_addr *addr, sa_family_t af, struct pfi_kif *,
 	    int);
 int	pf_socket_lookup(int, struct pf_pdesc *, struct mbuf *);

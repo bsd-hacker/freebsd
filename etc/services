@@ -2291,6 +2291,7 @@ ipfix		4739/udp   #IP Flow Info Export
 ipfixs		4740/sctp  #ipfix protocol over DTLS
 ipfixs		4740/tcp   #ipfix protocol over TLS
 ipfixs		4740/udp   #ipfix protocol over DTLS
+vxlan		4789/udp   #Virtual eXtensible Local Area Network (VXLAN)
 commplex-main	5000/tcp
 commplex-main	5000/udp
 commplex-link	5001/tcp
@@ -2450,6 +2451,7 @@ aurora		9084/sctp  #IBM AURORA Performance Visualizer
 aurora		9084/tcp   #IBM AURORA Performance Visualizer
 aurora		9084/udp   #IBM AURORA Performance Visualizer
 jetdirect	9100/tcp   #HP JetDirect card
+prom-sysctl	9124/tcp   #prometheus_sysctl_exporter(8)
 git		9418/tcp   #git pack transfer service
 git		9418/udp   #git pack transfer service
 man		9535/tcp

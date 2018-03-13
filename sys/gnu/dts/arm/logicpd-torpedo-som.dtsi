@@ -7,10 +7,19 @@
 #include <dt-bindings/input/input.h>
 
 / {
+	chosen {
+		stdout-path = &uart1;
+	};
+
 	cpus {
 		cpu@0 {
 			cpu0-supply = <&vcc>;
 		};
+	};
+
+	memory@80000000 {
+		device_type = "memory";
+		reg = <0x80000000 0>;
 	};
 
 	leds {
@@ -46,6 +55,7 @@
 		linux,mtd-name = "micron,mt29f4g16abbda3w";
 		nand-bus-width = <16>;
 		ti,nand-ecc-opt = "bch8";
+		rb-gpios = <&gpmc 0 GPIO_ACTIVE_HIGH>; /* gpmc_wait0 */
 		gpmc,sync-clk-ps = <0>;
 		gpmc,cs-on-ns = <0>;
 		gpmc,cs-rd-off-ns = <44>;
@@ -115,7 +125,7 @@
 &i2c3 {
 	clock-frequency = <400000>;
 	at24@50 {
-		compatible = "at24,24c02";
+		compatible = "atmel,24c64";
 		readonly;
 		reg = <0x50>;
 	};

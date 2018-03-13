@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2002 Poul-Henning Kamp
  * Copyright (c) 2002 Networks Associates Technology, Inc.
  * Copyright (c) 2013 The FreeBSD Foundation
@@ -223,6 +225,9 @@ g_clone_bio(struct bio *bp)
 		/* Inherit classification info from the parent */
 		bp2->bio_classifier1 = bp->bio_classifier1;
 		bp2->bio_classifier2 = bp->bio_classifier2;
+#if defined(BUF_TRACKING) || defined(FULL_BUF_TRACKING)
+		bp2->bio_track_bp = bp->bio_track_bp;
+#endif
 		bp->bio_children++;
 	}
 #ifdef KTR
@@ -361,6 +366,8 @@ g_io_check(struct bio *bp)
 	struct g_provider *pp;
 	off_t excess;
 	int error;
+
+	biotrack(bp, __func__);
 
 	cp = bp->bio_from;
 	pp = bp->bio_to;
@@ -503,6 +510,8 @@ g_run_classifiers(struct bio *bp)
 	struct g_classifier_hook *hook;
 	int classified = 0;
 
+	biotrack(bp, __func__);
+
 	TAILQ_FOREACH(hook, &g_classifier_tailq, link)
 		classified |= hook->func(hook->arg, bp);
 
@@ -517,6 +526,8 @@ g_io_request(struct bio *bp, struct g_consumer *cp)
 	struct mtx *mtxp;
 	int direct, error, first;
 	uint8_t cmd;
+
+	biotrack(bp, __func__);
 
 	KASSERT(cp != NULL, ("NULL cp in g_io_request"));
 	KASSERT(bp != NULL, ("NULL bp in g_io_request"));
@@ -643,6 +654,8 @@ g_io_deliver(struct bio *bp, int error)
 	struct g_provider *pp;
 	struct mtx *mtxp;
 	int direct, first;
+
+	biotrack(bp, __func__);
 
 	KASSERT(bp != NULL, ("NULL bp in g_io_deliver"));
 	pp = bp->bio_to;
@@ -835,6 +848,7 @@ g_io_schedule_down(struct thread *tp __unused)
 		}
 		CTR0(KTR_GEOM, "g_down has work to do");
 		g_bioq_unlock(&g_bio_run_down);
+		biotrack(bp, __func__);
 		if (pace != 0) {
 			/*
 			 * There has been at least one memory allocation
@@ -935,6 +949,32 @@ g_read_data(struct g_consumer *cp, off_t offset, off_t length, int *error)
 	return (ptr);
 }
 
+/*
+ * A read function for use by ffs_sbget when used by GEOM-layer routines.
+ */
+int
+g_use_g_read_data(void *devfd, off_t loc, void **bufp, int size)
+{
+	struct g_consumer *cp;
+
+	KASSERT(*bufp == NULL,
+	    ("g_use_g_read_data: non-NULL *bufp %p\n", *bufp));
+
+	cp = (struct g_consumer *)devfd;
+	/*
+	 * Take care not to issue an invalid I/O request. The offset of
+	 * the superblock candidate must be multiples of the provider's
+	 * sector size, otherwise an FFS can't exist on the provider
+	 * anyway.
+	 */
+	if (loc % cp->provider->sectorsize != 0)
+		return (ENOENT);
+	*bufp = g_read_data(cp, loc, size, NULL);
+	if (*bufp == NULL)
+		return (ENOENT);
+	return (0);
+}
+
 int
 g_write_data(struct g_consumer *cp, off_t offset, void *ptr, off_t length)
 {
@@ -955,6 +995,16 @@ g_write_data(struct g_consumer *cp, off_t offset, void *ptr, off_t length)
 	error = biowait(bp, "gwrite");
 	g_destroy_bio(bp);
 	return (error);
+}
+
+/*
+ * A write function for use by ffs_sbput when used by GEOM-layer routines.
+ */
+int
+g_use_g_write_data(void *devfd, off_t loc, void *buf, int size)
+{
+
+	return (g_write_data((struct g_consumer *)devfd, loc, buf, size));
 }
 
 int

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2013 David Chisnall
  * All rights reserved.
  *
@@ -189,17 +191,17 @@ class binary_writer : public output_writer
 	 *  The binary format does not support labels, so this method
 	 * does nothing.
 	 */
-	virtual void write_label(const std::string &) {}
+	void write_label(const std::string &) override {}
 	/**
 	 * Comments are ignored by the binary writer.
 	 */
-	virtual void write_comment(const std::string&) {}
-	virtual void write_string(const std::string &name);
-	virtual void write_data(uint8_t v);
-	virtual void write_data(uint32_t v);
-	virtual void write_data(uint64_t v);
-	virtual void write_to_file(int fd);
-	virtual uint32_t size();
+	void write_comment(const std::string&)  override {}
+	void write_string(const std::string &name) override;
+	void write_data(uint8_t v) override;
+	void write_data(uint32_t v) override;
+	void write_data(uint64_t v) override;
+	void write_to_file(int fd) override;
+	uint32_t size() override;
 };
 /**
  * Assembly writer.  This class is responsible for writing the output in an
@@ -234,7 +236,7 @@ class asm_writer : public output_writer
 	/**
 	 * Write a string to the output.
 	 */
-	void write_string(const std::string &c);
+	void write_string(const std::string &c) override;
 	/**
 	 * Writes the string, starting on a new line.  
 	 */
@@ -246,13 +248,13 @@ class asm_writer : public output_writer
 	void write_byte(uint8_t b);
 	public:
 	asm_writer() : byte_count(0), bytes_written(0) {}
-	virtual void write_label(const std::string &name);
-	virtual void write_comment(const std::string &name);
-	virtual void write_data(uint8_t v);
-	virtual void write_data(uint32_t v);
-	virtual void write_data(uint64_t v);
-	virtual void write_to_file(int fd);
-	virtual uint32_t size();
+	void write_label(const std::string &name) override;
+	void write_comment(const std::string &name) override;
+	void write_data(uint8_t v) override;
+	void write_data(uint32_t v) override;
+	void write_data(uint64_t v) override;
+	void write_to_file(int fd) override;
+	uint32_t size() override;
 };
 
 /**

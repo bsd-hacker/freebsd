@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1997 Wolfgang Helbig
  * All rights reserved.
  *
@@ -1110,7 +1112,8 @@ highlight(char *dst, char *src, int len, int *extralen)
 	static const char *term_so, *term_se;
 
 	if (first) {
-		char tbuf[1024], cbuf[512], *b;
+		static char cbuf[512];
+		char tbuf[1024], *b;
 
 		term_se = term_so = NULL;
 

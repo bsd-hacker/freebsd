@@ -7,6 +7,7 @@ FILESGROUPS=FILES
 FILES=	100.clean-disks \
 	110.clean-tmps \
 	120.clean-preserve \
+	140.clean-rwho \
 	200.backup-passwd \
 	210.backup-aliases \
 	330.news \
@@ -16,6 +17,7 @@ FILES=	100.clean-disks \
 	407.status-graid3 \
 	408.status-gstripe \
 	409.status-gconcat \
+	410.status-mfi \
 	420.status-network \
 	430.status-uptime \
 	450.status-security \
@@ -44,14 +46,6 @@ FILES+=	130.clean-msgs
 FILES+=	480.status-ntpd \
 	480.leapfile-ntpd
 .endif
-
-.if ${MK_RCMDS} != "no"
-FILESGROUPS+=	RCMDS
-RCMDS+=	140.clean-rwho
-.endif
-RCMDSDIR=	/etc/periodic/daily
-RCMDSMODE=	${BINMODE}
-RCMDSPACKAGE=	rcmds
 
 .if ${MK_SENDMAIL} != "no"
 FILES+=	150.clean-hoststat \

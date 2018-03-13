@@ -14,9 +14,13 @@
         ..
         firmware
         ..
+        lua
+        ..
         kernel
         ..
         modules
+        ..
+        overlays              tags=package=runtime
         ..
         zfs
         ..
@@ -30,7 +34,7 @@
         ..
         bluetooth
         ..
-        casper
+        cron.d
         ..
         defaults
         ..
@@ -70,11 +74,11 @@
         ..
         security
         ..
-        skel
-        ..
         ssh
         ..
         ssl
+        ..
+        syslog.d
         ..
         zfs
         ..
@@ -92,6 +96,8 @@
     media
     ..
     mnt
+    ..
+    net
     ..
     proc            mode=0555
     ..

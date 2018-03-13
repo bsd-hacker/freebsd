@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2006 Olivier Houchard
  * All rights reserved.
  *
@@ -529,6 +531,7 @@ static device_method_t i81342_pci_methods[] = {
 	DEVMETHOD(pcib_read_config,	i81342_pci_read_config),
 	DEVMETHOD(pcib_write_config,	i81342_pci_write_config),
 	DEVMETHOD(pcib_route_interrupt,	i81342_pci_route_interrupt),
+	DEVMETHOD(pcib_request_feature,	pcib_request_feature_allow),
 
 	DEVMETHOD_END
 };

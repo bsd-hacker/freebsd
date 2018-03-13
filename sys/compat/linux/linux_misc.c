@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2002 Doug Rabson
  * Copyright (c) 1994-1995 Søren Schmidt
  * All rights reserved.
@@ -51,6 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/reboot.h>
 #include <sys/racct.h>
+#include <sys/random.h>
 #include <sys/resourcevar.h>
 #include <sys/sched.h>
 #include <sys/sdt.h>
@@ -65,6 +68,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/vnode.h>
 #include <sys/wait.h>
 #include <sys/cpuset.h>
+#include <sys/uio.h>
 
 #include <security/mac/mac_framework.h>
 
@@ -112,7 +116,7 @@ int stclohz;				/* Statistics clock frequency */
 static unsigned int linux_to_bsd_resource[LINUX_RLIM_NLIMITS] = {
 	RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_DATA, RLIMIT_STACK,
 	RLIMIT_CORE, RLIMIT_RSS, RLIMIT_NPROC, RLIMIT_NOFILE,
-	RLIMIT_MEMLOCK, RLIMIT_AS 
+	RLIMIT_MEMLOCK, RLIMIT_AS
 };
 
 struct l_sysinfo {
@@ -161,7 +165,7 @@ linux_sysinfo(struct thread *td, struct linux_sysinfo_args *args)
 		    LINUX_SYSINFO_LOADS_SCALE / averunnable.fscale;
 
 	sysinfo.totalram = physmem * PAGE_SIZE;
-	sysinfo.freeram = sysinfo.totalram - vm_cnt.v_wire_count * PAGE_SIZE;
+	sysinfo.freeram = sysinfo.totalram - vm_wire_count() * PAGE_SIZE;
 
 	sysinfo.sharedram = 0;
 	mtx_lock(&vm_object_list_mtx);
@@ -585,10 +589,8 @@ select_out:
 int
 linux_mremap(struct thread *td, struct linux_mremap_args *args)
 {
-	struct munmap_args /* {
-		void *addr;
-		size_t len;
-	} */ bsd_args;
+	uintptr_t addr;
+	size_t len;
 	int error = 0;
 
 #ifdef DEBUG
@@ -623,10 +625,9 @@ linux_mremap(struct thread *td, struct linux_mremap_args *args)
 	}
 
 	if (args->new_len < args->old_len) {
-		bsd_args.addr =
-		    (caddr_t)((uintptr_t)args->addr + args->new_len);
-		bsd_args.len = args->old_len - args->new_len;
-		error = sys_munmap(td, &bsd_args);
+		addr = args->addr + args->new_len;
+		len = args->old_len - args->new_len;
+		error = kern_munmap(td, addr, len);
 	}
 
 	td->td_retval[0] = error ? 0 : (uintptr_t)args->addr;
@@ -640,13 +641,9 @@ linux_mremap(struct thread *td, struct linux_mremap_args *args)
 int
 linux_msync(struct thread *td, struct linux_msync_args *args)
 {
-	struct msync_args bsd_args;
 
-	bsd_args.addr = (caddr_t)(uintptr_t)args->addr;
-	bsd_args.len = (uintptr_t)args->len;
-	bsd_args.flags = args->fl & ~LINUX_MS_SYNC;
-
-	return (sys_msync(td, &bsd_args));
+	return (kern_msync(td, args->addr, args->len,
+	    args->fl & ~LINUX_MS_SYNC));
 }
 
 int
@@ -842,7 +839,7 @@ linux_utimensat_nsec_valid(l_long nsec)
 	return (1);
 }
 
-int 
+int
 linux_utimensat(struct thread *td, struct linux_utimensat_args *args)
 {
 	struct l_timespec l_times[2];
@@ -917,7 +914,7 @@ linux_utimensat(struct thread *td, struct linux_utimensat_args *args)
 		error = kern_futimens(td, dfd, timesp, UIO_SYSSPACE);
 	else {
 		error = kern_utimensat(td, dfd, path, UIO_SYSSPACE, timesp,
-	    		UIO_SYSSPACE, flags);
+			UIO_SYSSPACE, flags);
 		LFREEPATH(path);
 	}
 
@@ -1225,7 +1222,7 @@ struct l_itimerval {
 	l_timeval it_value;
 };
 
-#define	B2L_ITIMERVAL(bip, lip) 					\
+#define	B2L_ITIMERVAL(bip, lip)						\
 	(bip)->it_interval.tv_sec = (lip)->it_interval.tv_sec;		\
 	(bip)->it_interval.tv_usec = (lip)->it_interval.tv_usec;	\
 	(bip)->it_value.tv_sec = (lip)->it_value.tv_sec;		\
@@ -1733,9 +1730,7 @@ linux_getppid(struct thread *td, struct linux_getppid_args *args)
 		printf(ARGS(getppid, ""));
 #endif
 
-	PROC_LOCK(td->td_proc);
-	td->td_retval[0] = td->td_proc->p_pptr->p_pid;
-	PROC_UNLOCK(td->td_proc);
+	td->td_retval[0] = kern_getppid(td);
 	return (0);
 }
 
@@ -2002,7 +1997,7 @@ linux_prctl(struct thread *td, struct linux_prctl_args *args)
 	case LINUX_PR_SET_NAME:
 		/*
 		 * To be on the safe side we need to make sure to not
-		 * overflow the size a linux program expects. We already
+		 * overflow the size a Linux program expects. We already
 		 * do this here in the copyin, so that we don't need to
 		 * check on copyout.
 		 */
@@ -2104,7 +2099,6 @@ linux_sched_getaffinity(struct thread *td,
 {
 	int error;
 	struct thread *tdt;
-	struct cpuset_getaffinity_args cga;
 
 #ifdef DEBUG
 	if (ldebug(sched_getaffinity))
@@ -2119,13 +2113,10 @@ linux_sched_getaffinity(struct thread *td,
 		return (ESRCH);
 
 	PROC_UNLOCK(tdt->td_proc);
-	cga.level = CPU_LEVEL_WHICH;
-	cga.which = CPU_WHICH_TID;
-	cga.id = tdt->td_tid;
-	cga.cpusetsize = sizeof(cpuset_t);
-	cga.mask = (cpuset_t *) args->user_mask_ptr;
 
-	if ((error = sys_cpuset_getaffinity(td, &cga)) == 0)
+	error = kern_cpuset_getaffinity(td, CPU_LEVEL_WHICH, CPU_WHICH_TID,
+	    tdt->td_tid, sizeof(cpuset_t), (cpuset_t *)args->user_mask_ptr);
+	if (error == 0)
 		td->td_retval[0] = sizeof(cpuset_t);
 
 	return (error);
@@ -2138,7 +2129,6 @@ int
 linux_sched_setaffinity(struct thread *td,
     struct linux_sched_setaffinity_args *args)
 {
-	struct cpuset_setaffinity_args csa;
 	struct thread *tdt;
 
 #ifdef DEBUG
@@ -2154,13 +2144,9 @@ linux_sched_setaffinity(struct thread *td,
 		return (ESRCH);
 
 	PROC_UNLOCK(tdt->td_proc);
-	csa.level = CPU_LEVEL_WHICH;
-	csa.which = CPU_WHICH_TID;
-	csa.id = tdt->td_tid;
-	csa.cpusetsize = sizeof(cpuset_t);
-	csa.mask = (cpuset_t *) args->user_mask_ptr;
 
-	return (sys_cpuset_setaffinity(td, &csa));
+	return (kern_cpuset_setaffinity(td, CPU_LEVEL_WHICH, CPU_WHICH_TID,
+	    tdt->td_tid, sizeof(cpuset_t), (cpuset_t *) args->user_mask_ptr));
 }
 
 struct linux_rlimit64 {
@@ -2308,8 +2294,9 @@ linux_pselect6(struct thread *td, struct linux_pselect6_args *args)
 
 		TIMEVAL_TO_TIMESPEC(&utv, &uts);
 
-		native_to_linux_timespec(&lts, &uts);
-		error = copyout(&lts, args->tsp, sizeof(lts));
+		error = native_to_linux_timespec(&lts, &uts);
+		if (error == 0)
+			error = copyout(&lts, args->tsp, sizeof(lts));
 	}
 
 	return (error);
@@ -2361,8 +2348,9 @@ linux_ppoll(struct thread *td, struct linux_ppoll_args *args)
 		} else
 			timespecclear(&uts);
 
-		native_to_linux_timespec(&lts, &uts);
-		error = copyout(&lts, args->tsp, sizeof(lts));
+		error = native_to_linux_timespec(&lts, &uts);
+		if (error == 0)
+			error = copyout(&lts, args->tsp, sizeof(lts));
 	}
 
 	return (error);
@@ -2456,7 +2444,9 @@ linux_sched_rr_get_interval(struct thread *td,
 	PROC_UNLOCK(tdt->td_proc);
 	if (error != 0)
 		return (error);
-	native_to_linux_timespec(&lts, &ts);
+	error = native_to_linux_timespec(&lts, &ts);
+	if (error != 0)
+		return (error);
 	return (copyout(&lts, uap->interval, sizeof(lts)));
 }
 
@@ -2521,4 +2511,42 @@ linux_to_bsd_waitopts(int options, int *bsdopts)
 
 	if (options & __WCLONE)
 		*bsdopts |= WLINUXCLONE;
+}
+
+int
+linux_getrandom(struct thread *td, struct linux_getrandom_args *args)
+{
+	struct uio uio;
+	struct iovec iov;
+	int error;
+
+	if (args->flags & ~(LINUX_GRND_NONBLOCK|LINUX_GRND_RANDOM))
+		return (EINVAL);
+	if (args->count > INT_MAX)
+		args->count = INT_MAX;
+
+	iov.iov_base = args->buf;
+	iov.iov_len = args->count;
+
+	uio.uio_iov = &iov;
+	uio.uio_iovcnt = 1;
+	uio.uio_resid = iov.iov_len;
+	uio.uio_segflg = UIO_USERSPACE;
+	uio.uio_rw = UIO_READ;
+	uio.uio_td = td;
+
+	error = read_random_uio(&uio, args->flags & LINUX_GRND_NONBLOCK);
+	if (error == 0)
+		td->td_retval[0] = args->count - uio.uio_resid;
+	return (error);
+}
+
+int
+linux_mincore(struct thread *td, struct linux_mincore_args *args)
+{
+
+	/* Needs to be page-aligned */
+	if (args->start & PAGE_MASK)
+		return (EINVAL);
+	return (kern_mincore(td, args->start, args->len, args->vec));
 }

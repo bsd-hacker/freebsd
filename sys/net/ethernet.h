@@ -92,7 +92,7 @@ struct ether_vlan_header {
 #define	EVL_PRIOFTAG(tag)	(((tag) >> 13) & 7)
 #define	EVL_CFIOFTAG(tag)	(((tag) >> 12) & 1)
 #define	EVL_MAKETAG(vlid, pri, cfi)					\
-	((((((pri) & 7) << 13) | ((cfi) & 1)) << 12) | ((vlid) & EVL_VLID_MASK))
+	((((((pri) & 7) << 1) | ((cfi) & 1)) << 12) | ((vlid) & EVL_VLID_MASK))
 
 /*
  *  NOTE: 0x0000-0x05DC (0..1500) are generally IEEE 802.3 length fields.
@@ -344,6 +344,7 @@ struct ether_vlan_header {
 #define	ETHERTYPE_PPPOE		0x8864	/* PPP Over Ethernet Session Stage */
 #define	ETHERTYPE_LANPROBE	0x8888	/* HP LanProbe test? */
 #define	ETHERTYPE_PAE		0x888e	/* EAPOL PAE/802.1x */
+#define	ETHERTYPE_QINQ		0x88A8	/* 802.1ad VLAN stacking */
 #define	ETHERTYPE_LOOPBACK	0x9000	/* Loopback: used to test interfaces */
 #define	ETHERTYPE_LBACK		ETHERTYPE_LOOPBACK	/* DEC MOP loopback */
 #define	ETHERTYPE_XNSSM		0x9001	/* 3Com (Formerly Bridge Communications), XNS Systems Management */
@@ -405,6 +406,12 @@ extern	char *ether_sprintf(const u_int8_t *);
 void	ether_vlan_mtap(struct bpf_if *, struct mbuf *,
 	    void *, u_int);
 struct mbuf  *ether_vlanencap(struct mbuf *, uint16_t);
+
+#ifdef _SYS_EVENTHANDLER_H_
+/* new ethernet interface attached event */
+typedef void (*ether_ifattach_event_handler_t)(void *, struct ifnet *);
+EVENTHANDLER_DECLARE(ether_ifattach_event, ether_ifattach_event_handler_t);
+#endif
 
 #else /* _KERNEL */
 

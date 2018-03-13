@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2001-2007, by Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2008-2012, by Randall Stewart. All rights reserved.
  * Copyright (c) 2008-2012, by Michael Tuexen. All rights reserved.
@@ -55,11 +57,6 @@ __FBSDID("$FreeBSD$");
 #include <netinet/icmp6.h>
 #include <netinet/udp.h>
 
-#ifdef IPSEC
-#include <netipsec/ipsec.h>
-#include <netipsec/ipsec6.h>
-#endif				/* IPSEC */
-
 extern struct protosw inetsw[];
 
 int
@@ -74,11 +71,7 @@ sctp6_input_with_port(struct mbuf **i_pak, int *offp, uint16_t port)
 	struct sctphdr *sh;
 	struct sctp_chunkhdr *ch;
 	int length, offset;
-
-#if !defined(SCTP_WITH_NO_CSUM)
 	uint8_t compute_crc;
-
-#endif
 	uint32_t mflowid;
 	uint8_t mflowtype;
 	uint16_t fibnum;
@@ -149,9 +142,6 @@ sctp6_input_with_port(struct mbuf **i_pak, int *offp, uint16_t port)
 		goto out;
 	}
 	ecn_bits = ((ntohl(ip6->ip6_flow) >> 20) & 0x000000ff);
-#if defined(SCTP_WITH_NO_CSUM)
-	SCTP_STAT_INCR(sctps_recvnocrc);
-#else
 	if (m->m_pkthdr.csum_flags & CSUM_SCTP_VALID) {
 		SCTP_STAT_INCR(sctps_recvhwcrc);
 		compute_crc = 0;
@@ -159,14 +149,11 @@ sctp6_input_with_port(struct mbuf **i_pak, int *offp, uint16_t port)
 		SCTP_STAT_INCR(sctps_recvswcrc);
 		compute_crc = 1;
 	}
-#endif
 	sctp_common_input_processing(&m, iphlen, offset, length,
 	    (struct sockaddr *)&src,
 	    (struct sockaddr *)&dst,
 	    sh, ch,
-#if !defined(SCTP_WITH_NO_CSUM)
 	    compute_crc,
-#endif
 	    ecn_bits,
 	    mflowtype, mflowid, fibnum,
 	    vrf_id, port);
@@ -190,11 +177,10 @@ sctp6_notify(struct sctp_inpcb *inp,
     struct sctp_nets *net,
     uint8_t icmp6_type,
     uint8_t icmp6_code,
-    uint16_t next_mtu)
+    uint32_t next_mtu)
 {
 #if defined(__APPLE__) || defined(SCTP_SO_LOCK_TESTING)
 	struct socket *so;
-
 #endif
 	int timer_stopped;
 
@@ -237,6 +223,10 @@ sctp6_notify(struct sctp_inpcb *inp,
 		}
 		break;
 	case ICMP6_PACKET_TOO_BIG:
+		if ((net->dest_state & SCTP_ADDR_NO_PMTUD) == 0) {
+			SCTP_TCB_UNLOCK(stcb);
+			break;
+		}
 		if (SCTP_OS_TIMER_PENDING(&net->pmtu_timer.timer)) {
 			timer_stopped = 1;
 			sctp_timer_stop(SCTP_TIMER_TYPE_PATHMTURAISE, inp, stcb, net,
@@ -245,11 +235,11 @@ sctp6_notify(struct sctp_inpcb *inp,
 			timer_stopped = 0;
 		}
 		/* Update the path MTU. */
+		if (net->port) {
+			next_mtu -= sizeof(struct udphdr);
+		}
 		if (net->mtu > next_mtu) {
 			net->mtu = next_mtu;
-			if (net->port) {
-				net->mtu -= sizeof(struct udphdr);
-			}
 		}
 		/* Update the association MTU */
 		if (stcb->asoc.smallest_mtu > next_mtu) {
@@ -309,11 +299,11 @@ sctp6_ctlinput(int cmd, struct sockaddr *pktdst, void *d)
 		 * verification tag of the SCTP common header.
 		 */
 		if (ip6cp->ip6c_m->m_pkthdr.len <
-		    (int32_t) (ip6cp->ip6c_off + offsetof(struct sctphdr, checksum))) {
+		    (int32_t)(ip6cp->ip6c_off + offsetof(struct sctphdr, checksum))) {
 			return;
 		}
 		/* Copy out the port numbers and the verification tag. */
-		bzero(&sh, sizeof(sh));
+		memset(&sh, 0, sizeof(sh));
 		m_copydata(ip6cp->ip6c_m,
 		    ip6cp->ip6c_off,
 		    sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint32_t),
@@ -391,7 +381,7 @@ sctp6_ctlinput(int cmd, struct sockaddr *pktdst, void *d)
 			sctp6_notify(inp, stcb, net,
 			    ip6cp->ip6c_icmp6->icmp6_type,
 			    ip6cp->ip6c_icmp6->icmp6_code,
-			    (uint16_t) ntohl(ip6cp->ip6c_icmp6->icmp6_mtu));
+			    ntohl(ip6cp->ip6c_icmp6->icmp6_mtu));
 		} else {
 			if ((stcb == NULL) && (inp != NULL)) {
 				/* reduce inp's ref-count */
@@ -559,10 +549,6 @@ sctp6_attach(struct socket *so, int proto SCTP_UNUSED, struct thread *p SCTP_UNU
 	 */
 	inp6->inp_ip_ttl = MODULE_GLOBAL(ip_defttl);
 #endif
-	/*
-	 * Hmm what about the IPSEC stuff that is missing here but in
-	 * sctp_attach()?
-	 */
 	SCTP_INP_WUNLOCK(inp);
 	return (0);
 }
@@ -696,7 +682,6 @@ sctp6_send(struct socket *so, int flags, struct mbuf *m, struct sockaddr *addr,
 
 #ifdef INET
 	struct sockaddr_in6 *sin6;
-
 #endif				/* INET */
 	/* No SPL needed since sctp_output does this */
 
@@ -798,12 +783,10 @@ sctp6_connect(struct socket *so, struct sockaddr *addr, struct thread *p)
 	int error = 0;
 	struct sctp_inpcb *inp;
 	struct sctp_tcb *stcb;
-
 #ifdef INET
 	struct in6pcb *inp6;
 	struct sockaddr_in6 *sin6;
 	union sctp_sockstore store;
-
 #endif
 
 #ifdef INET
@@ -894,7 +877,7 @@ sctp6_connect(struct socket *so, struct sockaddr *addr, struct thread *p)
 	if (inp->sctp_flags & SCTP_PCB_FLAGS_CONNECTED) {
 		stcb = LIST_FIRST(&inp->sctp_asoc_list);
 		if (stcb) {
-			SCTP_TCB_UNLOCK(stcb);
+			SCTP_TCB_LOCK(stcb);
 		}
 		SCTP_INP_RUNLOCK(inp);
 	} else {
@@ -1005,7 +988,7 @@ sctp6_getaddr(struct socket *so, struct sockaddr **addr)
 				return (ENOENT);
 			}
 			vrf_id = inp->def_vrf_id;
-			sctp_ifa = sctp_source_address_selection(inp, stcb, (sctp_route_t *) & net->ro, net, 0, vrf_id);
+			sctp_ifa = sctp_source_address_selection(inp, stcb, (sctp_route_t *)&net->ro, net, 0, vrf_id);
 			if (sctp_ifa) {
 				sin6->sin6_addr = sctp_ifa->address.sin6.sin6_addr;
 			}

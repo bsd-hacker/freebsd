@@ -41,7 +41,16 @@ __<src.opts.mk>__:
 # that haven't been converted over.
 #
 
-# These options are used by src the builds
+# These options are used by the src builds. Those listed in
+# __DEFAULT_YES_OPTIONS default to 'yes' and will build unless turned
+# off.  __DEFAULT_NO_OPTIONS will default to 'no' and won't build
+# unless turned on. Any options listed in 'BROKEN_OPTIONS' will be
+# hard-wired to 'no'.  "Broken" here means not working or
+# not-appropriate and/or not supported. It doesn't imply something is
+# wrong with the code. There's not a single good word for this, so
+# BROKEN was selected as the least imperfect one considered at the
+# time. Options are added to BROKEN_OPTIONS list on a per-arch basis.
+# At this time, there's no provision for mutually incompatible options.
 
 __DEFAULT_YES_OPTIONS = \
     ACCT \
@@ -97,11 +106,9 @@ __DEFAULT_YES_OPTIONS = \
     GAMES \
     GCOV \
     GDB \
-    GNU \
-    GNU_GREP_COMPAT \
+    GNU_DIFF \
+    GNU_GREP \
     GPIO \
-    GPL_DTC \
-    GROFF \
     HAST \
     HTML \
     HYPERV \
@@ -121,15 +128,18 @@ __DEFAULT_YES_OPTIONS = \
     LIB32 \
     LIBPTHREAD \
     LIBTHR \
+    LLVM_COV \
     LOCALES \
     LOCATE \
     LPR \
     LS_COLORS \
     LZMA_SUPPORT \
+    LOADER_GELI \
+    LOADER_OFW \
+    LOADER_UBOOT \
     MAIL \
     MAILWRAPPER \
     MAKE \
-    MANDOCDB \
     NDIS \
     NETCAT \
     NETGRAPH \
@@ -146,7 +156,6 @@ __DEFAULT_YES_OPTIONS = \
     PPP \
     QUOTAS \
     RADIUS_SUPPORT \
-    RCMDS \
     RBOOTD \
     RESCUE \
     ROUTED \
@@ -163,7 +172,6 @@ __DEFAULT_YES_OPTIONS = \
     TCP_WRAPPERS \
     TCSH \
     TELNET \
-    TESTS \
     TEXTPROC \
     TFTP \
     TIMED \
@@ -179,18 +187,25 @@ __DEFAULT_YES_OPTIONS = \
 
 __DEFAULT_NO_OPTIONS = \
     BSD_GREP \
+    BSD_GREP_FASTMATCH \
     CLANG_EXTRAS \
     DTRACE_TESTS \
-    EISA \
+    GNU_GREP_COMPAT \
     HESIOD \
     LIBSOFT \
+    LOADER_FIREWIRE \
+    LOADER_FORCE_LE \
+    LOADER_LUA \
     NAND \
     OFED \
     OPENLDAP \
-    RCS \
+    REPRODUCIBLE_BUILD \
+    RPCBIND_WARMSTART_SUPPORT \
     SHARED_TOOLCHAIN \
     SORT_THREADS \
     SVN \
+    ZONEINFO_LEAPSECONDS_SUPPORT \
+    ZONEINFO_OLD_TIMEZONES_SUPPORT \
 
 
 #
@@ -221,34 +236,43 @@ __TT=${MACHINE}
 .if ${COMPILER_FEATURES:Mc++11} && (${__T} == "aarch64" || \
     ${__T} == "amd64" || ${__TT} == "arm" || ${__T} == "i386")
 # Clang is enabled, and will be installed as the default /usr/bin/cc.
-__DEFAULT_YES_OPTIONS+=CLANG CLANG_BOOTSTRAP CLANG_FULL CLANG_IS_CC
-__DEFAULT_NO_OPTIONS+=GCC GCC_BOOTSTRAP GNUCXX
-.elif ${COMPILER_FEATURES:Mc++11} && ${__T:Mpowerpc*}
-# On powerpc, if an external compiler that supports C++11 is used as ${CC},
-# then Clang is enabled, but GCC is installed as the default /usr/bin/cc.
-__DEFAULT_YES_OPTIONS+=CLANG CLANG_FULL GCC GCC_BOOTSTRAP GNUCXX
-__DEFAULT_NO_OPTIONS+=CLANG_BOOTSTRAP CLANG_IS_CC
+__DEFAULT_YES_OPTIONS+=CLANG CLANG_BOOTSTRAP CLANG_FULL CLANG_IS_CC LLD
+__DEFAULT_NO_OPTIONS+=GCC GCC_BOOTSTRAP GNUCXX GPL_DTC
+.elif ${COMPILER_FEATURES:Mc++11} && ${__T:Mriscv*} == "" && ${__T} != "sparc64"
+# If an external compiler that supports C++11 is used as ${CC} and Clang
+# supports the target, then Clang is enabled but GCC is installed as the
+# default /usr/bin/cc.
+__DEFAULT_YES_OPTIONS+=CLANG CLANG_FULL GCC GCC_BOOTSTRAP GNUCXX GPL_DTC
+__DEFAULT_NO_OPTIONS+=CLANG_BOOTSTRAP CLANG_IS_CC LLD
 .else
 # Everything else disables Clang, and uses GCC instead.
-__DEFAULT_YES_OPTIONS+=GCC GCC_BOOTSTRAP GNUCXX
-__DEFAULT_NO_OPTIONS+=CLANG CLANG_BOOTSTRAP CLANG_FULL CLANG_IS_CC
+__DEFAULT_YES_OPTIONS+=GCC GCC_BOOTSTRAP GNUCXX GPL_DTC
+__DEFAULT_NO_OPTIONS+=CLANG CLANG_BOOTSTRAP CLANG_FULL CLANG_IS_CC LLD
 .endif
 # In-tree binutils/gcc are older versions without modern architecture support.
-.if ${__T} == "aarch64" || ${__T} == "riscv64"
+.if ${__T} == "aarch64" || ${__T:Mriscv*} != ""
 BROKEN_OPTIONS+=BINUTILS BINUTILS_BOOTSTRAP GCC GCC_BOOTSTRAP GDB
 .endif
-.if ${__T} == "riscv64"
+.if ${__T:Mriscv*} != ""
 BROKEN_OPTIONS+=PROFILE # "sorry, unimplemented: profiler support for RISC-V"
 BROKEN_OPTIONS+=TESTS   # "undefined reference to `_Unwind_Resume'"
 BROKEN_OPTIONS+=CXX     # "libcxxrt.so: undefined reference to `_Unwind_Resume_or_Rethrow'"
 .endif
 .if ${__T} == "aarch64" || ${__T} == "amd64" || ${__T} == "i386" || \
-    ${__T} == "riscv64"
+    ${__T:Mriscv*} != ""
 __DEFAULT_YES_OPTIONS+=LLVM_LIBUNWIND
 .else
 __DEFAULT_NO_OPTIONS+=LLVM_LIBUNWIND
 .endif
-.if ${__T} == "aarch64" || ${__T} == "amd64"
+.if ${__T} == "aarch64"
+__DEFAULT_YES_OPTIONS+=LLD_BOOTSTRAP LLD_IS_LD
+.elif ${__T} == "amd64"
+__DEFAULT_YES_OPTIONS+=LLD_BOOTSTRAP
+__DEFAULT_NO_OPTIONS+=LLD_IS_LD
+.else
+__DEFAULT_NO_OPTIONS+=LLD_BOOTSTRAP LLD_IS_LD
+.endif
+.if ${__T} == "aarch64" || ${__T} == "amd64" || ${__T} == "i386"
 __DEFAULT_YES_OPTIONS+=LLDB
 .else
 __DEFAULT_NO_OPTIONS+=LLDB
@@ -257,15 +281,49 @@ __DEFAULT_NO_OPTIONS+=LLDB
 .if ${__T} == "arm" || ${__T} == "armeb"
 BROKEN_OPTIONS+=LLDB
 .endif
-# Only doing soft float API stuff on armv6
-.if ${__T} != "armv6"
+# GDB in base is generally less functional than GDB in ports.  Ports GDB
+# does not yet contain kernel support for arm, and sparc64 kernel support
+# has not been tested.
+.if ${__T:Marm*} != "" || ${__T} == "sparc64"
+__DEFAULT_NO_OPTIONS+=GDB_LIBEXEC
+.else
+__DEFAULT_YES_OPTIONS+=GDB_LIBEXEC
+.endif
+# Only doing soft float API stuff on armv6 and armv7
+.if ${__T} != "armv6" && ${__T} != "armv7"
 BROKEN_OPTIONS+=LIBSOFT
 .endif
 .if ${__T:Mmips*}
 BROKEN_OPTIONS+=SSP
 .endif
+# EFI doesn't exist on mips, powerpc, sparc or riscv.
 .if ${__T:Mmips*} || ${__T:Mpowerpc*} || ${__T:Msparc64} || ${__T:Mriscv*}
 BROKEN_OPTIONS+=EFI
+.endif
+# GELI isn't supported on !x86
+.if ${__T} != "i386" && ${__T} != "amd64"
+BROKEN_OPTIONS+=LOADER_GELI
+.endif
+# OFW is only for powerpc and sparc64, exclude others
+.if ${__T:Mpowerpc*} == "" && ${__T:Msparc64} == ""
+BROKEN_OPTIONS+=LOADER_OFW
+.endif
+# UBOOT is only for arm, mips and powerpc, exclude others
+.if ${__T:Marm*} == "" && ${__T:Mmips*} == "" && ${__T:Mpowerpc*} == ""
+BROKEN_OPTIONS+=LOADER_UBOOT
+.endif
+
+.if ${__T:Mmips64*}
+# profiling won't work on MIPS64 because there is only assembly for o32
+BROKEN_OPTIONS+=PROFILE
+.endif
+.if ${__T} == "aarch64" || ${__T} == "amd64" || ${__T} == "i386" || \
+    ${__T} == "powerpc64" || ${__T} == "sparc64"
+__DEFAULT_YES_OPTIONS+=CXGBETOOL
+__DEFAULT_YES_OPTIONS+=MLX5TOOL
+.else
+__DEFAULT_NO_OPTIONS+=CXGBETOOL
+__DEFAULT_NO_OPTIONS+=MLX5TOOL
 .endif
 
 .include <bsd.mkopt.mk>
@@ -300,6 +358,14 @@ MK_${var}:=	no
 MK_LLVM_LIBUNWIND:=	no
 .endif
 
+.if ${MK_BINUTILS} == "no"
+MK_GDB:=	no
+.endif
+
+.if ${MK_CAPSICUM} == "no"
+MK_CASPER:=	no
+.endif
+
 .if ${MK_LIBPTHREAD} == "no"
 MK_LIBTHR:=	no
 .endif
@@ -327,7 +393,6 @@ MK_KERBEROS:=	no
 
 .if ${MK_CXX} == "no"
 MK_CLANG:=	no
-MK_GROFF:=	no
 MK_GNUCXX:=	no
 MK_TESTS:=	no
 .endif
@@ -347,6 +412,10 @@ MK_ATM:=	no
 MK_BLUETOOTH:=	no
 .endif
 
+.if ${MK_NLS} == "no"
+MK_NLS_CATALOGS:= no
+.endif
+
 .if ${MK_OPENSSL} == "no"
 MK_OPENSSH:=	no
 MK_KERBEROS:=	no
@@ -360,8 +429,9 @@ MK_AUTHPF:=	no
 MK_DTRACE_TESTS:= no
 .endif
 
-.if ${MK_TEXTPROC} == "no"
-MK_GROFF:=	no
+.if ${MK_ZONEINFO} == "no"
+MK_ZONEINFO_LEAPSECONDS_SUPPORT:= no
+MK_ZONEINFO_OLD_TIMEZONES_SUPPORT:= no
 .endif
 
 .if ${MK_CROSS_COMPILER} == "no"
@@ -369,6 +439,7 @@ MK_BINUTILS_BOOTSTRAP:= no
 MK_CLANG_BOOTSTRAP:= no
 MK_ELFTOOLCHAIN_BOOTSTRAP:= no
 MK_GCC_BOOTSTRAP:= no
+MK_LLD_BOOTSTRAP:= no
 .endif
 
 .if ${MK_TOOLCHAIN} == "no"
@@ -377,40 +448,15 @@ MK_CLANG:=	no
 MK_GCC:=	no
 MK_GDB:=	no
 MK_INCLUDES:=	no
+MK_LLD:=	no
 MK_LLDB:=	no
 .endif
 
 .if ${MK_CLANG} == "no"
 MK_CLANG_EXTRAS:= no
 MK_CLANG_FULL:= no
+MK_LLVM_COV:= no
 .endif
-
-#
-# Set defaults for the MK_*_SUPPORT variables.
-#
-
-#
-# MK_*_SUPPORT options which default to "yes" unless their corresponding
-# MK_* variable is set to "no".
-#
-.for var in \
-    BLACKLIST \
-    BZIP2 \
-    GNU \
-    INET \
-    INET6 \
-    KERBEROS \
-    KVM \
-    NETGRAPH \
-    PAM \
-    TESTS \
-    WIRELESS
-.if defined(WITHOUT_${var}_SUPPORT) || ${MK_${var}} == "no"
-MK_${var}_SUPPORT:= no
-.else
-MK_${var}_SUPPORT:= yes
-.endif
-.endfor
 
 #
 # MK_* options whose default value depends on another option.
@@ -424,6 +470,32 @@ MK_${vv:H}:=	yes
 MK_${vv:H}:=	no
 .else
 MK_${vv:H}:=	${MK_${vv:T}}
+.endif
+.endfor
+
+#
+# Set defaults for the MK_*_SUPPORT variables.
+#
+
+#
+# MK_*_SUPPORT options which default to "yes" unless their corresponding
+# MK_* variable is set to "no".
+#
+.for var in \
+    BLACKLIST \
+    BZIP2 \
+    INET \
+    INET6 \
+    KERBEROS \
+    KVM \
+    NETGRAPH \
+    PAM \
+    TESTS \
+    WIRELESS
+.if defined(WITHOUT_${var}_SUPPORT) || ${MK_${var}} == "no"
+MK_${var}_SUPPORT:= no
+.else
+MK_${var}_SUPPORT:= yes
 .endif
 .endfor
 

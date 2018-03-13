@@ -38,12 +38,16 @@
 .if !target(__<bsd.subdir.mk>__)
 __<bsd.subdir.mk>__:
 
+.if ${MK_AUTO_OBJ} == "no"
+_obj=	obj
+.endif
+
 SUBDIR_TARGETS+= \
 		all all-man analyze buildconfig buildfiles buildincludes \
 		checkdpadd clean cleandepend cleandir cleanilinks \
 		cleanobj depend distribute files includes installconfig \
-		installfiles installincludes print-dir realinstall lint \
-		maninstall manlint obj objlink tags \
+		installfiles installincludes print-dir realinstall \
+		maninstall manlint ${_obj} objlink tags \
 
 # Described above.
 STANDALONE_SUBDIR_TARGETS+= \
@@ -53,7 +57,7 @@ STANDALONE_SUBDIR_TARGETS+= \
 		maninstall manlint obj objlink
 
 # It is safe to install in parallel when staging.
-.if defined(NO_ROOT)
+.if defined(NO_ROOT) || !empty(SYSROOT)
 STANDALONE_SUBDIR_TARGETS+= realinstall
 .endif
 
@@ -69,8 +73,15 @@ print-dir:	.PHONY
 .endif
 .endif
 
+.if ${MK_AUTO_OBJ} == "yes" && !target(obj)
+obj: .PHONY
+.endif
+
 .if !defined(NEED_SUBDIR)
-.if ${.MAKE.LEVEL} == 0 && ${MK_DIRDEPS_BUILD} == "yes" && !empty(SUBDIR) && !(make(clean*) || make(destroy*))
+# .MAKE.DEPENDFILE==/dev/null is set by bsd.dep.mk to avoid reading
+# Makefile.depend
+.if ${.MAKE.LEVEL} == 0 && ${MK_DIRDEPS_BUILD} == "yes" && !empty(SUBDIR) && \
+    ${.MAKE.DEPENDFILE} != "/dev/null"
 .include <meta.subdir.mk>
 # ignore this
 _SUBDIR:
@@ -110,7 +121,7 @@ install:	beforeinstall realinstall afterinstall
 # SUBDIR recursing may be disabled for MK_DIRDEPS_BUILD
 .if !target(_SUBDIR)
 
-.if defined(SUBDIR)
+.if defined(SUBDIR) || defined(SUBDIR.yes)
 SUBDIR:=${SUBDIR} ${SUBDIR.yes}
 SUBDIR:=${SUBDIR:u}
 .endif

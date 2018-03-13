@@ -64,21 +64,6 @@
 			  MBUS_ID(0x0c, 0x04) 0 0xf1200000 0x100000>;
 
 		internal-regs {
-			spi@10600 {
-				pinctrl-names = "default";
-				pinctrl-0 = <&spi0_pins>;
-				status = "okay";
-
-				spi-flash@0 {
-					#address-cells = <1>;
-					#size-cells = <1>;
-					compatible = "st,m25p128", "jedec,spi-nor";
-					reg = <0>; /* Chip select 0 */
-					spi-max-frequency = <50000000>;
-					m25p,fast-read;
-				};
-			};
-
 			i2c@11000 {
 				pinctrl-names = "default";
 				pinctrl-0 = <&i2c0_pins>;
@@ -90,7 +75,7 @@
 					pinctrl-names = "default";
 					pinctrl-0 = <&pca0_pins>;
 					interrupt-parent = <&gpio0>;
-					interrupts = <18 IRQ_TYPE_EDGE_FALLING>;
+					interrupts = <18 IRQ_TYPE_LEVEL_LOW>;
 					gpio-controller;
 					#gpio-cells = <2>;
 					interrupt-controller;
@@ -102,7 +87,7 @@
 					compatible = "nxp,pca9555";
 					pinctrl-names = "default";
 					interrupt-parent = <&gpio0>;
-					interrupts = <18 IRQ_TYPE_EDGE_FALLING>;
+					interrupts = <18 IRQ_TYPE_LEVEL_LOW>;
 					gpio-controller;
 					#gpio-cells = <2>;
 					interrupt-controller;
@@ -255,7 +240,7 @@
 			status = "okay";
 		};
 
-		pcie-controller {
+		pcie {
 			status = "okay";
 			/*
 			 * One PCIe units is accessible through
@@ -291,11 +276,13 @@
 	usb2_1_phy: usb2_1_phy {
 		compatible = "usb-nop-xceiv";
 		vcc-supply = <&reg_usb2_1_vbus>;
+		#phy-cells = <0>;
 	};
 
 	usb3_phy: usb3_phy {
 		compatible = "usb-nop-xceiv";
 		vcc-supply = <&reg_usb3_vbus>;
+		#phy-cells = <0>;
 	};
 
 	reg_usb3_vbus: usb3-vbus {
@@ -431,5 +418,20 @@
 	pca0_pins: pca0_pins {
 		marvell,pins = "mpp18";
 		marvell,function = "gpio";
+	};
+};
+
+&spi0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&spi0_pins>;
+	status = "okay";
+
+	spi-flash@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "st,m25p128", "jedec,spi-nor";
+		reg = <0>; /* Chip select 0 */
+		spi-max-frequency = <50000000>;
+		m25p,fast-read;
 	};
 };

@@ -12,6 +12,8 @@ MAN=	accept_filter.9 \
 	alq.9 \
 	altq.9 \
 	atomic.9 \
+	bhnd.9 \
+	bhnd_erom.9 \
 	bios.9 \
 	bitset.9 \
 	boot.9 \
@@ -116,6 +118,7 @@ MAN=	accept_filter.9 \
 	disk.9 \
 	dnv.9 \
 	domain.9 \
+	dpcpu.9 \
 	drbr.9 \
 	driver.9 \
 	DRIVER_MODULE.9 \
@@ -123,6 +126,7 @@ MAN=	accept_filter.9 \
 	eventtimers.9 \
 	extattr.9 \
 	fail.9 \
+	fdt_pinctrl.9 \
 	fetch.9 \
 	firmware.9 \
 	fpu_kern.9 \
@@ -158,6 +162,9 @@ MAN=	accept_filter.9 \
 	ieee80211_regdomain.9 \
 	ieee80211_scan.9 \
 	ieee80211_vap.9 \
+	iflibdd.9 \
+	iflibdi.9 \
+	iflibtxrx.9 \
 	ifnet.9 \
 	inittodr.9 \
 	insmntque.9 \
@@ -180,7 +187,6 @@ MAN=	accept_filter.9 \
 	make_dev.9 \
 	malloc.9 \
 	mbchain.9 \
-	mbpool.9 \
 	mbuf.9 \
 	mbuf_tags.9 \
 	MD5.9 \
@@ -194,6 +200,7 @@ MAN=	accept_filter.9 \
 	mod_cc.9 \
 	module.9 \
 	MODULE_DEPEND.9 \
+	MODULE_PNP_INFO.9 \
 	MODULE_VERSION.9 \
 	mtx_pool.9 \
 	mutex.9 \
@@ -278,8 +285,10 @@ MAN=	accept_filter.9 \
 	stack.9 \
 	store.9 \
 	style.9 \
+	style.lua.9 \
 	swi.9 \
 	sx.9 \
+	syscall_helper_register.9 \
 	SYSCALL_MODULE.9 \
 	sysctl.9 \
 	sysctl_add_oid.9 \
@@ -295,7 +304,6 @@ MAN=	accept_filter.9 \
 	uidinfo.9 \
 	uio.9 \
 	unr.9 \
-	utopia.9 \
 	vaccess.9 \
 	vaccess_acl_nfs4.9 \
 	vaccess_acl_posix1e.9 \
@@ -352,7 +360,6 @@ MAN=	accept_filter.9 \
 	vm_page_alloc.9 \
 	vm_page_bits.9 \
 	vm_page_busy.9 \
-	vm_page_cache.9 \
 	vm_page_deactivate.9 \
 	vm_page_dontneed.9 \
 	vm_page_aflag.9 \
@@ -412,6 +419,7 @@ MAN=	accept_filter.9 \
 MLINKS=	unr.9 alloc_unr.9 \
 	unr.9 alloc_unrl.9 \
 	unr.9 alloc_unr_specific.9 \
+	unr.9 clear_unrhdr.9 \
 	unr.9 delete_unrhdr.9 \
 	unr.9 free_unr.9 \
 	unr.9 new_unrhdr.9
@@ -442,6 +450,124 @@ MLINKS+=atomic.9 atomic_add.9 \
 	atomic.9 atomic_subtract.9 \
 	atomic.9 atomic_swap.9 \
 	atomic.9 atomic_testandset.9
+MLINKS+=bhnd.9 BHND_MATCH_BOARD_TYPE.9 \
+	bhnd.9 BHND_MATCH_BOARD_VENDOR.9 \
+	bhnd.9 BHND_MATCH_CHIP_ID.9 \
+	bhnd.9 BHND_MATCH_CHIP_PKG.9 \
+	bhnd.9 BHND_MATCH_CHIP_REV.9 \
+	bhnd.9 BHND_MATCH_CORE_ID.9 \
+	bhnd.9 BHND_MATCH_CORE_VENDOR.9 \
+	bhnd.9 bhnd_activate_resource.9 \
+	bhnd.9 bhnd_alloc_pmu.9 \
+	bhnd.9 bhnd_alloc_resource.9 \
+	bhnd.9 bhnd_alloc_resource_any.9 \
+	bhnd.9 bhnd_alloc_resources.9 \
+	bhnd.9 bhnd_board_matches.9 \
+	bhnd.9 bhnd_bus_match_child.9 \
+	bhnd.9 bhnd_bus_read_1.9 \
+	bhnd.9 bhnd_bus_read_2.9 \
+	bhnd.9 bhnd_bus_read_4.9 \
+	bhnd.9 bhnd_bus_read_stream_1.9 \
+	bhnd.9 bhnd_bus_read_stream_2.9 \
+	bhnd.9 bhnd_bus_read_stream_4.9 \
+	bhnd.9 bhnd_bus_write_1.9 \
+	bhnd.9 bhnd_bus_write_2.9 \
+	bhnd.9 bhnd_bus_write_4.9 \
+	bhnd.9 bhnd_bus_write_stream_1.9 \
+	bhnd.9 bhnd_bus_write_stream_2.9 \
+	bhnd.9 bhnd_bus_write_stream_4.9 \
+	bhnd.9 bhnd_chip_matches.9 \
+	bhnd.9 bhnd_core_class.9 \
+	bhnd.9 bhnd_core_get_match_desc.9 \
+	bhnd.9 bhnd_core_matches.9 \
+	bhnd.9 bhnd_core_name.9 \
+	bhnd.9 bhnd_cores_equal.9 \
+	bhnd.9 bhnd_deactivate_resource.9 \
+	bhnd.9 bhnd_decode_port_rid.9 \
+	bhnd.9 bhnd_deregister_provider.9 \
+	bhnd.9 bhnd_device_lookup.9 \
+	bhnd.9 bhnd_device_matches.9 \
+	bhnd.9 bhnd_device_quirks.9 \
+	bhnd.9 bhnd_driver_get_erom_class.9 \
+	bhnd.9 bhnd_enable_clocks.9 \
+	bhnd.9 bhnd_find_core_class.9 \
+	bhnd.9 bhnd_find_core_name.9 \
+	bhnd.9 bhnd_format_chip_id.9 \
+	bhnd.9 bhnd_get_attach_type.9 \
+	bhnd.9 bhnd_get_chipid.9 \
+	bhnd.9 bhnd_get_class.9 \
+	bhnd.9 bhnd_get_clock_freq.9 \
+	bhnd.9 bhnd_get_clock_latency.9 \
+	bhnd.9 bhnd_get_core_index.9 \
+	bhnd.9 bhnd_get_core_info.9 \
+	bhnd.9 bhnd_get_core_unit.9 \
+	bhnd.9 bhnd_get_device.9 \
+	bhnd.9 bhnd_get_device_name.9 \
+	bhnd.9 bhnd_get_dma_translation.9 \
+	bhnd.9 bhnd_get_hwrev.9 \
+	bhnd.9 bhnd_get_intr_count.9 \
+	bhnd.9 bhnd_get_intr_ivec.9 \
+	bhnd.9 bhnd_get_port_count.9 \
+	bhnd.9 bhnd_get_port_rid.9 \
+	bhnd.9 bhnd_get_region_addr.9 \
+	bhnd.9 bhnd_get_region_count.9 \
+	bhnd.9 bhnd_get_vendor.9 \
+	bhnd.9 bhnd_get_vendor_name.9 \
+	bhnd.9 bhnd_hwrev_matches.9 \
+	bhnd.9 bhnd_is_hw_suspended.9 \
+	bhnd.9 bhnd_is_region_valid.9 \
+	bhnd.9 bhnd_map_intr.9 \
+	bhnd.9 bhnd_match_core.9 \
+	bhnd.9 bhnd_nvram_getvar.9 \
+	bhnd.9 bhnd_nvram_getvar_array.9 \
+	bhnd.9 bhnd_nvram_getvar_int.9 \
+	bhnd.9 bhnd_nvram_getvar_int16.9 \
+	bhnd.9 bhnd_nvram_getvar_int32.9 \
+	bhnd.9 bhnd_nvram_getvar_int8.9 \
+	bhnd.9 bhnd_nvram_getvar_str.9 \
+	bhnd.9 bhnd_nvram_getvar_uint.9 \
+	bhnd.9 bhnd_nvram_getvar_uint16.9 \
+	bhnd.9 bhnd_nvram_getvar_uint32.9 \
+	bhnd.9 bhnd_nvram_getvar_uint8.9 \
+	bhnd.9 bhnd_nvram_string_array_next.9 \
+	bhnd.9 bhnd_read_board_info.9 \
+	bhnd.9 bhnd_read_config.9 \
+	bhnd.9 bhnd_read_ioctl.9 \
+	bhnd.9 bhnd_read_iost.9 \
+	bhnd.9 bhnd_register_provider.9 \
+	bhnd.9 bhnd_release_ext_rsrc.9 \
+	bhnd.9 bhnd_release_pmu.9 \
+	bhnd.9 bhnd_release_provider.9 \
+	bhnd.9 bhnd_release_resource.9 \
+	bhnd.9 bhnd_release_resources.9 \
+	bhnd.9 bhnd_request_clock.9 \
+	bhnd.9 bhnd_request_ext_rsrc.9 \
+	bhnd.9 bhnd_reset_hw.9 \
+	bhnd.9 bhnd_retain_provider.9 \
+	bhnd.9 bhnd_set_custom_core_desc.9 \
+	bhnd.9 bhnd_set_default_core_desc.9 \
+	bhnd.9 bhnd_suspend_hw.9 \
+	bhnd.9 bhnd_unmap_intr.9 \
+	bhnd.9 bhnd_vendor_name.9 \
+	bhnd.9 bhnd_write_config.9 \
+	bhnd.9 bhnd_write_ioctl.9
+MLINKS+=bhnd_erom.9 bhnd_erom_alloc.9 \
+	bhnd_erom.9 bhnd_erom_dump.9 \
+	bhnd_erom.9 bhnd_erom_fini_static.9 \
+	bhnd_erom.9 bhnd_erom_free.9 \
+	bhnd_erom.9 bhnd_erom_free_core_table.9 \
+	bhnd_erom.9 bhnd_erom_get_core_table.9 \
+	bhnd_erom.9 bhnd_erom_init_static.9 \
+	bhnd_erom.9 bhnd_erom_io.9 \
+	bhnd_erom.9 bhnd_erom_io_fini.9 \
+	bhnd_erom.9 bhnd_erom_io_map.9 \
+	bhnd_erom.9 bhnd_erom_io_read.9 \
+	bhnd_erom.9 bhnd_erom_iobus_init.9 \
+	bhnd_erom.9 bhnd_erom_iores_new.9 \
+	bhnd_erom.9 bhnd_erom_lookup_core.9 \
+	bhnd_erom.9 bhnd_erom_lookup_core_addr.9 \
+	bhnd_erom.9 bhnd_erom_probe.9 \
+	bhnd_erom.9 bhnd_erom_probe_driver_classes.9
 MLINKS+=bitset.9 BITSET_DEFINE.9 \
 	bitset.9 BITSET_T_INITIALIZER.9 \
 	bitset.9 BITSET_FSET.9 \
@@ -667,7 +793,8 @@ MLINKS+=condvar.9 cv_broadcast.9 \
 	condvar.9 cv_wait_unlock.9 \
 	condvar.9 cv_wmesg.9
 MLINKS+=config_intrhook.9 config_intrhook_disestablish.9 \
-	config_intrhook.9 config_intrhook_establish.9
+	config_intrhook.9 config_intrhook_establish.9 \
+	config_intrhook.9 config_intrhook_oneshot.9
 MLINKS+=contigmalloc.9 contigfree.9
 MLINKS+=casuword.9 casueword.9 \
 	casuword.9 casueword32.9 \
@@ -733,6 +860,7 @@ MLINKS+=crypto.9 crypto_dispatch.9 \
 	crypto.9 crypto_unregister_all.9
 MLINKS+=DB_COMMAND.9 DB_SHOW_ALL_COMMAND.9 \
 	DB_COMMAND.9 DB_SHOW_COMMAND.9
+MLINKS+=DECLARE_MODULE.9 DECLARE_MODULE_TIED.9
 MLINKS+=dev_clone.9 drain_dev_clone_events.9
 MLINKS+=devfs_set_cdevpriv.9 devfs_clear_cdevpriv.9 \
 	devfs_set_cdevpriv.9 devfs_get_cdevpriv.9
@@ -757,7 +885,8 @@ MLINKS+=devstat.9 devicestat.9 \
 	devstat.9 devstat_end_transaction.9 \
 	devstat.9 devstat_remove_entry.9 \
 	devstat.9 devstat_start_transaction.9
-MLINKS+=disk.9 disk_alloc.9 \
+MLINKS+=disk.9 disk_add_alias.9 \
+	disk.9 disk_alloc.9 \
 	disk.9 disk_create.9 \
 	disk.9 disk_destroy.9 \
 	disk.9 disk_gone.9 \
@@ -794,6 +923,7 @@ MLINKS+=DRIVER_MODULE.9 DRIVER_MODULE_ORDERED.9 \
 	DRIVER_MODULE.9 EARLY_DRIVER_MODULE.9 \
 	DRIVER_MODULE.9 EARLY_DRIVER_MODULE_ORDERED.9
 MLINKS+=EVENTHANDLER.9 EVENTHANDLER_DECLARE.9 \
+	EVENTHANDLER.9 EVENTHANDLER_DEFINE.9 \
 	EVENTHANDLER.9 EVENTHANDLER_DEREGISTER.9 \
 	EVENTHANDLER.9 eventhandler_deregister.9 \
 	EVENTHANDLER.9 eventhandler_find_list.9 \
@@ -816,6 +946,10 @@ MLINKS+=fail.9 KFAIL_POINT_CODE.9 \
 	fail.9 KFAIL_POINT_GOTO.9 \
 	fail.9 KFAIL_POINT_RETURN.9 \
 	fail.9 KFAIL_POINT_RETURN_VOID.9
+MLINKS+=fdt_pinctrl.9 fdt_pinctrl_configure.9 \
+	fdt_pinctrl.9 fdt_pinctrl_configure_by_name.9 \
+	fdt_pinctrl.9 fdt_pinctrl_configure_tree.9 \
+	fdt_pinctrl.9 fdt_pinctrl_register.9
 MLINKS+=fetch.9 fubyte.9 \
 	fetch.9 fuswintr.9 \
 	fetch.9 fuword.9 \
@@ -854,6 +988,9 @@ MLINKS+=getenv.9 freeenv.9 \
 	getenv.9 getenv_quad.9 \
 	getenv.9 getenv_uint.9 \
 	getenv.9 getenv_ulong.9 \
+	getenv.9 kern_getenv.9 \
+	getenv.9 kern_setenv.9 \
+	getenv.9 kern_unsetenv.9 \
 	getenv.9 setenv.9 \
 	getenv.9 testenv.9 \
 	getenv.9 unsetenv.9
@@ -960,6 +1097,61 @@ MLINKS+=ieee80211_scan.9 ieee80211_add_scan.9 \
 MLINKS+=ieee80211_vap.9 ieee80211_vap_attach.9 \
 	ieee80211_vap.9 ieee80211_vap_detach.9 \
 	ieee80211_vap.9 ieee80211_vap_setup.9
+MLINKS+=iflibdd.9 ifdi_attach_pre.9 \
+	iflibdd.9 ifdi_attach_post.9 \
+	iflibdd.9 ifdi_detach.9 \
+	iflibdd.9 ifdi_get_counter.9 \
+	iflibdd.9 ifdi_i2c_req.9 \
+	iflibdd.9 ifdi_init.9 \
+	iflibdd.9 ifdi_intr_enable.9 \
+	iflibdd.9 ifdi_intr_disable.9 \
+	iflibdd.9 ifdi_led_func.9 \
+	iflibdd.9 ifdi_link_intr_enable.9 \
+	iflibdd.9 ifdi_media_set.9 \
+	iflibdd.9 ifdi_media_status.9 \
+	iflibdd.9 ifdi_media_change.9 \
+	iflibdd.9 ifdi_mtu_set.9 \
+	iflibdd.9 ifdi_multi_set.9 \
+	iflibdd.9 ifdi_promisc_set.9 \
+	iflibdd.9 ifdi_queues_alloc.9 \
+	iflibdd.9 ifdi_queues_free.9 \
+	iflibdd.9 ifdi_queue_intr_enable.9 \
+	iflibdd.9 ifdi_resume.9 \
+	iflibdd.9 ifdi_rxq_setup.9 \
+	iflibdd.9 ifdi_stop.9 \
+	iflibdd.9 ifdi_suspend.9 \
+	iflibdd.9 ifdi_sysctl_int_delay.9 \
+	iflibdd.9 ifdi_timer.9 \
+	iflibdd.9 ifdi_txq_setup.9 \
+	iflibdd.9 ifdi_update_admin_status.9 \
+	iflibdd.9 ifdi_vf_add.9 \
+	iflibdd.9 ifdi_vflr_handle.9 \
+	iflibdd.9 ifdi_vlan_register.9 \
+	iflibdd.9 ifdi_vlan_unregister.9 \
+	iflibdd.9 ifdi_watchdog_reset.9 \
+	iflibdd.9 iov_init.9 \
+	iflibdd.9 iov_uinit.9
+MLINKS+=iflibdi.9 iflib_add_int_delay_sysctl.9 \
+	iflibdi.9 iflib_device_attach.9 \
+	iflibdi.9 iflib_device_deregister.9 \
+	iflibdi.9 iflib_device_detach.9 \
+	iflibdi.9 iflib_device_suspend.9 \
+	iflibdi.9 iflib_device_register.9 \
+	iflibdi.9 iflib_device_resume.9 \
+	iflibdi.9 iflib_led_create.9 \
+	iflibdi.9 iflib_irq_alloc.9 \
+	iflibdi.9 iflib_irq_alloc_generic.9 \
+	iflibdi.9 iflib_link_intr_deferred.9 \
+	iflibdi.9 iflib_link_state_change.9 \
+	iflibdi.9 iflib_rx_intr_deferred.9 \
+	iflibdi.9 iflib_tx_intr_deferred.9
+MLINKS+=iflibtxrx.9 isc_rxd_available.9 \
+	iflibtxrx.9 isc_rxd_refill.9 \
+	iflibtxrx.9 isc_rxd_flush.9 \
+	iflibtxrx.9 isc_rxd_pkt_get.9 \
+	iflibtxrx.9 isc_txd_credits_update.9 \
+	iflibtxrx.9 isc_txd_encap.9 \
+	iflibtxrx.9 isc_txd_flush.9
 MLINKS+=ifnet.9 if_addmulti.9 \
 	ifnet.9 if_alloc.9 \
 	ifnet.9 if_allmulti.9 \
@@ -1079,6 +1271,7 @@ MLINKS+=make_dev.9 destroy_dev.9 \
 	make_dev.9 make_dev_p.9 \
 	make_dev.9 make_dev_s.9
 MLINKS+=malloc.9 free.9 \
+	malloc.9 mallocarray.9 \
 	malloc.9 MALLOC_DECLARE.9 \
 	malloc.9 MALLOC_DEFINE.9 \
 	malloc.9 realloc.9 \
@@ -1099,16 +1292,6 @@ MLINKS+=mbchain.9 mb_detach.9 \
 	mbchain.9 mb_put_uint8.9 \
 	mbchain.9 mb_put_uio.9 \
 	mbchain.9 mb_reserve.9
-MLINKS+=mbpool.9 mbp_alloc.9 \
-	mbpool.9 mbp_card_free.9 \
-	mbpool.9 mbp_count.9 \
-	mbpool.9 mbp_create.9 \
-	mbpool.9 mbp_destroy.9 \
-	mbpool.9 mbp_ext_free.9 \
-	mbpool.9 mbp_free.9 \
-	mbpool.9 mbp_get.9 \
-	mbpool.9 mbp_get_keep.9 \
-	mbpool.9 mbp_sync.9
 MLINKS+=\
 	mbuf.9 m_adj.9 \
 	mbuf.9 m_align.9 \
@@ -1254,13 +1437,18 @@ MLINKS+=nv.9 libnv.9 \
 	nv.9 nvlist.9 \
 	nv.9 nvlist_add_binary.9 \
 	nv.9 nvlist_add_bool.9 \
+	nv.9 nvlist_add_bool_array.9 \
 	nv.9 nvlist_add_descriptor.9 \
+	nv.9 nvlist_add_descriptor_array.9 \
 	nv.9 nvlist_add_null.9 \
 	nv.9 nvlist_add_number.9 \
+	nv.9 nvlist_add_number_array.9 \
 	nv.9 nvlist_add_nvlist.9 \
+	nv.9 nvlist_add_nvlist_array.9 \
 	nv.9 nvlist_add_string.9 \
 	nv.9 nvlist_add_stringf.9 \
 	nv.9 nvlist_add_stringv.9 \
+	nv.9 nvlist_add_string_array.9 \
 	nv.9 nvlist_clone.9 \
 	nv.9 nvlist_create.9 \
 	nv.9 nvlist_destroy.9 \
@@ -1270,10 +1458,14 @@ MLINKS+=nv.9 libnv.9 \
 	nv.9 nvlist_exists.9 \
 	nv.9 nvlist_exists_binary.9 \
 	nv.9 nvlist_exists_bool.9 \
+	nv.9 nvlist_exists_bool_array.9 \
 	nv.9 nvlist_exists_descriptor.9 \
+	nv.9 nvlist_exists_descriptor_array.9 \
 	nv.9 nvlist_exists_null.9 \
 	nv.9 nvlist_exists_number.9 \
+	nv.9 nvlist_exists_number_array.9 \
 	nv.9 nvlist_exists_nvlist.9 \
+	nv.9 nvlist_exists_nvlist_array.9 \
 	nv.9 nvlist_exists_string.9 \
 	nv.9 nvlist_exists_type.9 \
 	nv.9 nvlist_fdump.9 \
@@ -1281,23 +1473,36 @@ MLINKS+=nv.9 libnv.9 \
 	nv.9 nvlist_free.9 \
 	nv.9 nvlist_free_binary.9 \
 	nv.9 nvlist_free_bool.9 \
+	nv.9 nvlist_free_bool_array.9 \
 	nv.9 nvlist_free_descriptor.9 \
+	nv.9 nvlist_free_descriptor_array.9 \
 	nv.9 nvlist_free_null.9 \
 	nv.9 nvlist_free_number.9 \
+	nv.9 nvlist_free_number_array.9 \
 	nv.9 nvlist_free_nvlist.9 \
+	nv.9 nvlist_free_nvlist_array.9 \
 	nv.9 nvlist_free_string.9 \
+	nv.9 nvlist_free_string_array.9 \
 	nv.9 nvlist_free_type.9 \
 	nv.9 nvlist_get_binary.9 \
 	nv.9 nvlist_get_bool.9 \
+	nv.9 nvlist_get_bool_array.9 \
 	nv.9 nvlist_get_descriptor.9 \
+	nv.9 nvlist_get_descriptor_array.9 \
 	nv.9 nvlist_get_number.9 \
+	nv.9 nvlist_get_number_array.9 \
 	nv.9 nvlist_get_nvlist.9 \
+	nv.9 nvlist_get_nvlist_array.9 \
 	nv.9 nvlist_get_parent.9 \
 	nv.9 nvlist_get_string.9 \
+	nv.9 nvlist_get_string_array.9 \
 	nv.9 nvlist_move_binary.9 \
 	nv.9 nvlist_move_descriptor.9 \
+	nv.9 nvlist_move_descriptor_array.9 \
 	nv.9 nvlist_move_nvlist.9 \
+	nv.9 nvlist_move_nvlist_array.9 \
 	nv.9 nvlist_move_string.9 \
+	nv.9 nvlist_move_string_array.9 \
 	nv.9 nvlist_next.9 \
 	nv.9 nvlist_pack.9 \
 	nv.9 nvlist_recv.9 \
@@ -1306,10 +1511,15 @@ MLINKS+=nv.9 libnv.9 \
 	nv.9 nvlist_size.9 \
 	nv.9 nvlist_take_binary.9 \
 	nv.9 nvlist_take_bool.9 \
+	nv.9 nvlist_take_bool_array.9 \
 	nv.9 nvlist_take_descriptor.9 \
+	nv.9 nvlist_take_descriptor_array.9 \
 	nv.9 nvlist_take_number.9 \
+	nv.9 nvlist_take_number_array.9 \
 	nv.9 nvlist_take_nvlist.9 \
+	nv.9 nvlist_take_nvlist_array.9 \
 	nv.9 nvlist_take_string.9 \
+	nv.9 nvlist_take_string_array.9 \
 	nv.9 nvlist_unpack.9 \
 	nv.9 nvlist_xfer.9
 MLINKS+=osd.9 osd_call.9 \
@@ -1423,6 +1633,9 @@ MLINKS+=random.9 arc4rand.9 \
 	random.9 read_random.9 \
 	random.9 read_random_uio.9 \
 	random.9 srandom.9
+MLINKS+=random_harvest.9 random_harvest_direct.9 \
+	random_harvest.9 random_harvest_fast.9 \
+	random_harvest.9 random_harvest_queue.9
 MLINKS+=refcount.9 refcount_acquire.9 \
 	refcount.9 refcount_init.9 \
 	refcount.9 refcount_release.9
@@ -1465,6 +1678,7 @@ MLINKS+=rmlock.9 rm_assert.9 \
 	rmlock.9 rm_runlock.9 \
 	rmlock.9 rm_sleep.9 \
 	rmlock.9 RM_SYSINIT.9 \
+	rmlock.9 RM_SYSINIT_FLAGS.9 \
 	rmlock.9 rm_try_rlock.9 \
 	rmlock.9 rm_wlock.9 \
 	rmlock.9 rm_wowned.9 \
@@ -1497,6 +1711,7 @@ MLINKS+=rwlock.9 rw_assert.9 \
 	rwlock.9 rw_unlock.9 \
 	rwlock.9 rw_sleep.9 \
 	rwlock.9 RW_SYSINIT.9 \
+	rwlock.9 RW_SYSINIT_FLAGS.9 \
 	rwlock.9 rw_try_rlock.9 \
 	rwlock.9 rw_try_upgrade.9 \
 	rwlock.9 rw_try_wlock.9 \
@@ -1508,6 +1723,7 @@ MLINKS+=sbuf.9 sbuf_bcat.9 \
 	sbuf.9 sbuf_bcpy.9 \
 	sbuf.9 sbuf_cat.9 \
 	sbuf.9 sbuf_clear.9 \
+	sbuf.9 sbuf_clear_flags.9 \
 	sbuf.9 sbuf_copyin.9 \
 	sbuf.9 sbuf_cpy.9 \
 	sbuf.9 sbuf_data.9 \
@@ -1515,6 +1731,8 @@ MLINKS+=sbuf.9 sbuf_bcat.9 \
 	sbuf.9 sbuf_done.9 \
 	sbuf.9 sbuf_error.9 \
 	sbuf.9 sbuf_finish.9 \
+	sbuf.9 sbuf_get_flags.9 \
+	sbuf.9 sbuf_hexdump.9 \
 	sbuf.9 sbuf_len.9 \
 	sbuf.9 sbuf_new.9 \
 	sbuf.9 sbuf_new_auto.9 \
@@ -1522,6 +1740,7 @@ MLINKS+=sbuf.9 sbuf_bcat.9 \
 	sbuf.9 sbuf_printf.9 \
 	sbuf.9 sbuf_putc.9 \
 	sbuf.9 sbuf_set_drain.9 \
+	sbuf.9 sbuf_set_flags.9 \
 	sbuf.9 sbuf_setpos.9 \
 	sbuf.9 sbuf_start_section.9 \
 	sbuf.9 sbuf_end_section.9  \
@@ -1562,6 +1781,7 @@ MLINKS+=sglist.9 sglist_alloc.9 \
 	sglist.9 sglist_append_bio.9 \
 	sglist.9 sglist_append_mbuf.9 \
 	sglist.9 sglist_append_phys.9 \
+	sglist.9 sglist_append_sglist.9 \
 	sglist.9 sglist_append_uio.9 \
 	sglist.9 sglist_append_user.9 \
 	sglist.9 sglist_append_vmpages.9 \
@@ -1610,6 +1830,7 @@ MLINKS+=sleep.9 msleep.9 \
 	sleep.9 msleep_spin.9 \
 	sleep.9 msleep_spin_sbt.9 \
 	sleep.9 pause.9 \
+	sleep.9 pause_sig.9 \
 	sleep.9 pause_sbt.9 \
 	sleep.9 tsleep.9 \
 	sleep.9 tsleep_sbt.9 \
@@ -1700,6 +1921,7 @@ MLINKS+=sx.9 sx_assert.9 \
 	sx.9 sx_slock_sig.9 \
 	sx.9 sx_sunlock.9 \
 	sx.9 SX_SYSINIT.9 \
+	sx.9 SX_SYSINIT_FLAGS.9 \
 	sx.9 sx_try_slock.9 \
 	sx.9 sx_try_upgrade.9 \
 	sx.9 sx_try_xlock.9 \
@@ -1709,10 +1931,16 @@ MLINKS+=sx.9 sx_assert.9 \
 	sx.9 sx_xlock_sig.9 \
 	sx.9 sx_xlocked.9 \
 	sx.9 sx_xunlock.9
+MLINKS+=syscall_helper_register.9 syscall_helper_unregister.9 \
+	syscall_helper_register.9 SYSCALL_INIT_HELPER.9 \
+	syscall_helper_register.9 SYSCALL_INIT_HELPER_COMPAT.9 \
+	syscall_helper_register.9 SYSCALL_INIT_HELPER_COMPAT_F.9 \
+	syscall_helper_register.9 SYSCALL_INIT_HELPER_F.9
 MLINKS+=sysctl.9 SYSCTL_DECL.9 \
 	sysctl.9 SYSCTL_ADD_INT.9 \
 	sysctl.9 SYSCTL_ADD_LONG.9 \
 	sysctl.9 SYSCTL_ADD_NODE.9 \
+	sysctl.9 SYSCTL_ADD_NODE_WITH_LABEL.9 \
 	sysctl.9 SYSCTL_ADD_OPAQUE.9 \
 	sysctl.9 SYSCTL_ADD_PROC.9 \
 	sysctl.9 SYSCTL_ADD_QUAD.9 \
@@ -1736,8 +1964,10 @@ MLINKS+=sysctl.9 SYSCTL_DECL.9 \
 	sysctl.9 SYSCTL_NODE_CHILDREN.9 \
 	sysctl.9 SYSCTL_PARENT.9 \
 	sysctl.9 SYSCTL_INT.9 \
+	sysctl.9 SYSCTL_INT_WITH_LABEL.9 \
 	sysctl.9 SYSCTL_LONG.9 \
 	sysctl.9 SYSCTL_NODE.9 \
+	sysctl.9 SYSCTL_NODE_WITH_LABEL.9 \
 	sysctl.9 SYSCTL_OPAQUE.9 \
 	sysctl.9 SYSCTL_PROC.9 \
 	sysctl.9 SYSCTL_QUAD.9 \
@@ -1789,6 +2019,8 @@ MLINKS+=taskqueue.9 TASK_INIT.9 \
 	taskqueue.9 taskqueue_unblock.9 \
 	taskqueue.9 TIMEOUT_TASK_INIT.9
 MLINKS+=tcp_functions.9 register_tcp_functions.9 \
+	tcp_functions.9 register_tcp_functions_as_name.9 \
+	tcp_functions.9 register_tcp_functions_as_names.9 \
 	tcp_functions.9 deregister_tcp_functions.9
 MLINKS+=time.9 boottime.9 \
 	time.9 time_second.9 \
@@ -1827,13 +2059,13 @@ MLINKS+=ucred.9 cred_update_thread.9 \
 	ucred.9 crget.9 \
 	ucred.9 crhold.9 \
 	ucred.9 crsetgroups.9 \
-	ucred.9 crshared.9 \
 	ucred.9 cru2x.9
 MLINKS+=uidinfo.9 uifind.9 \
 	uidinfo.9 uifree.9 \
 	uidinfo.9 uihashinit.9 \
 	uidinfo.9 uihold.9
 MLINKS+=uio.9 uiomove.9 \
+	uio.9 uiomove_frombuf.9 \
 	uio.9 uiomove_nofault.9
 
 .if ${MK_USB} != "no"
@@ -1979,7 +2211,6 @@ MLINKS+=vrele.9 vput.9 \
 	vrele.9 vunref.9
 MLINKS+=vslock.9 vsunlock.9
 MLINKS+=zone.9 uma.9 \
-	zone.9 uma_find_refcnt.9 \
 	zone.9 uma_zalloc.9 \
 	zone.9 uma_zalloc_arg.9 \
 	zone.9 uma_zcreate.9 \

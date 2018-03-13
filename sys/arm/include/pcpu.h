@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1999 Luoqi Chen <luoqi@freebsd.org>
  * All rights reserved.
  *
@@ -32,7 +34,8 @@
 
 #ifdef _KERNEL
 
-#include <machine/cpuconf.h>
+#include <sys/_lock.h>
+#include <sys/_mutex.h>
 
 #define	ALT_STACK_SIZE	128
 
@@ -41,21 +44,31 @@ struct vmspace;
 #endif	/* _KERNEL */
 
 #if __ARM_ARCH >= 6
+/* Branch predictor hardening method */
+#define PCPU_BP_HARDEN_KIND_NONE		0
+#define PCPU_BP_HARDEN_KIND_BPIALL		1
+#define PCPU_BP_HARDEN_KIND_ICIALLU		2
+
 #define PCPU_MD_FIELDS							\
 	unsigned int pc_vfpsid;						\
 	unsigned int pc_vfpmvfr0;					\
 	unsigned int pc_vfpmvfr1;					\
 	struct pmap *pc_curpmap;					\
+	struct mtx pc_cmap_lock;					\
+	void *pc_cmap1_pte2p;						\
+	void *pc_cmap2_pte2p;						\
+	caddr_t pc_cmap1_addr;						\
+	caddr_t pc_cmap2_addr;						\
 	vm_offset_t pc_qmap_addr;					\
-	void *pc_qmap_pte;						\
+	void *pc_qmap_pte2p;						\
 	unsigned int pc_dbreg[32];					\
 	int pc_dbreg_cmd;						\
-	char __pad[1]
+	int pc_bp_harden_kind;						\
+	uint32_t pc_original_actlr;					\
+	char __pad[147]
 #else
 #define PCPU_MD_FIELDS							\
-	vm_offset_t qmap_addr;						\
-	void *pc_qmap_pte;						\
-	char __pad[149]
+	char __pad[93]
 #endif
 
 #ifdef _KERNEL

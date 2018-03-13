@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1982, 1986, 1989, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -52,6 +54,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sbuf.h>
 #include <sys/smp.h>
 #include <sys/sx.h>
+#include <sys/vmmeter.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
 #include <sys/unistd.h>
@@ -86,6 +89,11 @@ SYSCTL_ROOT_NODE(OID_AUTO, security, CTLFLAG_RW, 0,
 #ifdef REGRESSION
 SYSCTL_ROOT_NODE(OID_AUTO, regression, CTLFLAG_RW, 0,
      "Regression test MIB");
+#endif
+
+#ifdef EXT_RESOURCES
+SYSCTL_ROOT_NODE(OID_AUTO, clock, CTLFLAG_RW, 0,
+	"Clocks");
 #endif
 
 SYSCTL_STRING(_kern, OID_AUTO, ident, CTLFLAG_RD|CTLFLAG_MPSAFE,
@@ -135,7 +143,7 @@ SYSCTL_INT(_kern, KERN_SAVED_IDS, saved_ids, CTLFLAG_RD|CTLFLAG_CAPRD,
 
 char kernelname[MAXPATHLEN] = "/kernel";	/* XXX bloat */
 
-SYSCTL_STRING(_kern, KERN_BOOTFILE, bootfile, CTLFLAG_RW,
+SYSCTL_STRING(_kern, KERN_BOOTFILE, bootfile, CTLFLAG_RW | CTLFLAG_MPSAFE,
     kernelname, sizeof kernelname, "Name of kernel file booted");
 
 SYSCTL_INT(_kern, KERN_MAXPHYS, maxphys, CTLFLAG_RD | CTLFLAG_CAPRD,
@@ -198,7 +206,7 @@ sysctl_hw_usermem(SYSCTL_HANDLER_ARGS)
 {
 	u_long val;
 
-	val = ctob(physmem - vm_cnt.v_wire_count);
+	val = ctob(physmem - vm_wire_count());
 	return (sysctl_handle_long(oidp, &val, 0, req));
 }
 
@@ -257,8 +265,9 @@ sysctl_hw_machine_arch(SYSCTL_HANDLER_ARGS)
 	return (error);
 
 }
-SYSCTL_PROC(_hw, HW_MACHINE_ARCH, machine_arch, CTLTYPE_STRING | CTLFLAG_RD,
-    NULL, 0, sysctl_hw_machine_arch, "A", "System architecture");
+SYSCTL_PROC(_hw, HW_MACHINE_ARCH, machine_arch, CTLTYPE_STRING | CTLFLAG_RD |
+    CTLFLAG_MPSAFE, NULL, 0, sysctl_hw_machine_arch, "A",
+    "System architecture");
 
 SYSCTL_STRING(_kern, OID_AUTO, supported_archs, CTLFLAG_RD | CTLFLAG_MPSAFE,
 #ifdef COMPAT_FREEBSD32
@@ -386,8 +395,8 @@ SYSCTL_PROC(_kern, KERN_SECURELVL, securelevel,
 /* Actual kernel configuration options. */
 extern char kernconfstring[];
 
-SYSCTL_STRING(_kern, OID_AUTO, conftxt, CTLFLAG_RD, kernconfstring, 0,
-    "Kernel configuration file");
+SYSCTL_STRING(_kern, OID_AUTO, conftxt, CTLFLAG_RD | CTLFLAG_MPSAFE,
+    kernconfstring, 0, "Kernel configuration file");
 #endif
 
 static int

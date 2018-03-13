@@ -15,7 +15,7 @@
 .\" 2. Redistributions in binary form must reproduce the above copyright
 .\"    notice, this list of conditions and the following disclaimer in the
 .\"    documentation and/or other materials provided with the distribution.
-.\" 4. Neither the name of the University nor the names of its contributors
+.\" 3. Neither the name of the University nor the names of its contributors
 .\"    may be used to endorse or promote products derived from this software
 .\"    without specific prior written permission.
 .\"
@@ -34,7 +34,7 @@
 .\"     @(#)fsync.2	8.1 (Berkeley) 6/4/93
 .\" $FreeBSD$
 .\"
-.Dd August 17, 2016
+.Dd February 6, 2018
 .Dt FSYNC 2
 .Os
 .Sh NAME
@@ -108,6 +108,7 @@ refers to a socket, not to a file.
 An I/O error occurred while reading from or writing to the file system.
 .El
 .Sh SEE ALSO
+.Xr fsync 1 ,
 .Xr sync 2 ,
 .Xr syncer 4 ,
 .Xr sync 8
@@ -119,7 +120,7 @@ system call appeared in
 The
 .Fn fdatasync
 system call appeared in
-.Fx 12.0
+.Fx 11.1 .
 .Sh BUGS
 The
 .Fn fdatasync

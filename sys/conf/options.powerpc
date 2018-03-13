@@ -9,6 +9,7 @@ CELL
 
 POWERPC
 POWERPC64
+POWERPCSPE
 
 FPU_EMU
 
@@ -22,6 +23,7 @@ MPC85XX			opt_platform.h
 POWERMAC		opt_platform.h
 PS3			opt_platform.h
 MAMBO
+POWERNV			opt_platform.h
 PSERIES
 PSIM
 

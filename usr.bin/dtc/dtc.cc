@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2013 David Chisnall
  * All rights reserved.
  *
@@ -47,23 +49,28 @@
 using namespace dtc;
 using std::string;
 
+namespace {
+
 /**
  * The current major version of the tool.
  */
 int version_major = 0;
+int version_major_compatible = 1;
 /**
  * The current minor version of the tool.
  */
-int version_minor = 4;
+int version_minor = 5;
+int version_minor_compatible = 4;
 /**
  * The current patch level of the tool.
  */
 int version_patch = 0;
+int version_patch_compatible = 0;
 
-static void usage(const string &argv0)
+void usage(const string &argv0)
 {
 	fprintf(stderr, "Usage:\n"
-		"\t%s\t[-fhsv] [-b boot_cpu_id] [-d dependency_file]"
+		"\t%s\t[-fhsv@] [-b boot_cpu_id] [-d dependency_file]"
 			"[-E [no-]checker_name]\n"
 		"\t\t[-H phandle_format] [-I input_format]"
 			"[-O output_format]\n"
@@ -75,11 +82,15 @@ static void usage(const string &argv0)
 /**
  * Prints the current version of this program..
  */
-static void version(const char* progname)
+void version(const char* progname)
 {
-	fprintf(stderr, "Version: %s %d.%d.%d\n", progname, version_major,
-			version_minor, version_patch);
+	fprintf(stdout, "Version: %s %d.%d.%d compatible with gpl dtc %d.%d.%d\n", progname,
+		version_major, version_minor, version_patch,
+		version_major_compatible, version_minor_compatible,
+		version_patch_compatible);
 }
+
+} // Anonymous namespace
 
 using fdt::device_tree;
 
@@ -101,7 +112,7 @@ main(int argc, char **argv)
 	clock_t c0 = clock();
 	class device_tree tree;
 	fdt::checking::check_manager checks;
-	const char *options = "hqI:O:o:V:d:R:S:p:b:fi:svH:W:E:DP:";
+	const char *options = "@hqI:O:o:V:d:R:S:p:b:fi:svH:W:E:DP:";
 
 	// Don't forget to update the man page if any more options are added.
 	while ((ch = getopt(argc, argv, options)) != -1)
@@ -114,6 +125,9 @@ main(int argc, char **argv)
 		case 'v':
 			version(argv[0]);
 			return EXIT_SUCCESS;
+		case '@':
+			tree.write_symbols = true;
+			break;
 		case 'I':
 		{
 			string arg(optarg);

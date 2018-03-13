@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  * Copyright (c) 1994 John S. Dyson
@@ -52,7 +54,7 @@
 /*
  * Virtual memory related constants, all in bytes
  */
-#define	MAXTSIZ		(128UL*1024*1024)	/* max text size */
+#define	MAXTSIZ		(32768UL*1024*1024)	/* max text size */
 #ifndef DFLDSIZ
 #define	DFLDSIZ		(32768UL*1024*1024)	/* initial data size limit */
 #endif
@@ -188,6 +190,7 @@
  * because the result is not actually accessed until later, but the early
  * vt fb startup needs to be reworked.
  */
+#define	PMAP_HAS_DMAP	1
 #define	PHYS_TO_DMAP(x)	({						\
 	KASSERT(dmaplimit == 0 || (x) < dmaplimit,			\
 	    ("physical address %#jx not covered by the DMAP",		\

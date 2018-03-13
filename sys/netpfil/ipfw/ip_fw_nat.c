@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2008 Paolo Pisati
  * All rights reserved.
  *
@@ -43,6 +45,7 @@ __FBSDID("$FreeBSD$");
 
 #include <net/if.h>
 #include <net/if_var.h>
+#include <net/pfil.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/ip_var.h>

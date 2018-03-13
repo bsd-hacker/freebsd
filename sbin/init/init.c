@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1991, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -13,7 +15,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -154,6 +156,8 @@ typedef struct init_session {
 	int	se_flags;		/* status of session */
 #define	SE_SHUTDOWN	0x1		/* session won't be restarted */
 #define	SE_PRESENT	0x2		/* session is in /etc/ttys */
+#define	SE_IFEXISTS	0x4		/* session defined as "onifexists" */
+#define	SE_IFCONSOLE	0x8		/* session defined as "onifconsole" */
 	int	se_nspace;		/* spacing count */
 	char	*se_device;		/* filename of port */
 	char	*se_getty;		/* what to run on that port */
@@ -305,12 +309,12 @@ invalid:
 	handle(disaster, SIGABRT, SIGFPE, SIGILL, SIGSEGV, SIGBUS, SIGXCPU,
 	    SIGXFSZ, 0);
 	handle(transition_handler, SIGHUP, SIGINT, SIGEMT, SIGTERM, SIGTSTP,
-	    SIGUSR1, SIGUSR2, 0);
+	    SIGUSR1, SIGUSR2, SIGWINCH, 0);
 	handle(alrm_handler, SIGALRM, 0);
 	sigfillset(&mask);
 	delset(&mask, SIGABRT, SIGFPE, SIGILL, SIGSEGV, SIGBUS, SIGSYS,
 	    SIGXCPU, SIGXFSZ, SIGHUP, SIGINT, SIGEMT, SIGTERM, SIGTSTP,
-	    SIGALRM, SIGUSR1, SIGUSR2, 0);
+	    SIGALRM, SIGUSR1, SIGUSR2, SIGWINCH, 0);
 	sigprocmask(SIG_SETMASK, &mask, (sigset_t *) 0);
 	sigemptyset(&sa.sa_mask);
 	sa.sa_flags = 0;
@@ -919,7 +923,7 @@ single_user(void)
 					_exit(0);
 				password = crypt(clear, pp->pw_passwd);
 				bzero(clear, _PASSWORD_LEN);
-				if (password == NULL ||
+				if (password != NULL &&
 				    strcmp(password, pp->pw_passwd) == 0)
 					break;
 				warning("single-user login failed\n");
@@ -1260,7 +1264,6 @@ static session_t *
 new_session(session_t *sprev, struct ttyent *typ)
 {
 	session_t *sp;
-	int fd;
 
 	if ((typ->ty_status & TTY_ON) == 0 ||
 	    typ->ty_name == 0 ||
@@ -1271,20 +1274,14 @@ new_session(session_t *sprev, struct ttyent *typ)
 
 	sp->se_flags |= SE_PRESENT;
 
-	sp->se_device = malloc(sizeof(_PATH_DEV) + strlen(typ->ty_name));
-	sprintf(sp->se_device, "%s%s", _PATH_DEV, typ->ty_name);
+	if ((typ->ty_status & TTY_IFEXISTS) != 0)
+		sp->se_flags |= SE_IFEXISTS;
 
-	/*
-	 * Attempt to open the device, if we get "device not configured"
-	 * then don't add the device to the session list.
-	 */
-	if ((fd = open(sp->se_device, O_RDONLY | O_NONBLOCK, 0)) < 0) {
-		if (errno == ENXIO) {
-			free_session(sp);
-			return (0);
-		}
-	} else
-		close(fd);
+	if ((typ->ty_status & TTY_IFCONSOLE) != 0)
+		sp->se_flags |= SE_IFCONSOLE;
+
+	if (asprintf(&sp->se_device, "%s%s", _PATH_DEV, typ->ty_name) < 0)
+		err(1, "asprintf");
 
 	if (setupargv(sp, typ) == 0) {
 		free_session(sp);
@@ -1315,8 +1312,8 @@ setupargv(session_t *sp, struct ttyent *typ)
 		free(sp->se_getty_argv_space);
 		free(sp->se_getty_argv);
 	}
-	sp->se_getty = malloc(strlen(typ->ty_getty) + strlen(typ->ty_name) + 2);
-	sprintf(sp->se_getty, "%s %s", typ->ty_getty, typ->ty_name);
+	if (asprintf(&sp->se_getty, "%s %s", typ->ty_getty, typ->ty_name) < 0)
+		err(1, "asprintf");
 	sp->se_getty_argv_space = strdup(sp->se_getty);
 	sp->se_getty_argv = construct_argv(sp->se_getty_argv_space);
 	if (sp->se_getty_argv == NULL) {
@@ -1429,7 +1426,7 @@ start_window_system(session_t *sp)
 	if (sp->se_type) {
 		/* Don't use malloc after fork */
 		strcpy(term, "TERM=");
-		strncat(term, sp->se_type, sizeof(term) - 6);
+		strlcat(term, sp->se_type, sizeof(term));
 		env[0] = term;
 		env[1] = 0;
 	}
@@ -1493,7 +1490,7 @@ start_getty(session_t *sp)
 	if (sp->se_type) {
 		/* Don't use malloc after fork */
 		strcpy(term, "TERM=");
-		strncat(term, sp->se_type, sizeof(term) - 6);
+		strlcat(term, sp->se_type, sizeof(term));
 		env[0] = term;
 		env[1] = 0;
 	} else
@@ -1502,6 +1499,30 @@ start_getty(session_t *sp)
 	stall("can't exec getty '%s' for port %s: %m",
 		sp->se_getty_argv[0], sp->se_device);
 	_exit(1);
+}
+
+/*
+ * Return 1 if the session is defined as "onifexists"
+ * or "onifconsole" and the device node does not exist.
+ */
+static int
+session_has_no_tty(session_t *sp)
+{
+	int fd;
+
+	if ((sp->se_flags & SE_IFEXISTS) == 0 &&
+	    (sp->se_flags & SE_IFCONSOLE) == 0)
+		return (0);
+
+	fd = open(sp->se_device, O_RDONLY | O_NONBLOCK, 0);
+	if (fd < 0) {
+		if (errno == ENOENT)
+			return (1);
+		return (0);
+	}
+
+	close(fd);
+	return (0);
 }
 
 /*
@@ -1522,7 +1543,8 @@ collect_child(pid_t pid)
 	del_session(sp);
 	sp->se_process = 0;
 
-	if (sp->se_flags & SE_SHUTDOWN) {
+	if (sp->se_flags & SE_SHUTDOWN ||
+	    session_has_no_tty(sp)) {
 		if ((sprev = sp->se_prev) != NULL)
 			sprev->se_next = sp->se_next;
 		else
@@ -1557,8 +1579,9 @@ transition_handler(int sig)
 		    current_state == clean_ttys || current_state == catatonia)
 			requested_transition = clean_ttys;
 		break;
+	case SIGWINCH:
 	case SIGUSR2:
-		howto = RB_POWEROFF;
+		howto = sig == SIGUSR2 ? RB_POWEROFF : RB_POWERCYCLE;
 	case SIGUSR1:
 		howto |= RB_HALT;
 	case SIGINT:
@@ -1607,6 +1630,8 @@ multi_user(void)
 
 	for (sp = sessions; sp; sp = sp->se_next) {
 		if (sp->se_process)
+			continue;
+		if (session_has_no_tty(sp))
 			continue;
 		if ((pid = start_getty(sp)) == -1) {
 			/* serious trouble */

@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 2014 Jakub Wojciech Klama <jceel@FreeBSD.org>
- * Copyright (c) 2015-2016 Vladimir Kondratyev <wulf@cicgroup.ru>
+ * Copyright (c) 2015-2016 Vladimir Kondratyev <wulf@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,17 +27,18 @@
  * $FreeBSD$
  */
 
-#include <sys/types.h>
-#include <sys/systm.h>
 #include <sys/param.h>
 #include <sys/bus.h>
-#include <sys/kernel.h>
 #include <sys/conf.h>
-#include <sys/malloc.h>
 #include <sys/kbio.h>
+#include <sys/kernel.h>
+#include <sys/lock.h>
+#include <sys/malloc.h>
+#include <sys/mutex.h>
+#include <sys/systm.h>
 
-#include <dev/evdev/input.h>
 #include <dev/evdev/evdev.h>
+#include <dev/evdev/input.h>
 
 #include <dev/kbd/kbdreg.h>
 
@@ -63,7 +64,7 @@ static uint16_t evdev_usb_scancodes[256] = {
 	KEY_PAUSE,	KEY_INSERT,	KEY_HOME,	KEY_PAGEUP,
 	KEY_DELETE,	KEY_END,	KEY_PAGEDOWN,	KEY_RIGHT,
 	KEY_LEFT,	KEY_DOWN,	KEY_UP,		KEY_NUMLOCK,
-	KEY_SLASH,	KEY_KPASTERISK,	KEY_KPMINUS,	KEY_KPPLUS,
+	KEY_KPSLASH,	KEY_KPASTERISK,	KEY_KPMINUS,	KEY_KPPLUS,
 	KEY_KPENTER,	KEY_KP1,	KEY_KP2,	KEY_KP3,
 	KEY_KP4,	KEY_KP5,	KEY_KP6,	KEY_KP7,
 	/* 0x60 - 0x7f */
@@ -130,7 +131,7 @@ static uint16_t evdev_at_set1_scancodes[] = {
 	KEY_APOSTROPHE,	KEY_GRAVE,	KEY_LEFTSHIFT,	KEY_BACKSLASH,
 	KEY_Z,		KEY_X,		KEY_C,		KEY_V,
 	KEY_B,		KEY_N,		KEY_M,		KEY_COMMA,
-	KEY_DOT,	KEY_SLASH,	KEY_RIGHTSHIFT,	NONE,
+	KEY_DOT,	KEY_SLASH,	KEY_RIGHTSHIFT,	KEY_KPASTERISK,
 	KEY_LEFTALT,	KEY_SPACE,	KEY_CAPSLOCK,	KEY_F1,
 	KEY_F2,		KEY_F3,		KEY_F4,		KEY_F5,
 	/* 0x40 - 0x5f */
@@ -139,7 +140,7 @@ static uint16_t evdev_at_set1_scancodes[] = {
 	KEY_KP8,	KEY_KP9,	KEY_KPMINUS,	KEY_KP4,
 	KEY_KP5,	KEY_KP6,	KEY_KPPLUS,	KEY_KP1,
 	KEY_KP2,	KEY_KP3,	KEY_KP0,	KEY_KPDOT,
-	NONE,		NONE,		NONE,		KEY_F11,
+	NONE,		NONE,		KEY_102ND,	KEY_F11,
 	KEY_F12,	NONE,		NONE,		NONE,
 	NONE,		NONE,		NONE,		NONE,
 	/* 0x60 - 0x7f */
@@ -159,14 +160,14 @@ static uint16_t evdev_at_set1_scancodes[] = {
 	KEY_PREVIOUSSONG,	NONE,	NONE,		NONE,
 	NONE,		NONE,		NONE,		NONE,
 	NONE,		KEY_NEXTSONG,	NONE,		NONE,
-	NONE,		KEY_KPENTER,	KEY_RIGHTCTRL,	NONE,
+	KEY_KPENTER,	KEY_RIGHTCTRL,	NONE,		NONE,
 	/* 0x20 - 0x3f. 0xE0 prefixed */
 	KEY_MUTE,	KEY_CALC,	KEY_PLAYPAUSE,	NONE,
 	KEY_STOPCD,	NONE,		NONE,		NONE,
 	NONE,		NONE,		NONE,		NONE,
 	NONE,		NONE,		KEY_VOLUMEDOWN,	NONE,
 	KEY_VOLUMEUP,	NONE,		KEY_HOMEPAGE,	NONE,
-	NONE,		KEY_KPASTERISK,	NONE,		KEY_SYSRQ,
+	NONE,		KEY_KPSLASH,	NONE,		KEY_SYSRQ,
 	KEY_RIGHTALT,	NONE,		NONE,		NONE,
 	NONE,		NONE,		NONE,		NONE,
 	/* 0x40 - 0x5f. 0xE0 prefixed */
@@ -206,13 +207,13 @@ static uint16_t evdev_led_codes[] = {
 	LED_SCROLLL,	/* SLKED */
 };
 
-inline uint16_t
+uint16_t
 evdev_hid2key(int scancode)
 {
 	return evdev_usb_scancodes[scancode];
 }
 
-inline void
+void
 evdev_support_all_known_keys(struct evdev_dev *evdev)
 {
 	size_t i;
@@ -222,7 +223,7 @@ evdev_support_all_known_keys(struct evdev_dev *evdev)
 			evdev_support_key(evdev, evdev_at_set1_scancodes[i]);
 }
 
-inline uint16_t
+uint16_t
 evdev_scancode2key(int *state, int scancode)
 {
 	uint16_t keycode;
@@ -271,8 +272,8 @@ evdev_push_mouse_btn(struct evdev_dev *evdev, int buttons)
 	size_t i;
 
 	for (i = 0; i < nitems(evdev_mouse_button_codes); i++)
-		evdev_push_event(evdev, EV_KEY, evdev_mouse_button_codes[i],
-		    (buttons & (1 << i)) != 0);
+		evdev_push_key(evdev, evdev_mouse_button_codes[i],
+		    buttons & (1 << i));
 }
 
 void
@@ -285,8 +286,7 @@ evdev_push_leds(struct evdev_dev *evdev, int leds)
 		return;
 
 	for (i = 0; i < nitems(evdev_led_codes); i++)
-		evdev_push_event(evdev, EV_LED, evdev_led_codes[i],
-		    (leds & (1 << i)) != 0);
+		evdev_push_led(evdev, evdev_led_codes[i], leds & (1 << i));
 }
 
 void
@@ -316,19 +316,26 @@ evdev_ev_kbd_event(struct evdev_dev *evdev, void *softc, uint16_t type,
 					leds |= 1 << i;
 				else
 					leds &= ~(1 << i);
-				if (leds != oleds)
+				if (leds != oleds) {
+					mtx_lock(&Giant);
 					kbdd_ioctl(kbd, KDSETLED,
 					    (caddr_t)&leds);
+					mtx_unlock(&Giant);
+				}
 				break;
 			}
 		}
 	} else if (type == EV_REP && code == REP_DELAY) {
 		delay[0] = value;
 		delay[1] = kbd->kb_delay2;
+		mtx_lock(&Giant);
 		kbdd_ioctl(kbd, KDSETREPEAT, (caddr_t)delay);
+		mtx_unlock(&Giant);
 	} else if (type == EV_REP && code == REP_PERIOD) {
 		delay[0] = kbd->kb_delay1;
 		delay[1] = value;
+		mtx_lock(&Giant);
 		kbdd_ioctl(kbd, KDSETREPEAT, (caddr_t)delay);
+		mtx_unlock(&Giant);
 	}
 }

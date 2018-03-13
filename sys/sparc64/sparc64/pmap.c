@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1991 Regents of the University of California.
  * All rights reserved.
  * Copyright (c) 1994 John S. Dyson
@@ -18,7 +20,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -96,11 +98,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/tte.h>
 #include <machine/tsb.h>
 #include <machine/ver.h>
-
-/*
- * Virtual address of message buffer
- */
-struct msgbuf *msgbufp;
 
 /*
  * Map of physical memory reagions
@@ -1226,7 +1223,6 @@ int
 pmap_pinit(pmap_t pm)
 {
 	vm_page_t ma[TSB_PAGES];
-	vm_page_t m;
 	int i;
 
 	/*
@@ -1249,14 +1245,11 @@ pmap_pinit(pmap_t pm)
 	CPU_ZERO(&pm->pm_active);
 
 	VM_OBJECT_WLOCK(pm->pm_tsb_obj);
-	for (i = 0; i < TSB_PAGES; i++) {
-		m = vm_page_grab(pm->pm_tsb_obj, i, VM_ALLOC_NOBUSY |
-		    VM_ALLOC_WIRED | VM_ALLOC_ZERO);
-		m->valid = VM_PAGE_BITS_ALL;
-		m->md.pmap = pm;
-		ma[i] = m;
-	}
+	(void)vm_page_grab_pages(pm->pm_tsb_obj, 0, VM_ALLOC_NORMAL |
+	    VM_ALLOC_NOBUSY | VM_ALLOC_WIRED | VM_ALLOC_ZERO, ma, TSB_PAGES);
 	VM_OBJECT_WUNLOCK(pm->pm_tsb_obj);
+	for (i = 0; i < TSB_PAGES; i++)
+		ma[i]->md.pmap = pm;
 	pmap_qenter((vm_offset_t)pm->pm_tsb, ma, TSB_PAGES);
 
 	bzero(&pm->pm_stats, sizeof(pm->pm_stats));
@@ -1315,8 +1308,7 @@ pmap_release(pmap_t pm)
 	while (!TAILQ_EMPTY(&obj->memq)) {
 		m = TAILQ_FIRST(&obj->memq);
 		m->md.pmap = NULL;
-		m->wire_count--;
-		atomic_subtract_int(&vm_cnt.v_wire_count, 1);
+		vm_page_unwire_noq(m);
 		vm_page_free_zero(m);
 	}
 	VM_OBJECT_WUNLOCK(obj);

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2009 Bruce Simpson.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -44,7 +46,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -2284,7 +2286,7 @@ mld_v2_enqueue_group_record(struct mbufq *mq, struct in6_multi *inm,
 	struct ifnet		*ifp;
 	struct ip6_msource	*ims, *nims;
 	struct mbuf		*m0, *m, *md;
-	int			 error, is_filter_list_change;
+	int			 is_filter_list_change;
 	int			 minrec0len, m0srcs, msrcs, nbytes, off;
 	int			 record_has_sources;
 	int			 now;
@@ -2296,7 +2298,6 @@ mld_v2_enqueue_group_record(struct mbufq *mq, struct in6_multi *inm,
 
 	IN6_MULTI_LOCK_ASSERT();
 
-	error = 0;
 	ifp = inm->in6m_ifp;
 	is_filter_list_change = 0;
 	m = NULL;

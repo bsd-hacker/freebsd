@@ -105,10 +105,10 @@
 #define	VM_NFREEORDER		12
 
 /*
- * Enable superpage reservations: 1 level.
+ * Disable superpage reservations.
  */
 #ifndef	VM_NRESERVLEVEL
-#define	VM_NRESERVLEVEL		1
+#define	VM_NRESERVLEVEL		0
 #endif
 
 /*
@@ -170,6 +170,7 @@
 #define	VIRT_IN_DMAP(va)	((va) >= DMAP_MIN_ADDRESS && \
     (va) < (dmap_max_addr))
 
+#define	PMAP_HAS_DMAP	1
 #define	PHYS_TO_DMAP(pa)						\
 ({									\
 	KASSERT(PHYS_IN_DMAP(pa),					\

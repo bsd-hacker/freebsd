@@ -117,7 +117,6 @@
 };
 
 &ecspi1 {
-	fsl,spi-num-chipselects = <1>;
 	cs-gpios = <&gpio4 11 0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi1>;
@@ -146,7 +145,7 @@
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
-	pmic: pfuze100@08 {
+	pmic: pfuze100@8 {
 		compatible = "fsl,pfuze100";
 		reg = <0x08>;
 

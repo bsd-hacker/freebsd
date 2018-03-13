@@ -52,6 +52,17 @@
 #error Oops: No config.h and no pre-built configuration in archive_platform.h.
 #endif
 
+/* On macOS check for some symbols based on the deployment target version.  */
+#if defined(__APPLE__)
+# undef HAVE_FUTIMENS
+# undef HAVE_UTIMENSAT
+# include <AvailabilityMacros.h>
+# if MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
+#  define HAVE_FUTIMENS 1
+#  define HAVE_UTIMENSAT 1
+# endif
+#endif
+
 /* It should be possible to get rid of this by extending the feature-test
  * macros to cover Windows API functions, probably along with non-trivial
  * refactoring of code to find structures that sit more cleanly on top of
@@ -143,15 +154,6 @@
 #endif
 
 /*
- * If this platform has <sys/acl.h>, acl_create(), acl_init(),
- * acl_set_file(), and ACL_USER, we assume it has the rest of the
- * POSIX.1e draft functions used in archive_read_extract.c.
- */
-#if HAVE_SYS_ACL_H && HAVE_ACL_CREATE_ENTRY && HAVE_ACL_INIT && HAVE_ACL_SET_FILE && HAVE_ACL_USER
-#define	HAVE_POSIX_ACL	1
-#endif
-
-/*
  * If we can't restore metadata using a file descriptor, then
  * for compatibility's sake, close files before trying to restore metadata.
  */
@@ -187,6 +189,12 @@
 
 #ifndef ARCHIVE_ERRNO_MISC
 #define	ARCHIVE_ERRNO_MISC (-1)
+#endif
+
+#if defined(__GNUC__) && (__GNUC__ >= 7)
+#define	__LA_FALLTHROUGH	__attribute__((fallthrough))
+#else
+#define	__LA_FALLTHROUGH
 #endif
 
 #endif /* !ARCHIVE_PLATFORM_H_INCLUDED */

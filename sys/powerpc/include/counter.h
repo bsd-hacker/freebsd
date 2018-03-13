@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2012, 2013 Konstantin Belousov <kib@FreeBSD.org>
  * All rights reserved.
  *
@@ -33,6 +35,10 @@
 #ifdef INVARIANTS
 #include <sys/proc.h>
 #endif
+
+extern struct pcpu __pcpu[];
+
+#define	EARLY_COUNTER	&__pcpu[0].pc_early_dummy_counter
 
 #ifdef __powerpc64__
 
@@ -72,14 +78,12 @@ static inline void
 counter_u64_zero_inline(counter_u64_t c)
 {
 
-	smp_rendezvous(smp_no_rendevous_barrier, counter_u64_zero_one_cpu,
-	    smp_no_rendevous_barrier, c);
+	smp_rendezvous(smp_no_rendezvous_barrier, counter_u64_zero_one_cpu,
+	    smp_no_rendezvous_barrier, c);
 }
 #endif
 
 #define	counter_u64_add_protected(c, i)	counter_u64_add(c, i)
-
-extern struct pcpu __pcpu[MAXCPU];
 
 static inline void
 counter_u64_add(counter_u64_t c, int64_t inc)
@@ -138,8 +142,8 @@ static inline void
 counter_u64_zero_inline(counter_u64_t c)
 {
 
-	smp_rendezvous(smp_no_rendevous_barrier, counter_u64_zero_one_cpu,
-	    smp_no_rendevous_barrier, c);
+	smp_rendezvous(smp_no_rendezvous_barrier, counter_u64_zero_one_cpu,
+	    smp_no_rendezvous_barrier, c);
 }
 #endif
 

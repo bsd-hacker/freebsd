@@ -101,15 +101,6 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 1;
 		break;
 	}
-	/* mknod */
-	case 14: {
-		struct mknod_args *p = params;
-		uarg[0] = (intptr_t) p->path; /* char * */
-		iarg[1] = p->mode; /* int */
-		iarg[2] = p->dev; /* int */
-		*n_args = 3;
-		break;
-	}
 	/* chmod */
 	case 15: {
 		struct chmod_args *p = params;
@@ -944,30 +935,6 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 1;
 		break;
 	}
-	/* stat */
-	case 188: {
-		struct stat_args *p = params;
-		uarg[0] = (intptr_t) p->path; /* char * */
-		uarg[1] = (intptr_t) p->ub; /* struct stat * */
-		*n_args = 2;
-		break;
-	}
-	/* fstat */
-	case 189: {
-		struct fstat_args *p = params;
-		iarg[0] = p->fd; /* int */
-		uarg[1] = (intptr_t) p->sb; /* struct stat * */
-		*n_args = 2;
-		break;
-	}
-	/* lstat */
-	case 190: {
-		struct lstat_args *p = params;
-		uarg[0] = (intptr_t) p->path; /* char * */
-		uarg[1] = (intptr_t) p->ub; /* struct stat * */
-		*n_args = 2;
-		break;
-	}
 	/* pathconf */
 	case 191: {
 		struct pathconf_args *p = params;
@@ -998,16 +965,6 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		uarg[0] = p->which; /* u_int */
 		uarg[1] = (intptr_t) p->rlp; /* struct rlimit * */
 		*n_args = 2;
-		break;
-	}
-	/* getdirentries */
-	case 196: {
-		struct getdirentries_args *p = params;
-		iarg[0] = p->fd; /* int */
-		uarg[1] = (intptr_t) p->buf; /* char * */
-		uarg[2] = p->count; /* u_int */
-		uarg[3] = (intptr_t) p->basep; /* long * */
-		*n_args = 4;
 		break;
 	}
 	/* nosys */
@@ -1290,6 +1247,16 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 1;
 		break;
 	}
+	/* clock_nanosleep */
+	case 244: {
+		struct clock_nanosleep_args *p = params;
+		iarg[0] = p->clock_id; /* clockid_t */
+		iarg[1] = p->flags; /* int */
+		uarg[2] = (intptr_t) p->rqtp; /* const struct timespec * */
+		uarg[3] = (intptr_t) p->rmtp; /* struct timespec * */
+		*n_args = 4;
+		break;
+	}
 	/* clock_getcpuclockid2 */
 	case 247: {
 		struct clock_getcpuclockid2_args *p = params;
@@ -1360,15 +1327,6 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 4;
 		break;
 	}
-	/* getdents */
-	case 272: {
-		struct getdents_args *p = params;
-		iarg[0] = p->fd; /* int */
-		uarg[1] = (intptr_t) p->buf; /* char * */
-		uarg[2] = p->count; /* size_t */
-		*n_args = 3;
-		break;
-	}
 	/* lchmod */
 	case 274: {
 		struct lchmod_args *p = params;
@@ -1403,30 +1361,6 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 3;
 		break;
 	}
-	/* nstat */
-	case 278: {
-		struct nstat_args *p = params;
-		uarg[0] = (intptr_t) p->path; /* char * */
-		uarg[1] = (intptr_t) p->ub; /* struct nstat * */
-		*n_args = 2;
-		break;
-	}
-	/* nfstat */
-	case 279: {
-		struct nfstat_args *p = params;
-		iarg[0] = p->fd; /* int */
-		uarg[1] = (intptr_t) p->sb; /* struct nstat * */
-		*n_args = 2;
-		break;
-	}
-	/* nlstat */
-	case 280: {
-		struct nlstat_args *p = params;
-		uarg[0] = (intptr_t) p->path; /* char * */
-		uarg[1] = (intptr_t) p->ub; /* struct nstat * */
-		*n_args = 2;
-		break;
-	}
 	/* preadv */
 	case 289: {
 		struct preadv_args *p = params;
@@ -1452,14 +1386,6 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		struct fhopen_args *p = params;
 		uarg[0] = (intptr_t) p->u_fhp; /* const struct fhandle * */
 		iarg[1] = p->flags; /* int */
-		*n_args = 2;
-		break;
-	}
-	/* fhstat */
-	case 299: {
-		struct fhstat_args *p = params;
-		uarg[0] = (intptr_t) p->u_fhp; /* const struct fhandle * */
-		uarg[1] = (intptr_t) p->sb; /* struct stat * */
 		*n_args = 2;
 		break;
 	}
@@ -1612,7 +1538,7 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 	case 326: {
 		struct __getcwd_args *p = params;
 		uarg[0] = (intptr_t) p->buf; /* char * */
-		uarg[1] = p->buflen; /* u_int */
+		uarg[1] = p->buflen; /* size_t */
 		*n_args = 2;
 		break;
 	}
@@ -1893,18 +1819,6 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 0;
 		break;
 	}
-	/* kevent */
-	case 363: {
-		struct kevent_args *p = params;
-		iarg[0] = p->fd; /* int */
-		uarg[1] = (intptr_t) p->changelist; /* struct kevent * */
-		iarg[2] = p->nchanges; /* int */
-		uarg[3] = (intptr_t) p->eventlist; /* struct kevent * */
-		iarg[4] = p->nevents; /* int */
-		uarg[5] = (intptr_t) p->timeout; /* const struct timespec * */
-		*n_args = 6;
-		break;
-	}
 	/* extattr_set_fd */
 	case 371: {
 		struct extattr_set_fd_args *p = params;
@@ -2065,39 +1979,6 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		iarg[1] = p->call; /* int */
 		uarg[2] = (intptr_t) p->arg; /* void * */
 		*n_args = 3;
-		break;
-	}
-	/* getfsstat */
-	case 395: {
-		struct getfsstat_args *p = params;
-		uarg[0] = (intptr_t) p->buf; /* struct statfs * */
-		iarg[1] = p->bufsize; /* long */
-		iarg[2] = p->flags; /* int */
-		*n_args = 3;
-		break;
-	}
-	/* statfs */
-	case 396: {
-		struct statfs_args *p = params;
-		uarg[0] = (intptr_t) p->path; /* char * */
-		uarg[1] = (intptr_t) p->buf; /* struct statfs * */
-		*n_args = 2;
-		break;
-	}
-	/* fstatfs */
-	case 397: {
-		struct fstatfs_args *p = params;
-		iarg[0] = p->fd; /* int */
-		uarg[1] = (intptr_t) p->buf; /* struct statfs * */
-		*n_args = 2;
-		break;
-	}
-	/* fhstatfs */
-	case 398: {
-		struct fhstatfs_args *p = params;
-		uarg[0] = (intptr_t) p->u_fhp; /* const struct fhandle * */
-		uarg[1] = (intptr_t) p->buf; /* struct statfs * */
-		*n_args = 2;
 		break;
 	}
 	/* ksem_close */
@@ -2823,16 +2704,6 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 3;
 		break;
 	}
-	/* fstatat */
-	case 493: {
-		struct fstatat_args *p = params;
-		iarg[0] = p->fd; /* int */
-		uarg[1] = (intptr_t) p->path; /* char * */
-		uarg[2] = (intptr_t) p->buf; /* struct stat * */
-		iarg[3] = p->flag; /* int */
-		*n_args = 4;
-		break;
-	}
 	/* futimesat */
 	case 494: {
 		struct futimesat_args *p = params;
@@ -2869,16 +2740,6 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		uarg[1] = (intptr_t) p->path; /* char * */
 		iarg[2] = p->mode; /* mode_t */
 		*n_args = 3;
-		break;
-	}
-	/* mknodat */
-	case 498: {
-		struct mknodat_args *p = params;
-		iarg[0] = p->fd; /* int */
-		uarg[1] = (intptr_t) p->path; /* char * */
-		iarg[2] = p->mode; /* mode_t */
-		iarg[3] = p->dev; /* dev_t */
-		*n_args = 4;
 		break;
 	}
 	/* openat */
@@ -3299,29 +3160,126 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 4;
 		break;
 	}
-	/* numa_getaffinity */
-	case 548: {
-		struct numa_getaffinity_args *p = params;
-		iarg[0] = p->which; /* cpuwhich_t */
-		iarg[1] = p->id; /* id_t */
-		uarg[2] = (intptr_t) p->policy; /* struct vm_domain_policy_entry * */
-		*n_args = 3;
-		break;
-	}
-	/* numa_setaffinity */
-	case 549: {
-		struct numa_setaffinity_args *p = params;
-		iarg[0] = p->which; /* cpuwhich_t */
-		iarg[1] = p->id; /* id_t */
-		uarg[2] = (intptr_t) p->policy; /* const struct vm_domain_policy_entry * */
-		*n_args = 3;
-		break;
-	}
 	/* fdatasync */
 	case 550: {
 		struct fdatasync_args *p = params;
 		iarg[0] = p->fd; /* int */
 		*n_args = 1;
+		break;
+	}
+	/* fstat */
+	case 551: {
+		struct fstat_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->sb; /* struct stat * */
+		*n_args = 2;
+		break;
+	}
+	/* fstatat */
+	case 552: {
+		struct fstatat_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->path; /* char * */
+		uarg[2] = (intptr_t) p->buf; /* struct stat * */
+		iarg[3] = p->flag; /* int */
+		*n_args = 4;
+		break;
+	}
+	/* fhstat */
+	case 553: {
+		struct fhstat_args *p = params;
+		uarg[0] = (intptr_t) p->u_fhp; /* const struct fhandle * */
+		uarg[1] = (intptr_t) p->sb; /* struct stat * */
+		*n_args = 2;
+		break;
+	}
+	/* getdirentries */
+	case 554: {
+		struct getdirentries_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->buf; /* char * */
+		uarg[2] = p->count; /* size_t */
+		uarg[3] = (intptr_t) p->basep; /* off_t * */
+		*n_args = 4;
+		break;
+	}
+	/* statfs */
+	case 555: {
+		struct statfs_args *p = params;
+		uarg[0] = (intptr_t) p->path; /* char * */
+		uarg[1] = (intptr_t) p->buf; /* struct statfs * */
+		*n_args = 2;
+		break;
+	}
+	/* fstatfs */
+	case 556: {
+		struct fstatfs_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->buf; /* struct statfs * */
+		*n_args = 2;
+		break;
+	}
+	/* getfsstat */
+	case 557: {
+		struct getfsstat_args *p = params;
+		uarg[0] = (intptr_t) p->buf; /* struct statfs * */
+		iarg[1] = p->bufsize; /* long */
+		iarg[2] = p->mode; /* int */
+		*n_args = 3;
+		break;
+	}
+	/* fhstatfs */
+	case 558: {
+		struct fhstatfs_args *p = params;
+		uarg[0] = (intptr_t) p->u_fhp; /* const struct fhandle * */
+		uarg[1] = (intptr_t) p->buf; /* struct statfs * */
+		*n_args = 2;
+		break;
+	}
+	/* mknodat */
+	case 559: {
+		struct mknodat_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->path; /* char * */
+		iarg[2] = p->mode; /* mode_t */
+		iarg[3] = p->dev; /* dev_t */
+		*n_args = 4;
+		break;
+	}
+	/* kevent */
+	case 560: {
+		struct kevent_args *p = params;
+		iarg[0] = p->fd; /* int */
+		uarg[1] = (intptr_t) p->changelist; /* struct kevent * */
+		iarg[2] = p->nchanges; /* int */
+		uarg[3] = (intptr_t) p->eventlist; /* struct kevent * */
+		iarg[4] = p->nevents; /* int */
+		uarg[5] = (intptr_t) p->timeout; /* const struct timespec * */
+		*n_args = 6;
+		break;
+	}
+	/* cpuset_getdomain */
+	case 561: {
+		struct cpuset_getdomain_args *p = params;
+		iarg[0] = p->level; /* cpulevel_t */
+		iarg[1] = p->which; /* cpuwhich_t */
+		iarg[2] = p->id; /* id_t */
+		uarg[3] = p->domainsetsize; /* size_t */
+		uarg[4] = (intptr_t) p->mask; /* domainset_t * */
+		uarg[5] = (intptr_t) p->policy; /* int * */
+		*n_args = 6;
+		break;
+	}
+	/* cpuset_setdomain */
+	case 562: {
+		struct cpuset_setdomain_args *p = params;
+		iarg[0] = p->level; /* cpulevel_t */
+		iarg[1] = p->which; /* cpuwhich_t */
+		iarg[2] = p->id; /* id_t */
+		uarg[3] = p->domainsetsize; /* size_t */
+		uarg[4] = (intptr_t) p->mask; /* domainset_t * */
+		iarg[5] = p->policy; /* int */
+		*n_args = 6;
 		break;
 	}
 	default:
@@ -3464,22 +3422,6 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 	case 13:
 		switch(ndx) {
 		case 0:
-			p = "int";
-			break;
-		default:
-			break;
-		};
-		break;
-	/* mknod */
-	case 14:
-		switch(ndx) {
-		case 0:
-			p = "userland char *";
-			break;
-		case 1:
-			p = "int";
-			break;
-		case 2:
 			p = "int";
 			break;
 		default:
@@ -4844,45 +4786,6 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
-	/* stat */
-	case 188:
-		switch(ndx) {
-		case 0:
-			p = "userland char *";
-			break;
-		case 1:
-			p = "userland struct stat *";
-			break;
-		default:
-			break;
-		};
-		break;
-	/* fstat */
-	case 189:
-		switch(ndx) {
-		case 0:
-			p = "int";
-			break;
-		case 1:
-			p = "userland struct stat *";
-			break;
-		default:
-			break;
-		};
-		break;
-	/* lstat */
-	case 190:
-		switch(ndx) {
-		case 0:
-			p = "userland char *";
-			break;
-		case 1:
-			p = "userland struct stat *";
-			break;
-		default:
-			break;
-		};
-		break;
 	/* pathconf */
 	case 191:
 		switch(ndx) {
@@ -4930,25 +4833,6 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		case 1:
 			p = "userland struct rlimit *";
-			break;
-		default:
-			break;
-		};
-		break;
-	/* getdirentries */
-	case 196:
-		switch(ndx) {
-		case 0:
-			p = "int";
-			break;
-		case 1:
-			p = "userland char *";
-			break;
-		case 2:
-			p = "u_int";
-			break;
-		case 3:
-			p = "userland long *";
 			break;
 		default:
 			break;
@@ -5365,6 +5249,25 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
+	/* clock_nanosleep */
+	case 244:
+		switch(ndx) {
+		case 0:
+			p = "clockid_t";
+			break;
+		case 1:
+			p = "int";
+			break;
+		case 2:
+			p = "userland const struct timespec *";
+			break;
+		case 3:
+			p = "userland struct timespec *";
+			break;
+		default:
+			break;
+		};
+		break;
 	/* clock_getcpuclockid2 */
 	case 247:
 		switch(ndx) {
@@ -5475,22 +5378,6 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
-	/* getdents */
-	case 272:
-		switch(ndx) {
-		case 0:
-			p = "int";
-			break;
-		case 1:
-			p = "userland char *";
-			break;
-		case 2:
-			p = "size_t";
-			break;
-		default:
-			break;
-		};
-		break;
 	/* lchmod */
 	case 274:
 		switch(ndx) {
@@ -5549,45 +5436,6 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
-	/* nstat */
-	case 278:
-		switch(ndx) {
-		case 0:
-			p = "userland char *";
-			break;
-		case 1:
-			p = "userland struct nstat *";
-			break;
-		default:
-			break;
-		};
-		break;
-	/* nfstat */
-	case 279:
-		switch(ndx) {
-		case 0:
-			p = "int";
-			break;
-		case 1:
-			p = "userland struct nstat *";
-			break;
-		default:
-			break;
-		};
-		break;
-	/* nlstat */
-	case 280:
-		switch(ndx) {
-		case 0:
-			p = "userland char *";
-			break;
-		case 1:
-			p = "userland struct nstat *";
-			break;
-		default:
-			break;
-		};
-		break;
 	/* preadv */
 	case 289:
 		switch(ndx) {
@@ -5634,19 +5482,6 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		case 1:
 			p = "int";
-			break;
-		default:
-			break;
-		};
-		break;
-	/* fhstat */
-	case 299:
-		switch(ndx) {
-		case 0:
-			p = "userland const struct fhandle *";
-			break;
-		case 1:
-			p = "userland struct stat *";
 			break;
 		default:
 			break;
@@ -5872,7 +5707,7 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			p = "userland char *";
 			break;
 		case 1:
-			p = "u_int";
+			p = "size_t";
 			break;
 		default:
 			break;
@@ -6344,31 +6179,6 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 	/* kqueue */
 	case 362:
 		break;
-	/* kevent */
-	case 363:
-		switch(ndx) {
-		case 0:
-			p = "int";
-			break;
-		case 1:
-			p = "userland struct kevent *";
-			break;
-		case 2:
-			p = "int";
-			break;
-		case 3:
-			p = "userland struct kevent *";
-			break;
-		case 4:
-			p = "int";
-			break;
-		case 5:
-			p = "userland const struct timespec *";
-			break;
-		default:
-			break;
-		};
-		break;
 	/* extattr_set_fd */
 	case 371:
 		switch(ndx) {
@@ -6652,61 +6462,6 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		case 2:
 			p = "userland void *";
-			break;
-		default:
-			break;
-		};
-		break;
-	/* getfsstat */
-	case 395:
-		switch(ndx) {
-		case 0:
-			p = "userland struct statfs *";
-			break;
-		case 1:
-			p = "long";
-			break;
-		case 2:
-			p = "int";
-			break;
-		default:
-			break;
-		};
-		break;
-	/* statfs */
-	case 396:
-		switch(ndx) {
-		case 0:
-			p = "userland char *";
-			break;
-		case 1:
-			p = "userland struct statfs *";
-			break;
-		default:
-			break;
-		};
-		break;
-	/* fstatfs */
-	case 397:
-		switch(ndx) {
-		case 0:
-			p = "int";
-			break;
-		case 1:
-			p = "userland struct statfs *";
-			break;
-		default:
-			break;
-		};
-		break;
-	/* fhstatfs */
-	case 398:
-		switch(ndx) {
-		case 0:
-			p = "userland const struct fhandle *";
-			break;
-		case 1:
-			p = "userland struct statfs *";
 			break;
 		default:
 			break;
@@ -7968,25 +7723,6 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
-	/* fstatat */
-	case 493:
-		switch(ndx) {
-		case 0:
-			p = "int";
-			break;
-		case 1:
-			p = "userland char *";
-			break;
-		case 2:
-			p = "userland struct stat *";
-			break;
-		case 3:
-			p = "int";
-			break;
-		default:
-			break;
-		};
-		break;
 	/* futimesat */
 	case 494:
 		switch(ndx) {
@@ -8052,25 +7788,6 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		case 2:
 			p = "mode_t";
-			break;
-		default:
-			break;
-		};
-		break;
-	/* mknodat */
-	case 498:
-		switch(ndx) {
-		case 0:
-			p = "int";
-			break;
-		case 1:
-			p = "userland char *";
-			break;
-		case 2:
-			p = "mode_t";
-			break;
-		case 3:
-			p = "dev_t";
 			break;
 		default:
 			break;
@@ -8812,42 +8529,223 @@ systrace_entry_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		};
 		break;
-	/* numa_getaffinity */
-	case 548:
-		switch(ndx) {
-		case 0:
-			p = "cpuwhich_t";
-			break;
-		case 1:
-			p = "id_t";
-			break;
-		case 2:
-			p = "userland struct vm_domain_policy_entry *";
-			break;
-		default:
-			break;
-		};
-		break;
-	/* numa_setaffinity */
-	case 549:
-		switch(ndx) {
-		case 0:
-			p = "cpuwhich_t";
-			break;
-		case 1:
-			p = "id_t";
-			break;
-		case 2:
-			p = "userland const struct vm_domain_policy_entry *";
-			break;
-		default:
-			break;
-		};
-		break;
 	/* fdatasync */
 	case 550:
 		switch(ndx) {
 		case 0:
+			p = "int";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* fstat */
+	case 551:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "userland struct stat *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* fstatat */
+	case 552:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "userland char *";
+			break;
+		case 2:
+			p = "userland struct stat *";
+			break;
+		case 3:
+			p = "int";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* fhstat */
+	case 553:
+		switch(ndx) {
+		case 0:
+			p = "userland const struct fhandle *";
+			break;
+		case 1:
+			p = "userland struct stat *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* getdirentries */
+	case 554:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "userland char *";
+			break;
+		case 2:
+			p = "size_t";
+			break;
+		case 3:
+			p = "userland off_t *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* statfs */
+	case 555:
+		switch(ndx) {
+		case 0:
+			p = "userland char *";
+			break;
+		case 1:
+			p = "userland struct statfs *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* fstatfs */
+	case 556:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "userland struct statfs *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* getfsstat */
+	case 557:
+		switch(ndx) {
+		case 0:
+			p = "userland struct statfs *";
+			break;
+		case 1:
+			p = "long";
+			break;
+		case 2:
+			p = "int";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* fhstatfs */
+	case 558:
+		switch(ndx) {
+		case 0:
+			p = "userland const struct fhandle *";
+			break;
+		case 1:
+			p = "userland struct statfs *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* mknodat */
+	case 559:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "userland char *";
+			break;
+		case 2:
+			p = "mode_t";
+			break;
+		case 3:
+			p = "dev_t";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* kevent */
+	case 560:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "userland struct kevent *";
+			break;
+		case 2:
+			p = "int";
+			break;
+		case 3:
+			p = "userland struct kevent *";
+			break;
+		case 4:
+			p = "int";
+			break;
+		case 5:
+			p = "userland const struct timespec *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* cpuset_getdomain */
+	case 561:
+		switch(ndx) {
+		case 0:
+			p = "cpulevel_t";
+			break;
+		case 1:
+			p = "cpuwhich_t";
+			break;
+		case 2:
+			p = "id_t";
+			break;
+		case 3:
+			p = "size_t";
+			break;
+		case 4:
+			p = "userland domainset_t *";
+			break;
+		case 5:
+			p = "userland int *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* cpuset_setdomain */
+	case 562:
+		switch(ndx) {
+		case 0:
+			p = "cpulevel_t";
+			break;
+		case 1:
+			p = "cpuwhich_t";
+			break;
+		case 2:
+			p = "id_t";
+			break;
+		case 3:
+			p = "size_t";
+			break;
+		case 4:
+			p = "userland domainset_t *";
+			break;
+		case 5:
 			p = "int";
 			break;
 		default:
@@ -8916,11 +8814,6 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		break;
 	/* fchdir */
 	case 13:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
-	/* mknod */
-	case 14:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
@@ -9406,21 +9299,6 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
-	/* stat */
-	case 188:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
-	/* fstat */
-	case 189:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
-	/* lstat */
-	case 190:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
 	/* pathconf */
 	case 191:
 		if (ndx == 0 || ndx == 1)
@@ -9438,11 +9316,6 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		break;
 	/* setrlimit */
 	case 195:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
-	/* getdirentries */
-	case 196:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
@@ -9603,6 +9476,11 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
+	/* clock_nanosleep */
+	case 244:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
 	/* clock_getcpuclockid2 */
 	case 247:
 		if (ndx == 0 || ndx == 1)
@@ -9645,11 +9523,6 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
-	/* getdents */
-	case 272:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
 	/* lchmod */
 	case 274:
 		if (ndx == 0 || ndx == 1)
@@ -9670,21 +9543,6 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
-	/* nstat */
-	case 278:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
-	/* nfstat */
-	case 279:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
-	/* nlstat */
-	case 280:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
 	/* preadv */
 	case 289:
 		if (ndx == 0 || ndx == 1)
@@ -9697,11 +9555,6 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		break;
 	/* fhopen */
 	case 298:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
-	/* fhstat */
-	case 299:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
@@ -9963,11 +9816,6 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		break;
 	/* kqueue */
 	case 362:
-	/* kevent */
-	case 363:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
 	/* extattr_set_fd */
 	case 371:
 		if (ndx == 0 || ndx == 1)
@@ -10055,26 +9903,6 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		break;
 	/* mac_syscall */
 	case 394:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
-	/* getfsstat */
-	case 395:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
-	/* statfs */
-	case 396:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
-	/* fstatfs */
-	case 397:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
-	/* fhstatfs */
-	case 398:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
@@ -10493,11 +10321,6 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
-	/* fstatat */
-	case 493:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
 	/* futimesat */
 	case 494:
 		if (ndx == 0 || ndx == 1)
@@ -10515,11 +10338,6 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		break;
 	/* mkfifoat */
 	case 497:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
-	/* mknodat */
-	case 498:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
@@ -10755,18 +10573,68 @@ systrace_return_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;
-	/* numa_getaffinity */
-	case 548:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
-	/* numa_setaffinity */
-	case 549:
-		if (ndx == 0 || ndx == 1)
-			p = "int";
-		break;
 	/* fdatasync */
 	case 550:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* fstat */
+	case 551:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* fstatat */
+	case 552:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* fhstat */
+	case 553:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* getdirentries */
+	case 554:
+		if (ndx == 0 || ndx == 1)
+			p = "ssize_t";
+		break;
+	/* statfs */
+	case 555:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* fstatfs */
+	case 556:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* getfsstat */
+	case 557:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* fhstatfs */
+	case 558:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* mknodat */
+	case 559:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* kevent */
+	case 560:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* cpuset_getdomain */
+	case 561:
+		if (ndx == 0 || ndx == 1)
+			p = "int";
+		break;
+	/* cpuset_setdomain */
+	case 562:
 		if (ndx == 0 || ndx == 1)
 			p = "int";
 		break;

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2008 Stanislav Sedov <stas@FreeBSD.org>.
  * All rights reserved.
  *
@@ -1696,7 +1698,7 @@ ae_stop_txmac(ae_softc_t *sc)
 	/*
 	 * Wait for IDLE state.
 	 */
-	for (i = 0; i < AE_IDLE_TIMEOUT; i--) {
+	for (i = 0; i < AE_IDLE_TIMEOUT; i++) {
 		val = AE_READ_4(sc, AE_IDLE_REG);
 		if ((val & (AE_IDLE_TXMAC | AE_IDLE_DMAREAD)) == 0)
 			break;

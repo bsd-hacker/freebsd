@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1989, 1992, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -14,7 +16,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -49,6 +51,7 @@ static char sccsid[] = "@(#)kvm.c	8.2 (Berkeley) 2/13/94";
 #include <sys/linker.h>
 #include <sys/pcpu.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 
 #include <net/vnet.h>
 
@@ -66,9 +69,14 @@ static char sccsid[] = "@(#)kvm.c	8.2 (Berkeley) 2/13/94";
 
 SET_DECLARE(kvm_arch, struct kvm_arch);
 
+static char _kd_is_null[] = "";
+
 char *
 kvm_geterr(kvm_t *kd)
 {
+
+	if (kd == NULL)
+		return (_kd_is_null);
 	return (kd->errbuf);
 }
 
@@ -167,8 +175,10 @@ _kvm_open(kvm_t *kd, const char *uf, const char *mf, int flag, char *errout)
 			return (kd);
 		}
 	}
+
 	/*
-	 * This is a crash dump.
+	 * This is either a crash dump or a remote live system with its physical
+	 * memory fully accessible via a special device.
 	 * Open the namelist fd and determine the architecture.
 	 */
 	if ((kd->nlfd = open(uf, O_RDONLY | O_CLOEXEC, 0)) < 0) {
@@ -177,8 +187,11 @@ _kvm_open(kvm_t *kd, const char *uf, const char *mf, int flag, char *errout)
 	}
 	if (_kvm_read_kernel_ehdr(kd) < 0)
 		goto failed;
-	if (strncmp(mf, _PATH_FWMEM, strlen(_PATH_FWMEM)) == 0)
+	if (strncmp(mf, _PATH_FWMEM, strlen(_PATH_FWMEM)) == 0 ||
+	    strncmp(mf, _PATH_DEVVMM, strlen(_PATH_DEVVMM)) == 0) {
 		kd->rawdump = 1;
+		kd->writable = 1;
+	}
 	SET_FOREACH(parch, kvm_arch) {
 		if ((*parch)->ka_probe(kd)) {
 			kd->arch = *parch;
@@ -212,7 +225,7 @@ failed:
 	if (errout != NULL)
 		strlcpy(errout, kd->errbuf, _POSIX2_LINE_MAX);
 	(void)kvm_close(kd);
-	return (0);
+	return (NULL);
 }
 
 kvm_t *
@@ -225,7 +238,7 @@ kvm_openfiles(const char *uf, const char *mf, const char *sf __unused, int flag,
 		if (errout != NULL)
 			(void)strlcpy(errout, strerror(errno),
 			    _POSIX2_LINE_MAX);
-		return (0);
+		return (NULL);
 	}
 	return (_kvm_open(kd, uf, mf, flag, errout));
 }
@@ -240,7 +253,7 @@ kvm_open(const char *uf, const char *mf, const char *sf __unused, int flag,
 		if (errstr != NULL)
 			(void)fprintf(stderr, "%s: %s\n",
 				      errstr, strerror(errno));
-		return (0);
+		return (NULL);
 	}
 	kd->program = errstr;
 	return (_kvm_open(kd, uf, mf, flag, NULL));
@@ -256,7 +269,7 @@ kvm_open2(const char *uf, const char *mf, int flag, char *errout,
 		if (errout != NULL)
 			(void)strlcpy(errout, strerror(errno),
 			    _POSIX2_LINE_MAX);
-		return (0);
+		return (NULL);
 	}
 	kd->resolve_symbol = resolver;
 	return (_kvm_open(kd, uf, mf, flag, errout));
@@ -267,6 +280,10 @@ kvm_close(kvm_t *kd)
 {
 	int error = 0;
 
+	if (kd == NULL) {
+		errno = EINVAL;
+		return (-1);
+	}
 	if (kd->vmst != NULL)
 		kd->arch->ka_freevtop(kd);
 	if (kd->pmfd >= 0)
@@ -285,9 +302,13 @@ kvm_close(kvm_t *kd)
 		free((void *)kd->argv);
 	if (kd->pt_map != NULL)
 		free(kd->pt_map);
+	if (kd->page_map != NULL)
+		free(kd->page_map);
+	if (kd->sparse_map != MAP_FAILED)
+		munmap(kd->sparse_map, kd->pt_sparse_size);
 	free((void *)kd);
 
-	return (0);
+	return (error);
 }
 
 int
@@ -405,6 +426,15 @@ ssize_t
 kvm_write(kvm_t *kd, u_long kva, const void *buf, size_t len)
 {
 	int cc;
+	ssize_t cw;
+	off_t pa;
+	const char *cp;
+
+	if (!ISALIVE(kd) && !kd->writable) {
+		_kvm_err(kd, kd->program,
+		    "kvm_write not implemented for dead kernels");
+		return (-1);
+	}
 
 	if (ISALIVE(kd)) {
 		/*
@@ -422,12 +452,38 @@ kvm_write(kvm_t *kd, u_long kva, const void *buf, size_t len)
 		} else if ((size_t)cc < len)
 			_kvm_err(kd, kd->program, "short write");
 		return (cc);
-	} else {
-		_kvm_err(kd, kd->program,
-		    "kvm_write not implemented for dead kernels");
-		return (-1);
 	}
-	/* NOTREACHED */
+
+	cp = buf;
+	while (len > 0) {
+		cc = kd->arch->ka_kvatop(kd, kva, &pa);
+		if (cc == 0)
+			return (-1);
+		if (cc > (ssize_t)len)
+			cc = len;
+		errno = 0;
+		if (lseek(kd->pmfd, pa, 0) == -1 && errno != 0) {
+			_kvm_syserr(kd, 0, _PATH_MEM);
+			break;
+		}
+		cw = write(kd->pmfd, cp, cc);
+		if (cw < 0) {
+			_kvm_syserr(kd, kd->program, "kvm_write");
+			break;
+		}
+		/*
+		 * If ka_kvatop returns a bogus value or our core file is
+		 * truncated, we might wind up seeking beyond the end of the
+		 * core file in which case the read will return 0 (EOF).
+		 */
+		if (cw == 0)
+			break;
+		cp += cw;
+		kva += cw;
+		len -= cw;
+	}
+
+	return (cp - (const char *)buf);
 }
 
 int
@@ -437,4 +493,14 @@ kvm_native(kvm_t *kd)
 	if (ISALIVE(kd))
 		return (1);
 	return (kd->arch->ka_native(kd));
+}
+
+int
+kvm_walk_pages(kvm_t *kd, kvm_walk_pages_cb_t *cb, void *closure)
+{
+
+	if (kd->arch->ka_walk_pages == NULL)
+		return (0);
+
+	return (kd->arch->ka_walk_pages(kd, cb, closure));
 }

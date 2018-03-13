@@ -1,7 +1,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd August 21, 2016
+.Dd March 12, 2018
 .Dt IPFW 8
 .Os
 .Sh NAME
@@ -50,7 +50,9 @@ in-kernel NAT.
 .Nm
 .Oo Cm set Ar N Oc Cm table Ar name Cm create Ar create-options
 .Nm
-.Oo Cm set Ar N Oc Cm table Ar name Cm destroy
+.Oo Cm set Ar N Oc Cm table
+.Brq Ar name | all
+.Cm destroy
 .Nm
 .Oo Cm set Ar N Oc Cm table Ar name Cm modify Ar modify-options
 .Nm
@@ -535,7 +537,7 @@ for filtering packets, among the following:
 .It Layer-2 header fields
 When available
 .It IPv4 and IPv6 Protocol
-TCP, UDP, ICMP, etc.
+SCTP, TCP, UDP, ICMP, etc.
 .It Source and dest. addresses and ports
 .It Direction
 See Section
@@ -781,7 +783,7 @@ will be executed when the packet matches the body of the rule.
 .It Cm allow | accept | pass | permit
 Allow packets that match rule.
 The search terminates.
-.It Cm check-state Op Ar flowname | Cm any
+.It Cm check-state Op Ar :flowname | Cm :any
 Checks the packet against the dynamic ruleset.
 If a match is found, execute the action associated with
 the rule which generated this dynamic rule, otherwise
@@ -797,15 +799,15 @@ or
 .Cm limit
 rule.
 The
-.Ar flowname
+.Ar :flowname
 is symbolic name assigned to dynamic rule by
 .Cm keep-state
 opcode.
 The special flowname
-.Cm any
+.Cm :any
 can be used to ignore states flowname when matching.
 The
-.Cm default
+.Cm :default
 keyword is special name used for compatibility with old rulesets.
 .It Cm count
 Update counters for all packets that match rule.
@@ -1068,49 +1070,49 @@ Set specified DiffServ codepoint for an IPv4/IPv6 packet.
 Processing continues at the next rule.
 Supported values are:
 .Pp
-.Cm CS0
+.Cm cs0
 .Pq Dv 000000 ,
-.Cm CS1
+.Cm cs1
 .Pq Dv 001000 ,
-.Cm CS2
+.Cm cs2
 .Pq Dv 010000 ,
-.Cm CS3
+.Cm cs3
 .Pq Dv 011000 ,
-.Cm CS4
+.Cm cs4
 .Pq Dv 100000 ,
-.Cm CS5
+.Cm cs5
 .Pq Dv 101000 ,
-.Cm CS6
+.Cm cs6
 .Pq Dv 110000 ,
-.Cm CS7
+.Cm cs7
 .Pq Dv 111000 ,
-.Cm AF11
+.Cm af11
 .Pq Dv 001010 ,
-.Cm AF12
+.Cm af12
 .Pq Dv 001100 ,
-.Cm AF13
+.Cm af13
 .Pq Dv 001110 ,
-.Cm AF21
+.Cm af21
 .Pq Dv 010010 ,
-.Cm AF22
+.Cm af22
 .Pq Dv 010100 ,
-.Cm AF23
+.Cm af23
 .Pq Dv 010110 ,
-.Cm AF31
+.Cm af31
 .Pq Dv 011010 ,
-.Cm AF32
+.Cm af32
 .Pq Dv 011100 ,
-.Cm AF33
+.Cm af33
 .Pq Dv 011110 ,
-.Cm AF41
+.Cm af41
 .Pq Dv 100010 ,
-.Cm AF42
+.Cm af42
 .Pq Dv 100100 ,
-.Cm AF43
+.Cm af43
 .Pq Dv 100110 ,
-.Cm EF
+.Cm ef
 .Pq Dv 101110 ,
-.Cm BE
+.Cm be
 .Pq Dv 000000 .
 Additionally, DSCP value can be specified by number (0..64).
 It is also possible to use the
@@ -1118,8 +1120,22 @@ It is also possible to use the
 keyword with setdscp.
 If the tablearg value is not within the 0..64 range, lower 6 bits of supplied
 value are used.
+.It Cm tcp-setmss Ar mss
+Set the Maximum Segment Size (MSS) in the TCP segment to value
+.Ar mss .
+The kernel module
+.Cm ipfw_pmod
+should be loaded or kernel should have
+.Cm options IPFIREWALL_PMOD
+to be able use this action.
+This command does not change a packet if original MSS value is lower than
+specified value.
+Both TCP over IPv4 and over IPv6 are supported.
+Regardless of matched a packet or not by the
+.Cm tcp-setmss
+rule, the search continues with the next rule.
 .It Cm reass
-Queue and reassemble IP fragments.
+Queue and reassemble IPv4 fragments.
 If the packet is not fragmented, counters are updated and
 processing continues with the next rule.
 If the packet is the last logical fragment, the packet is reassembled and, if
@@ -1157,6 +1173,14 @@ ipfw add reass all from any to any in
 .Ed
 .Pp
 is all you need at the beginning of your ruleset.
+.It Cm abort
+Discard packets that match this rule, and if the packet is an SCTP packet,
+try to send an SCTP packet containing an ABORT chunk.
+The search terminates.
+.It Cm abort6
+Discard packets that match this rule, and if the packet is an SCTP packet,
+try to send an SCTP packet containing an ABORT chunk.
+The search terminates.
 .El
 .Ss RULE BODY
 The body of a rule contains zero or more patterns (such as
@@ -1357,12 +1381,30 @@ or a hostname)
 and mask width of
 .Cm masklen
 bits.
+.It Ar addr Ns / Ns Ar mask
+Matches all IPv6 addresses with base
+.Ar addr
+(specified as allowed by
+.Xr inet_pton
+or a hostname)
+and the mask of
+.Ar mask ,
+specified as allowed by
+.Xr inet_pton.
+As an example, fe::640:0:0/ffff::ffff:ffff:0:0 will match
+fe:*:*:*:0:640:*:*.
+This form is advised only for non-contiguous
+masks.
+It is better to resort to the
+.Ar addr Ns / Ns Ar masklen
+format for contiguous masks, which is more compact and less
+error-prone.
 .El
 .Pp
 No support for sets of IPv6 addresses is provided because IPv6 addresses
 are typically random past the initial prefix.
 .It Ar ports : Bro Ar port | port Ns \&- Ns Ar port Ns Brc Ns Op , Ns Ar ports
-For protocols which support port numbers (such as TCP and UDP), optional
+For protocols which support port numbers (such as SCTP, TCP and UDP), optional
 .Cm ports
 may be specified as one or more ports or port ranges, separated
 by commas but no spaces, and an optional
@@ -1644,7 +1686,7 @@ specified in the same way as
 .It Cm ipversion Ar ver
 Matches IP packets whose IP version field is
 .Ar ver .
-.It Cm keep-state Op Ar flowname
+.It Cm keep-state Op Ar :flowname
 Upon a match, the firewall will create a dynamic rule, whose
 default behaviour is to match bidirectional traffic between
 source and destination IP/port using the same protocol.
@@ -1653,19 +1695,19 @@ The rule has a limited lifetime (controlled by a set of
 variables), and the lifetime is refreshed every time a matching
 packet is found.
 The
-.Ar flowname
+.Ar :flowname
 is used to assign additional to addresses, ports and protocol parameter
 to dynamic rule. It can be used for more accurate matching by
 .Cm check-state
 rule.
 The
-.Cm default
+.Cm :default
 keyword is special name used for compatibility with old rulesets.
 .It Cm layer2
 Matches only layer2 packets, i.e., those passed to
 .Nm
 from ether_demux() and ether_output_frame().
-.It Cm limit Bro Cm src-addr | src-port | dst-addr | dst-port Brc Ar N Op Ar flowname
+.It Cm limit Bro Cm src-addr | src-port | dst-addr | dst-port Brc Ar N Op Ar :flowname
 The firewall will only allow
 .Ar N
 connections with the same
@@ -2268,7 +2310,7 @@ are completely equivalent afterwards).
 Rules created by
 .Cm keep-state
 option also have a
-.Ar flowname
+.Ar :flowname
 taken from it.
 This name is used in matching together with addresses, ports and protocol.
 Dynamic rules will be checked at the first
@@ -2279,23 +2321,23 @@ occurrence, and the action performed upon a match will be the same
 as in the parent rule.
 .Pp
 Note that no additional attributes other than protocol and IP addresses
-and ports and flowname are checked on dynamic rules.
+and ports and :flowname are checked on dynamic rules.
 .Pp
 The typical use of dynamic rules is to keep a closed firewall configuration,
 but let the first TCP SYN packet from the inside network install a
 dynamic rule for the flow so that packets belonging to that session
 will be allowed through the firewall:
 .Pp
-.Dl "ipfw add check-state OUTBOUND"
-.Dl "ipfw add allow tcp from my-subnet to any setup keep-state OUTBOUND"
+.Dl "ipfw add check-state :OUTBOUND"
+.Dl "ipfw add allow tcp from my-subnet to any setup keep-state :OUTBOUND"
 .Dl "ipfw add deny tcp from any to any"
 .Pp
 A similar approach can be used for UDP, where an UDP packet coming
 from the inside will install a dynamic rule to let the response through
 the firewall:
 .Pp
-.Dl "ipfw add check-state OUTBOUND"
-.Dl "ipfw add allow udp from my-subnet to any keep-state OUTBOUND"
+.Dl "ipfw add check-state :OUTBOUND"
+.Dl "ipfw add allow udp from my-subnet to any keep-state :OUTBOUND"
 .Dl "ipfw add deny udp from any to any"
 .Pp
 Dynamic rules expire after some time, which depends on the status
@@ -2465,7 +2507,7 @@ The following parameters can be configured for a pipe:
 .It Cm bw Ar bandwidth | device
 Bandwidth, measured in
 .Sm off
-.Op Cm K | M
+.Op Cm K | M | G
 .Brq Cm bit/s | Byte/s .
 .Sm on
 .Pp
@@ -2862,6 +2904,11 @@ the packets are dropped.
 .Nm
 support in-kernel NAT using the kernel version of
 .Xr libalias 3 .
+The kernel module
+.Cm ipfw_nat
+should be loaded or kernel should have
+.Cm options IPFIREWALL_NAT
+to be able use NAT.
 .Pp
 The nat configuration command is the following:
 .Bd -ragged -offset indent
@@ -2973,7 +3020,7 @@ supports in-kernel IPv6/IPv4 network address and protocol translation.
 Stateful NAT64 translation allows IPv6-only clients to contact IPv4 servers
 using unicast TCP, UDP or ICMP protocols.
 One or more IPv4 addresses assigned to a stateful NAT64 translator are shared
-among serveral IPv6-only clients.
+among several IPv6-only clients.
 When stateful NAT64 is used in conjunction with DNS64, no changes are usually
 required in the IPv6 client or the IPv4 server.
 The kernel module

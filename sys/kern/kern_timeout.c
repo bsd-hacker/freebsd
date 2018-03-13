@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1982, 1986, 1991, 1993
  *	The Regents of the University of California.  All rights reserved.
  * (c) UNIX System Laboratories, Inc.
@@ -262,7 +264,7 @@ cc_cce_migrating(struct callout_cpu *cc, int direct)
 
 /*
  * Kernel low level callwheel initialization
- * called on cpu0 during kernel startup.
+ * called on the BSP during kernel startup.
  */
 static void
 callout_callwheel_init(void *dummy)
@@ -275,7 +277,7 @@ callout_callwheel_init(void *dummy)
 	 * XXX: Clip callout to result of previous function of maxusers
 	 * maximum 384.  This is still huge, but acceptable.
 	 */
-	memset(CC_CPU(0), 0, sizeof(cc_cpu));
+	memset(CC_CPU(curcpu), 0, sizeof(cc_cpu));
 	ncallout = imin(16 + maxproc + maxfiles, 18508);
 	TUNABLE_INT_FETCH("kern.ncallout", &ncallout);
 
@@ -293,7 +295,7 @@ callout_callwheel_init(void *dummy)
 	TUNABLE_INT_FETCH("kern.pin_pcpu_swi", &pin_pcpu_swi);
 
 	/*
-	 * Only cpu0 handles timeout(9) and receives a preallocation.
+	 * Only BSP handles timeout(9) and receives a preallocation.
 	 *
 	 * XXX: Once all timeout(9) consumers are converted this can
 	 * be removed.
@@ -328,7 +330,7 @@ callout_cpu_init(struct callout_cpu *cc, int cpu)
 		cc_cce_cleanup(cc, i);
 	snprintf(cc->cc_ktr_event_name, sizeof(cc->cc_ktr_event_name),
 	    "callwheel cpu %d", cpu);
-	if (cc->cc_callout == NULL)	/* Only cpu0 handles timeout(9) */
+	if (cc->cc_callout == NULL)	/* Only BSP handles timeout(9) */
 		return;
 	for (i = 0; i < ncallout; i++) {
 		c = &cc->cc_callout[i];
@@ -398,7 +400,7 @@ start_softclock(void *dummy)
 		if (cpu == timeout_cpu)
 			continue;
 		cc = CC_CPU(cpu);
-		cc->cc_callout = NULL;	/* Only cpu0 handles timeout(9). */
+		cc->cc_callout = NULL;	/* Only BSP handles timeout(9). */
 		callout_cpu_init(cc, cpu);
 		snprintf(name, sizeof(name), "clock (%d)", cpu);
 		ie = NULL;
@@ -981,6 +983,8 @@ callout_when(sbintime_t sbt, sbintime_t precision, int flags,
 		spinlock_exit();
 #endif
 #endif
+		if (cold && to_sbt == 0)
+			to_sbt = sbinuptime();
 		if ((flags & C_HARDCLOCK) == 0)
 			to_sbt += tick_sbt;
 	} else
@@ -1252,9 +1256,12 @@ again:
 	if (cc_exec_curr(cc, direct) == c) {
 		/*
 		 * Succeed we to stop it or not, we must clear the
-		 * active flag - this is what API users expect.
+		 * active flag - this is what API users expect.  If we're
+		 * draining and the callout is currently executing, first wait
+		 * until it finishes.
 		 */
-		c->c_flags &= ~CALLOUT_ACTIVE;
+		if ((flags & CS_DRAIN) == 0)
+			c->c_flags &= ~CALLOUT_ACTIVE;
 
 		if ((flags & CS_DRAIN) != 0) {
 			/*
@@ -1313,6 +1320,7 @@ again:
 				PICKUP_GIANT();
 				CC_LOCK(cc);
 			}
+			c->c_flags &= ~CALLOUT_ACTIVE;
 		} else if (use_lock &&
 			   !cc_exec_cancel(cc, direct) && (drain == NULL)) {
 			
@@ -1469,7 +1477,7 @@ _callout_init_lock(struct callout *c, struct lock_object *lock, int flags)
 void
 adjust_timeout_calltodo(struct timeval *time_change)
 {
-	register struct callout *p;
+	struct callout *p;
 	unsigned long delta_ticks;
 
 	/* 

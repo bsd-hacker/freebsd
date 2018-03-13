@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
  * All rights reserved.
  *
@@ -135,6 +137,10 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 	struct sockaddr_dl proxydl;
 	char ip6bufs[INET6_ADDRSTRLEN], ip6bufd[INET6_ADDRSTRLEN];
 
+	/* RFC 6980: Nodes MUST silently ignore fragments */
+	if(m->m_flags & M_FRAGMENTED)
+		goto freeit;
+
 	rflag = (V_ip6_forwarding) ? ND_NA_FLAG_ROUTER : 0;
 	if (ND_IFINFO(ifp)->flags & ND6_IFF_ACCEPT_RTADV && V_ip6_norbit_raif)
 		rflag = 0;
@@ -262,8 +268,7 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 		bzero(&info, sizeof(info));
 		info.rti_info[RTAX_GATEWAY] = (struct sockaddr *)&rt_gateway;
 
-		/* Always use the default FIB. */
-		if (rib_lookup_info(RT_DEFAULT_FIB, (struct sockaddr *)&dst6,
+		if (rib_lookup_info(ifp->if_fib, (struct sockaddr *)&dst6,
 		    0, 0, &info) == 0) {
 			if ((info.rti_flags & RTF_ANNOUNCE) != 0 &&
 			    rt_gateway.sdl_family == AF_LINK) {
@@ -485,7 +490,7 @@ nd6_ns_output_fib(struct ifnet *ifp, const struct in6_addr *saddr6,
 			uint32_t scopeid;
 
 			in6_splitscope(&ip6->ip6_dst, &dst6, &scopeid);
-			error = in6_selectsrc_addr(RT_DEFAULT_FIB, &dst6,
+			error = in6_selectsrc_addr(fibnum, &dst6,
 			    scopeid, ifp, &src6, NULL);
 			if (error) {
 				char ip6buf[INET6_ADDRSTRLEN];
@@ -629,6 +634,10 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 	size_t linkhdrsize;
 	int lladdr_off;
 	char ip6bufs[INET6_ADDRSTRLEN], ip6bufd[INET6_ADDRSTRLEN];
+
+	/* RFC 6980: Nodes MUST silently ignore fragments */
+	if(m->m_flags & M_FRAGMENTED)
+		goto freeit;
 
 	if (ip6->ip6_hlim != 255) {
 		nd6log((LOG_ERR,
@@ -885,7 +894,7 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 		LLE_WUNLOCK(ln);
 
 	if (chain != NULL)
-		nd6_flush_holdchain(ifp, ifp, chain, &sin6);
+		nd6_flush_holdchain(ifp, chain, &sin6);
 
 	if (checklink)
 		pfxlist_onlink_check();
@@ -982,7 +991,7 @@ nd6_na_output_fib(struct ifnet *ifp, const struct in6_addr *daddr6_0,
 	 * Select a source whose scope is the same as that of the dest.
 	 */
 	in6_splitscope(&daddr6, &dst6, &scopeid);
-	error = in6_selectsrc_addr(RT_DEFAULT_FIB, &dst6,
+	error = in6_selectsrc_addr(fibnum, &dst6,
 	    scopeid, ifp, &src6, NULL);
 	if (error) {
 		char ip6buf[INET6_ADDRSTRLEN];
@@ -1086,7 +1095,6 @@ nd6_ifptomac(struct ifnet *ifp)
 	case IFT_FDDI:
 	case IFT_IEEE1394:
 	case IFT_L2VLAN:
-	case IFT_IEEE80211:
 	case IFT_INFINIBAND:
 	case IFT_BRIDGE:
 	case IFT_ISO88025:
@@ -1299,7 +1307,8 @@ nd6_dad_stop(struct ifaddr *ifa)
 	 * we were waiting for it to stop, so re-do the lookup.
 	 */
 	nd6_dad_rele(dp);
-	if (nd6_dad_find(ifa, NULL) == NULL)
+	dp = nd6_dad_find(ifa, NULL);
+	if (dp == NULL)
 		return;
 
 	nd6_dad_del(dp);
@@ -1457,7 +1466,6 @@ nd6_dad_duplicated(struct ifaddr *ifa, struct dadq *dp)
 		case IFT_FDDI:
 		case IFT_ATM:
 		case IFT_IEEE1394:
-		case IFT_IEEE80211:
 		case IFT_INFINIBAND:
 			in6 = ia->ia_addr.sin6_addr;
 			if (in6_get_hw_ifid(ifp, &in6) == 0 &&
@@ -1507,17 +1515,11 @@ nd6_dad_ns_output(struct dadq *dp)
 static void
 nd6_dad_ns_input(struct ifaddr *ifa, struct nd_opt_nonce *ndopt_nonce)
 {
-	struct in6_ifaddr *ia;
-	struct ifnet *ifp;
-	const struct in6_addr *taddr6;
 	struct dadq *dp;
 
 	if (ifa == NULL)
 		panic("ifa == NULL in nd6_dad_ns_input");
 
-	ia = (struct in6_ifaddr *)ifa;
-	ifp = ifa->ifa_ifp;
-	taddr6 = &ia->ia_addr.sin6_addr;
 	/* Ignore Nonce option when Enhanced DAD is disabled. */
 	if (V_dad_enhanced == 0)
 		ndopt_nonce = NULL;

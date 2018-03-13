@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2010 Yohanes Nugroho <yohanes@gmail.com>
  * All rights reserved.
  *
@@ -76,7 +78,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/intr.h>
 
 #ifdef FDT
-#include <dev/fdt/fdt_common.h>
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
 #endif

@@ -1,5 +1,7 @@
 /* $FreeBSD$ */
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-NetBSD
+ *
  * Copyright (c) 1998 The NetBSD Foundation, Inc. All rights reserved.
  * Copyright (c) 1998 Lennart Augustsson. All rights reserved.
  * Copyright (c) 2008 Hans Petter Selasky. All rights reserved.
@@ -95,7 +97,6 @@ static struct usb_quirk_entry usb_quirks[USB_DEV_QUIRKS_MAX] = {
 	USB_QUIRK(SILICONPORTALS, YAPPHONE, 0x100, 0x100, UQ_AU_INP_ASYNC),
 	USB_QUIRK(LOGITECH, UN53B, 0x0000, 0xffff, UQ_NO_STRINGS),
 	USB_QUIRK(REALTEK, RTL8196EU, 0x0000, 0xffff, UQ_CFG_INDEX_1),
-	USB_QUIRK(REALTEK, RTL8153, 0x0000, 0xffff, UQ_CFG_INDEX_1),
 	USB_QUIRK(ELSA, MODEM1, 0x0000, 0xffff, UQ_CFG_INDEX_1),
 	USB_QUIRK(PLANEX2, MZKUE150N, 0x0000, 0xffff, UQ_CFG_INDEX_1),
 	USB_QUIRK(CISCOLINKSYS, USB3GIGV1, 0x0000, 0xffff, UQ_CFG_INDEX_1),
@@ -136,6 +137,8 @@ static struct usb_quirk_entry usb_quirks[USB_DEV_QUIRKS_MAX] = {
 	USB_QUIRK(CORSAIR, K60, 0x0000, 0xffff, UQ_KBD_BOOTPROTO),
 	/* Quirk for Corsair Vengeance K70 keyboard */
 	USB_QUIRK(CORSAIR, K70, 0x0000, 0xffff, UQ_KBD_BOOTPROTO),
+	/* Quirk for Corsair K70 RGB keyboard */
+	USB_QUIRK(CORSAIR, K70_RGB, 0x0000, 0xffff, UQ_KBD_BOOTPROTO),
 	/* Quirk for Corsair STRAFE Gaming keyboard */
 	USB_QUIRK(CORSAIR, STRAFE, 0x0000, 0xffff, UQ_KBD_BOOTPROTO),
 	/* umodem(4) device quirks */
@@ -235,6 +238,7 @@ static struct usb_quirk_entry usb_quirks[USB_DEV_QUIRKS_MAX] = {
 	    UQ_MSC_FORCE_PROTO_RBC),
 	USB_QUIRK(INSYSTEM, STORAGE_V2, 0x0000, 0xffff, UQ_MSC_FORCE_WIRE_CBI,
 	    UQ_MSC_FORCE_PROTO_RBC),
+	USB_QUIRK(INTENSO, MEMORY_BOX, 0x0000, 0xffff, UQ_MSC_NO_INQUIRY),
 	USB_QUIRK(IODATA, IU_CD2, 0x0000, 0xffff, UQ_MSC_FORCE_WIRE_BBB,
 	    UQ_MSC_FORCE_PROTO_SCSI),
 	USB_QUIRK(IODATA, DVR_UEH8, 0x0000, 0xffff, UQ_MSC_FORCE_WIRE_BBB,
@@ -242,6 +246,7 @@ static struct usb_quirk_entry usb_quirks[USB_DEV_QUIRKS_MAX] = {
 	USB_QUIRK(IOMEGA, ZIP100, 0x0000, 0xffff, UQ_MSC_FORCE_WIRE_BBB,
 	    UQ_MSC_FORCE_PROTO_SCSI,
 	    UQ_MSC_NO_TEST_UNIT_READY), /* XXX ZIP drives can also use ATAPI */
+	USB_QUIRK(JMICRON, JMS567, 0x0000, 0xffff, UQ_MSC_NO_GETMAXLUN),
 	USB_QUIRK(JMICRON, JM20337, 0x0000, 0xffff, UQ_MSC_FORCE_WIRE_BBB,
 	    UQ_MSC_FORCE_PROTO_SCSI,
 	    UQ_MSC_NO_SYNC_CACHE),
@@ -334,7 +339,7 @@ static struct usb_quirk_entry usb_quirks[USB_DEV_QUIRKS_MAX] = {
 	    UQ_MSC_FORCE_PROTO_SCSI, UQ_MSC_IGNORE_RESIDUE,
 	    UQ_MSC_NO_START_STOP),
 	USB_QUIRK(PROLIFIC, PL2506, 0x0000, 0xffff,
-	    UQ_MSC_NO_SYNC_CACHE),
+	    UQ_MSC_NO_SYNC_CACHE, UQ_MSC_NO_PREVENT_ALLOW),
 	USB_QUIRK_VP(USB_VENDOR_SAMSUNG_TECHWIN,
 	    USB_PRODUCT_SAMSUNG_TECHWIN_DIGIMAX_410, UQ_MSC_FORCE_WIRE_BBB,
 	    UQ_MSC_FORCE_PROTO_SCSI, UQ_MSC_NO_INQUIRY),
@@ -508,6 +513,7 @@ static struct usb_quirk_entry usb_quirks[USB_DEV_QUIRKS_MAX] = {
 	USB_QUIRK(ROLAND, SD20, 0x0000, 0xffff, UQ_AU_VENDOR_CLASS),
 	USB_QUIRK(ROLAND, SD80, 0x0000, 0xffff, UQ_AU_VENDOR_CLASS),
 	USB_QUIRK(ROLAND, UA700, 0x0000, 0xffff, UQ_AU_VENDOR_CLASS),
+	USB_QUIRK(ROLAND, PCR300, 0x0000, 0xffff, UQ_AU_VENDOR_CLASS),
 	USB_QUIRK(EGO, M4U, 0x0000, 0xffff, UQ_SINGLE_CMD_MIDI),
 	USB_QUIRK(LOGILINK, U2M, 0x0000, 0xffff, UQ_SINGLE_CMD_MIDI),
 	USB_QUIRK(MEDELI, DD305, 0x0000, 0xffff, UQ_SINGLE_CMD_MIDI, UQ_MATCH_VENDOR_ONLY),
@@ -519,6 +525,7 @@ static struct usb_quirk_entry usb_quirks[USB_DEV_QUIRKS_MAX] = {
 	/* Non-standard USB AUDIO devices */
 	USB_QUIRK(MAUDIO, FASTTRACKULTRA, 0x0000, 0xffff, UQ_AU_VENDOR_CLASS),
 	USB_QUIRK(MAUDIO, FASTTRACKULTRA8R, 0x0000, 0xffff, UQ_AU_VENDOR_CLASS),
+	USB_QUIRK(CMEDIA, CM6206, 0x0000, 0xffff, UQ_AU_SET_SPDIF_CM6206),
 
 	/*
 	 * Quirks for manufacturers which USB devices does not respond
@@ -605,6 +612,8 @@ static const char *usb_quirk_str[USB_QUIRK_MAX] = {
 	[UQ_AU_VENDOR_CLASS]		= "UQ_AU_VENDOR_CLASS",
 	[UQ_SINGLE_CMD_MIDI]		= "UQ_SINGLE_CMD_MIDI",
 	[UQ_MSC_DYMO_EJECT]		= "UQ_MSC_DYMO_EJECT",
+	[UQ_AU_SET_SPDIF_CM6206]	= "UQ_AU_SET_SPDIF_CM6206",
+	[UQ_WMT_IGNORE]			= "UQ_WMT_IGNORE",
 };
 
 /*------------------------------------------------------------------------*

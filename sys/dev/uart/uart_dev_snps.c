@@ -110,9 +110,7 @@ UART_FDT_CLASS(compat_data);
 static int
 snps_get_clocks(device_t dev, clk_t *baudclk, clk_t *apb_pclk)
 {
-	struct snps_softc *sc;
 
-	sc = device_get_softc(dev);
 	*baudclk = NULL;
 	*apb_pclk = NULL;
 
@@ -136,7 +134,7 @@ snps_probe(device_t dev)
 	struct snps_softc *sc;
 	struct uart_class *uart_class;
 	phandle_t node;
-	uint32_t shift, clock;
+	uint32_t shift, iowidth, clock;
 	uint64_t freq;
 	int error;
 #ifdef EXT_RESOURCES
@@ -159,6 +157,8 @@ snps_probe(device_t dev)
 	node = ofw_bus_get_node(dev);
 	if (OF_getencprop(node, "reg-shift", &shift, sizeof(shift)) <= 0)
 		shift = 0;
+	if (OF_getencprop(node, "reg-io-width", &iowidth, sizeof(iowidth)) <= 0)
+		iowidth = 1;
 	if (OF_getencprop(node, "clock-frequency", &clock, sizeof(clock)) <= 0)
 		clock = 0;
 
@@ -200,7 +200,7 @@ snps_probe(device_t dev)
 	if (bootverbose && clock == 0)
 		device_printf(dev, "could not determine frequency\n");
 
-	error = uart_bus_probe(dev, (int)shift, (int)clock, 0, 0);
+	error = uart_bus_probe(dev, (int)shift, (int)iowidth, (int)clock, 0, 0);
 	if (error != 0)
 		return (error);
 

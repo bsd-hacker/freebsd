@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2008 The FreeBSD Foundation
  * Copyright (c) 2009-2010 Bjoern A. Zeeb <bz@FreeBSD.org>
  * All rights reserved.
@@ -402,8 +404,8 @@ epair_start_locked(struct ifnet *ifp)
 		return;
 
 	/*
-	 * We get patckets here from ether_output via if_handoff()
-	 * and ned to put them into the input queue of the oifp
+	 * We get packets here from ether_output via if_handoff()
+	 * and need to put them into the input queue of the oifp
 	 * and call oifp->if_input() via netisr/epair_sintr().
 	 */
 	oifp = sc->oifp;
@@ -831,7 +833,8 @@ epair_clone_create(struct if_clone *ifc, char *name, size_t len, caddr_t params)
 	ifp->if_start = epair_start;
 	ifp->if_ioctl = epair_ioctl;
 	ifp->if_init  = epair_init;
-	ifp->if_snd.ifq_maxlen = ifqmaxlen;
+	if_setsendqlen(ifp, ifqmaxlen);
+	if_setsendqready(ifp);
 	/* Assign a hopefully unique, locally administered etheraddr. */
 	eaddr[0] = 0x02;
 	eaddr[3] = (ifp->if_index >> 8) & 0xff;
@@ -857,7 +860,8 @@ epair_clone_create(struct if_clone *ifc, char *name, size_t len, caddr_t params)
 	ifp->if_start = epair_start;
 	ifp->if_ioctl = epair_ioctl;
 	ifp->if_init  = epair_init;
-	ifp->if_snd.ifq_maxlen = ifqmaxlen;
+	if_setsendqlen(ifp, ifqmaxlen);
+	if_setsendqready(ifp);
 	/* We need to play some tricks here for the second interface. */
 	strlcpy(name, epairname, len);
 	error = if_clone_create(name, len, (caddr_t)scb);
@@ -978,6 +982,17 @@ vnet_epair_uninit(const void *unused __unused)
 VNET_SYSUNINIT(vnet_epair_uninit, SI_SUB_INIT_IF, SI_ORDER_ANY,
     vnet_epair_uninit, NULL);
 
+static void
+epair_uninit(const void *unused __unused)
+{
+	netisr_unregister(&epair_nh);
+	epair_dpcpu_detach();
+	if (bootverbose)
+		printf("%s unloaded.\n", epairname);
+}
+SYSUNINIT(epair_uninit, SI_SUB_INIT_IF, SI_ORDER_MIDDLE,
+    epair_uninit, NULL);
+
 static int
 epair_modevent(module_t mod, int type, void *data)
 {
@@ -995,10 +1010,7 @@ epair_modevent(module_t mod, int type, void *data)
 			printf("%s initialized.\n", epairname);
 		break;
 	case MOD_UNLOAD:
-		netisr_unregister(&epair_nh);
-		epair_dpcpu_detach();
-		if (bootverbose)
-			printf("%s unloaded.\n", epairname);
+		/* Handled in epair_uninit() */
 		break;
 	default:
 		return (EOPNOTSUPP);

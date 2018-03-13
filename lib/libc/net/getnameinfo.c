@@ -1,6 +1,8 @@
 /*	$KAME: getnameinfo.c,v 1.61 2002/06/27 09:25:47 itojun Exp $	*/
 
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
  * Copyright (c) 2000 Ben Harris.
  * All rights reserved.
@@ -455,7 +457,6 @@ getnameinfo_link(const struct afd *afd,
 		    host, hostlen);
 	/*
 	 * The following have zero-length addresses.
-	 * IFT_ATM	(net/if_atmsubr.c)
 	 * IFT_GIF	(net/if_gif.c)
 	 * IFT_LOOP	(net/if_loop.c)
 	 * IFT_PPP	(net/if_ppp.c, net/if_spppsubr.c)

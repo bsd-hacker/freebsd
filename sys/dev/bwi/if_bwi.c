@@ -1,4 +1,6 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2007 The DragonFly Project.  All rights reserved.
  * 
  * This code is derived from software contributed to The DragonFly Project
@@ -381,6 +383,7 @@ bwi_attach(struct bwi_softc *sc)
 	 */
 	sc->sc_fw_version = BWI_FW_VERSION3;
 	sc->sc_led_idle = (2350 * hz) / 1000;
+	sc->sc_led_ticks = ticks - sc->sc_led_idle;
 	sc->sc_led_blink = 1;
 	sc->sc_txpwr_calib = 1;
 #ifdef BWI_DEBUG
@@ -2930,7 +2933,7 @@ bwi_encap(struct bwi_softc *sc, int idx, struct mbuf *m,
 	struct bwi_mac *mac;
 	struct bwi_txbuf_hdr *hdr;
 	struct ieee80211_frame *wh;
-	const struct ieee80211_txparam *tp;
+	const struct ieee80211_txparam *tp = ni->ni_txparms;
 	uint8_t rate, rate_fb;
 	uint32_t mac_ctrl;
 	uint16_t phy_ctrl;
@@ -2955,7 +2958,6 @@ bwi_encap(struct bwi_softc *sc, int idx, struct mbuf *m,
 	/*
 	 * Find TX rate
 	 */
-	tp = &vap->iv_txparms[ieee80211_chan2mode(ic->ic_curchan)];
 	if (type != IEEE80211_FC0_TYPE_DATA || (m->m_flags & M_EAPOL)) {
 		rate = rate_fb = tp->mgmtrate;
 	} else if (ismcast) {

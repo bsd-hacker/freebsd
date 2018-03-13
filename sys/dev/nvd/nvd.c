@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (C) 2012-2016 Intel Corporation
  * All rights reserved.
  *
@@ -134,6 +136,8 @@ MODULE_DEPEND(nvd, nvme, 1, 1, 1);
 static int
 nvd_load()
 {
+	if (!nvme_use_nvd)
+		return 0;
 
 	TAILQ_INIT(&ctrlr_head);
 	TAILQ_INIT(&disk_head);
@@ -149,6 +153,9 @@ nvd_unload()
 {
 	struct nvd_controller	*ctrlr;
 	struct nvd_disk		*disk;
+
+	if (!nvme_use_nvd)
+		return;
 
 	while (!TAILQ_EMPTY(&ctrlr_head)) {
 		ctrlr = TAILQ_FIRST(&ctrlr_head);
@@ -352,13 +359,11 @@ nvd_new_disk(struct nvme_namespace *ns, void *ctrlr_arg)
 	 */
 	nvme_strvis(disk->d_ident, nvme_ns_get_serial_number(ns),
 	    sizeof(disk->d_ident), NVME_SERIAL_NUMBER_LENGTH);
-
 	nvme_strvis(descr, nvme_ns_get_model_number(ns), sizeof(descr),
 	    NVME_MODEL_NUMBER_LENGTH);
-
-#if __FreeBSD_version >= 900034
 	strlcpy(disk->d_descr, descr, sizeof(descr));
-#endif
+
+	disk->d_rotation_rate = DISK_RR_NON_ROTATING;
 
 	ndisk->ns = ns;
 	ndisk->disk = disk;

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1982, 1986, 1989, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -88,7 +90,7 @@ static MALLOC_DEFINE(M_SYSCTLTMP, "sysctltmp", "sysctl temp output buffer");
  * sysctl requests larger than a single page via an exclusive lock.
  */
 static struct rmlock sysctllock;
-static struct sx sysctlmemlock;
+static struct sx __exclusive_cache_line sysctlmemlock;
 
 #define	SYSCTL_WLOCK()		rm_wlock(&sysctllock)
 #define	SYSCTL_WUNLOCK()	rm_wunlock(&sysctllock)
@@ -188,7 +190,7 @@ sysctl_load_tunable_by_oid_locked(struct sysctl_oid *oidp)
 	struct sysctl_req req;
 	struct sysctl_oid *curr;
 	char *penv = NULL;
-	char path[64];
+	char path[96];
 	ssize_t rem = sizeof(path);
 	ssize_t len;
 	uint8_t val_8;
@@ -323,6 +325,91 @@ sysctl_load_tunable_by_oid_locked(struct sysctl_oid *oidp)
 		freeenv(penv);
 }
 
+static int
+sbuf_printf_drain(void *arg __unused, const char *data, int len)
+{
+
+	return (printf("%.*s", len, data));
+}
+
+/*
+ * Locate the path to a given oid.  Returns the length of the resulting path,
+ * or -1 if the oid was not found.  nodes must have room for CTL_MAXNAME
+ * elements and be NULL initialized.
+ */
+static int
+sysctl_search_oid(struct sysctl_oid **nodes, struct sysctl_oid *needle)
+{
+	int indx;
+
+	SYSCTL_ASSERT_LOCKED();
+	indx = 0;
+	while (indx < CTL_MAXNAME && indx >= 0) {
+		if (nodes[indx] == NULL && indx == 0)
+			nodes[indx] = SLIST_FIRST(&sysctl__children);
+		else if (nodes[indx] == NULL)
+			nodes[indx] = SLIST_FIRST(&nodes[indx - 1]->oid_children);
+		else
+			nodes[indx] = SLIST_NEXT(nodes[indx], oid_link);
+
+		if (nodes[indx] == needle)
+			return (indx + 1);
+
+		if (nodes[indx] == NULL) {
+			indx--;
+			continue;
+		}
+
+		if ((nodes[indx]->oid_kind & CTLTYPE) == CTLTYPE_NODE) {
+			indx++;
+			continue;
+		}
+	}
+	return (-1);
+}
+
+static void
+sysctl_warn_reuse(const char *func, struct sysctl_oid *leaf)
+{
+	struct sysctl_oid *nodes[CTL_MAXNAME];
+	char buf[128];
+	struct sbuf sb;
+	int rc, i;
+
+	(void)sbuf_new(&sb, buf, sizeof(buf), SBUF_FIXEDLEN | SBUF_INCLUDENUL);
+	sbuf_set_drain(&sb, sbuf_printf_drain, NULL);
+
+	sbuf_printf(&sb, "%s: can't re-use a leaf (", __func__);
+
+	memset(nodes, 0, sizeof(nodes));
+	rc = sysctl_search_oid(nodes, leaf);
+	if (rc > 0) {
+		for (i = 0; i < rc; i++)
+			sbuf_printf(&sb, "%s%.*s", nodes[i]->oid_name,
+			    i != (rc - 1), ".");
+	} else {
+		sbuf_printf(&sb, "%s", leaf->oid_name);
+	}
+	sbuf_printf(&sb, ")!\n");
+
+	(void)sbuf_finish(&sb);
+}
+
+#ifdef SYSCTL_DEBUG
+static int
+sysctl_reuse_test(SYSCTL_HANDLER_ARGS)
+{
+	struct rm_priotracker tracker;
+
+	SYSCTL_RLOCK(&tracker);
+	sysctl_warn_reuse(__func__, oidp);
+	SYSCTL_RUNLOCK(&tracker);
+	return (0);
+}
+SYSCTL_PROC(_sysctl, 0, reuse_test, CTLTYPE_STRING|CTLFLAG_RD|CTLFLAG_MPSAFE,
+	0, 0, sysctl_reuse_test, "-", "");
+#endif
+
 void
 sysctl_register_oid(struct sysctl_oid *oidp)
 {
@@ -343,7 +430,7 @@ sysctl_register_oid(struct sysctl_oid *oidp)
 			p->oid_refcnt++;
 			return;
 		} else {
-			printf("can't re-use a leaf (%s)!\n", p->oid_name);
+			sysctl_warn_reuse(__func__, p);
 			return;
 		}
 	}
@@ -422,6 +509,37 @@ retry:
 		/* try to fetch value from kernel environment */
 		sysctl_load_tunable_by_oid_locked(oidp);
 	}
+}
+
+void
+sysctl_register_disabled_oid(struct sysctl_oid *oidp)
+{
+
+	/*
+	 * Mark the leaf as dormant if it's not to be immediately enabled.
+	 * We do not disable nodes as they can be shared between modules
+	 * and it is always safe to access a node.
+	 */
+	KASSERT((oidp->oid_kind & CTLFLAG_DORMANT) == 0,
+	    ("internal flag is set in oid_kind"));
+	if ((oidp->oid_kind & CTLTYPE) != CTLTYPE_NODE)
+		oidp->oid_kind |= CTLFLAG_DORMANT;
+	sysctl_register_oid(oidp);
+}
+
+void
+sysctl_enable_oid(struct sysctl_oid *oidp)
+{
+
+	SYSCTL_ASSERT_WLOCKED();
+	if ((oidp->oid_kind & CTLTYPE) == CTLTYPE_NODE) {
+		KASSERT((oidp->oid_kind & CTLFLAG_DORMANT) == 0,
+		    ("sysctl node is marked as dormant"));
+		return;
+	}
+	KASSERT((oidp->oid_kind & CTLFLAG_DORMANT) != 0,
+	    ("enabling already enabled sysctl oid"));
+	oidp->oid_kind &= ~CTLFLAG_DORMANT;
 }
 
 void
@@ -628,7 +746,8 @@ sysctl_remove_oid_locked(struct sysctl_oid *oidp, int del, int recurse)
 	if (oidp == NULL)
 		return(EINVAL);
 	if ((oidp->oid_kind & CTLFLAG_DYN) == 0) {
-		printf("can't remove non-dynamic nodes!\n");
+		printf("Warning: can't remove non-dynamic nodes (%s)!\n",
+		    oidp->oid_name);
 		return (EINVAL);
 	}
 	/*
@@ -678,6 +797,9 @@ sysctl_remove_oid_locked(struct sysctl_oid *oidp, int del, int recurse)
 			if (oidp->oid_descr)
 				free(__DECONST(char *, oidp->oid_descr),
 				    M_SYSCTLOID);
+			if (oidp->oid_label)
+				free(__DECONST(char *, oidp->oid_label),
+				    M_SYSCTLOID);
 			free(__DECONST(char *, oidp->oid_name), M_SYSCTLOID);
 			free(oidp, M_SYSCTLOID);
 		}
@@ -691,7 +813,8 @@ sysctl_remove_oid_locked(struct sysctl_oid *oidp, int del, int recurse)
 struct sysctl_oid *
 sysctl_add_oid(struct sysctl_ctx_list *clist, struct sysctl_oid_list *parent,
 	int number, const char *name, int kind, void *arg1, intmax_t arg2,
-	int (*handler)(SYSCTL_HANDLER_ARGS), const char *fmt, const char *descr)
+	int (*handler)(SYSCTL_HANDLER_ARGS), const char *fmt, const char *descr,
+	const char *label)
 {
 	struct sysctl_oid *oidp;
 
@@ -710,8 +833,8 @@ sysctl_add_oid(struct sysctl_ctx_list *clist, struct sysctl_oid_list *parent,
 			SYSCTL_WUNLOCK();
 			return (oidp);
 		} else {
+			sysctl_warn_reuse(__func__, oidp);
 			SYSCTL_WUNLOCK();
-			printf("can't re-use a leaf (%s)!\n", name);
 			return (NULL);
 		}
 	}
@@ -728,6 +851,8 @@ sysctl_add_oid(struct sysctl_ctx_list *clist, struct sysctl_oid_list *parent,
 	oidp->oid_fmt = fmt;
 	if (descr != NULL)
 		oidp->oid_descr = strdup(descr, M_SYSCTLOID);
+	if (label != NULL)
+		oidp->oid_label = strdup(label, M_SYSCTLOID);
 	/* Update the context, if used */
 	if (clist != NULL)
 		sysctl_ctx_entry_add(clist, oidp);
@@ -815,7 +940,8 @@ SYSINIT(sysctl, SI_SUB_KMEM, SI_ORDER_FIRST, sysctl_register_all, 0);
  * {0,2,...}	return the next OID.
  * {0,3}	return the OID of the name in "new"
  * {0,4,...}	return the kind & format info for the "..." OID.
- * {0,5,...}	return the description the "..." OID.
+ * {0,5,...}	return the description of the "..." OID.
+ * {0,6,...}	return the aggregation label of the "..." OID.
  */
 
 #ifdef SYSCTL_DEBUG
@@ -964,7 +1090,7 @@ sysctl_sysctl_next_ls(struct sysctl_oid_list *lsp, int *name, u_int namelen,
 		*next = oidp->oid_number;
 		*oidpp = oidp;
 
-		if (oidp->oid_kind & CTLFLAG_SKIP)
+		if ((oidp->oid_kind & (CTLFLAG_SKIP | CTLFLAG_DORMANT)) != 0)
 			continue;
 
 		if (!namelen) {
@@ -1085,17 +1211,21 @@ sysctl_sysctl_name2oid(SYSCTL_HANDLER_ARGS)
 	int error, oid[CTL_MAXNAME], len = 0;
 	struct sysctl_oid *op = NULL;
 	struct rm_priotracker tracker;
+	char buf[32];
 
 	if (!req->newlen) 
 		return (ENOENT);
 	if (req->newlen >= MAXPATHLEN)	/* XXX arbitrary, undocumented */
 		return (ENAMETOOLONG);
 
-	p = malloc(req->newlen+1, M_SYSCTL, M_WAITOK);
+	p = buf;
+	if (req->newlen >= sizeof(buf))
+		p = malloc(req->newlen+1, M_SYSCTL, M_WAITOK);
 
 	error = SYSCTL_IN(req, p, req->newlen);
 	if (error) {
-		free(p, M_SYSCTL);
+		if (p != buf)
+			free(p, M_SYSCTL);
 		return (error);
 	}
 
@@ -1105,7 +1235,8 @@ sysctl_sysctl_name2oid(SYSCTL_HANDLER_ARGS)
 	error = name2oid(p, oid, &len, &op);
 	SYSCTL_RUNLOCK(&tracker);
 
-	free(p, M_SYSCTL);
+	if (p != buf)
+		free(p, M_SYSCTL);
 
 	if (error)
 		return (error);
@@ -1175,6 +1306,31 @@ sysctl_sysctl_oiddescr(SYSCTL_HANDLER_ARGS)
 
 static SYSCTL_NODE(_sysctl, 5, oiddescr, CTLFLAG_RD|CTLFLAG_MPSAFE|CTLFLAG_CAPRD,
     sysctl_sysctl_oiddescr, "");
+
+static int
+sysctl_sysctl_oidlabel(SYSCTL_HANDLER_ARGS)
+{
+	struct sysctl_oid *oid;
+	struct rm_priotracker tracker;
+	int error;
+
+	SYSCTL_RLOCK(&tracker);
+	error = sysctl_find_oid(arg1, arg2, &oid, NULL, req);
+	if (error)
+		goto out;
+
+	if (oid->oid_label == NULL) {
+		error = ENOENT;
+		goto out;
+	}
+	error = SYSCTL_OUT(req, oid->oid_label, strlen(oid->oid_label) + 1);
+ out:
+	SYSCTL_RUNLOCK(&tracker);
+	return (error);
+}
+
+static SYSCTL_NODE(_sysctl, 6, oidlabel,
+    CTLFLAG_RD | CTLFLAG_MPSAFE | CTLFLAG_CAPRD, sysctl_sysctl_oidlabel, "");
 
 /*
  * Default "handler" functions.
@@ -1760,6 +1916,8 @@ sysctl_find_oid(int *name, u_int namelen, struct sysctl_oid **noid,
 			}
 			lsp = SYSCTL_CHILDREN(oid);
 		} else if (indx == namelen) {
+			if ((oid->oid_kind & CTLFLAG_DORMANT) != 0)
+				return (ENOENT);
 			*noid = oid;
 			if (nindx != NULL)
 				*nindx = indx;
@@ -1943,16 +2101,9 @@ userland_sysctl(struct thread *td, int *name, u_int namelen, void *old,
 		}
 	}
 	req.validlen = req.oldlen;
-
-	if (old) {
-		if (!useracc(old, req.oldlen, VM_PROT_WRITE))
-			return (EFAULT);
-		req.oldptr= old;
-	}
+	req.oldptr = old;
 
 	if (new != NULL) {
-		if (!useracc(new, newlen, VM_PROT_READ))
-			return (EFAULT);
 		req.newlen = newlen;
 		req.newptr = new;
 	}
@@ -1965,12 +2116,11 @@ userland_sysctl(struct thread *td, int *name, u_int namelen, void *old,
 	if (KTRPOINT(curthread, KTR_SYSCTL))
 		ktrsysctl(name, namelen);
 #endif
-
-	if (req.oldptr && req.oldlen > PAGE_SIZE) {
+	memlocked = 0;
+	if (req.oldptr && req.oldlen > 4 * PAGE_SIZE) {
 		memlocked = 1;
 		sx_xlock(&sysctlmemlock);
-	} else
-		memlocked = 0;
+	}
 	CURVNET_SET(TD_TO_VNET(td));
 
 	for (;;) {

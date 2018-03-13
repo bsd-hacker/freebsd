@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1989, 1993
  *	The Regents of the University of California.
  * Copyright (c) 2005 Robert N. M. Watson
@@ -104,6 +106,7 @@ struct ktr_request {
 		struct	ktr_csw ktr_csw;
 		struct	ktr_fault ktr_fault;
 		struct	ktr_faultend ktr_faultend;
+		struct  ktr_struct_array ktr_struct_array;
 	} ktr_data;
 	STAILQ_ENTRY(ktr_request) ktr_list;
 };
@@ -123,6 +126,7 @@ static int data_lengths[] = {
 	[KTR_CAPFAIL] = sizeof(struct ktr_cap_fail),
 	[KTR_FAULT] = sizeof(struct ktr_fault),
 	[KTR_FAULTEND] = sizeof(struct ktr_faultend),
+	[KTR_STRUCT_ARRAY] = sizeof(struct ktr_struct_array),
 };
 
 static STAILQ_HEAD(, ktr_request) ktr_free;
@@ -132,7 +136,7 @@ static SYSCTL_NODE(_kern, OID_AUTO, ktrace, CTLFLAG_RD, 0, "KTRACE options");
 static u_int ktr_requestpool = KTRACE_REQUEST_POOL;
 TUNABLE_INT("kern.ktrace.request_pool", &ktr_requestpool);
 
-static u_int ktr_geniosize = PAGE_SIZE;
+u_int ktr_geniosize = PAGE_SIZE;
 SYSCTL_UINT(_kern_ktrace, OID_AUTO, genio_size, CTLFLAG_RWTUN, &ktr_geniosize,
     0, "Maximum size of genio event payload");
 
@@ -437,9 +441,7 @@ ktr_freeproc(struct proc *p, struct ucred **uc, struct vnode **vp)
 }
 
 void
-ktrsyscall(code, narg, args)
-	int code, narg;
-	register_t args[];
+ktrsyscall(int code, int narg, register_t args[])
 {
 	struct ktr_request *req;
 	struct ktr_syscall *ktp;
@@ -468,9 +470,7 @@ ktrsyscall(code, narg, args)
 }
 
 void
-ktrsysret(code, error, retval)
-	int code, error;
-	register_t retval;
+ktrsysret(int code, int error, register_t retval)
 {
 	struct ktr_request *req;
 	struct ktr_sysret *ktp;
@@ -637,9 +637,7 @@ ktrnamei(path)
 }
 
 void
-ktrsysctl(name, namelen)
-	int *name;
-	u_int namelen;
+ktrsysctl(int *name, u_int namelen)
 {
 	struct ktr_request *req;
 	u_int mib[CTL_MAXNAME + 2];
@@ -671,11 +669,7 @@ ktrsysctl(name, namelen)
 }
 
 void
-ktrgenio(fd, rw, uio, error)
-	int fd;
-	enum uio_rw rw;
-	struct uio *uio;
-	int error;
+ktrgenio(int fd, enum uio_rw rw, struct uio *uio, int error)
 {
 	struct ktr_request *req;
 	struct ktr_genio *ktg;
@@ -710,11 +704,7 @@ ktrgenio(fd, rw, uio, error)
 }
 
 void
-ktrpsig(sig, action, mask, code)
-	int sig;
-	sig_t action;
-	sigset_t *mask;
-	int code;
+ktrpsig(int sig, sig_t action, sigset_t *mask, int code)
 {
 	struct thread *td = curthread;
 	struct ktr_request *req;
@@ -733,9 +723,7 @@ ktrpsig(sig, action, mask, code)
 }
 
 void
-ktrcsw(out, user, wmesg)
-	int out, user;
-	const char *wmesg;
+ktrcsw(int out, int user, const char *wmesg)
 {
 	struct thread *td = curthread;
 	struct ktr_request *req;
@@ -756,10 +744,7 @@ ktrcsw(out, user, wmesg)
 }
 
 void
-ktrstruct(name, data, datalen)
-	const char *name;
-	void *data;
-	size_t datalen;
+ktrstruct(const char *name, const void *data, size_t datalen)
 {
 	struct ktr_request *req;
 	char *buf;
@@ -782,10 +767,54 @@ ktrstruct(name, data, datalen)
 }
 
 void
-ktrcapfail(type, needed, held)
-	enum ktr_cap_fail_type type;
-	const cap_rights_t *needed;
-	const cap_rights_t *held;
+ktrstructarray(const char *name, enum uio_seg seg, const void *data,
+    int num_items, size_t struct_size)
+{
+	struct ktr_request *req;
+	struct ktr_struct_array *ksa;
+	char *buf;
+	size_t buflen, datalen, namelen;
+	int max_items;
+
+	/* Trim array length to genio size. */
+	max_items = ktr_geniosize / struct_size;
+	if (num_items > max_items) {
+		if (max_items == 0)
+			num_items = 1;
+		else
+			num_items = max_items;
+	}
+	datalen = num_items * struct_size;
+
+	if (data == NULL)
+		datalen = 0;
+
+	namelen = strlen(name) + 1;
+	buflen = namelen + datalen;
+	buf = malloc(buflen, M_KTRACE, M_WAITOK);
+	strcpy(buf, name);
+	if (seg == UIO_SYSSPACE)
+		bcopy(data, buf + namelen, datalen);
+	else {
+		if (copyin(data, buf + namelen, datalen) != 0) {
+			free(buf, M_KTRACE);
+			return;
+		}
+	}
+	if ((req = ktr_getrequest(KTR_STRUCT_ARRAY)) == NULL) {
+		free(buf, M_KTRACE);
+		return;
+	}
+	ksa = &req->ktr_data.ktr_struct_array;
+	ksa->struct_size = struct_size;
+	req->ktr_buffer = buf;
+	req->ktr_header.ktr_len = buflen;
+	ktr_submitrequest(curthread, req);
+}
+
+void
+ktrcapfail(enum ktr_cap_fail_type type, const cap_rights_t *needed,
+    const cap_rights_t *held)
 {
 	struct thread *td = curthread;
 	struct ktr_request *req;
@@ -809,9 +838,7 @@ ktrcapfail(type, needed, held)
 }
 
 void
-ktrfault(vaddr, type)
-	vm_offset_t vaddr;
-	int type;
+ktrfault(vm_offset_t vaddr, int type)
 {
 	struct thread *td = curthread;
 	struct ktr_request *req;
@@ -828,8 +855,7 @@ ktrfault(vaddr, type)
 }
 
 void
-ktrfaultend(result)
-	int result;
+ktrfaultend(int result)
 {
 	struct thread *td = curthread;
 	struct ktr_request *req;
@@ -857,13 +883,11 @@ struct ktrace_args {
 #endif
 /* ARGSUSED */
 int
-sys_ktrace(td, uap)
-	struct thread *td;
-	register struct ktrace_args *uap;
+sys_ktrace(struct thread *td, struct ktrace_args *uap)
 {
 #ifdef KTRACE
-	register struct vnode *vp = NULL;
-	register struct proc *p;
+	struct vnode *vp = NULL;
+	struct proc *p;
 	struct pgrp *pg;
 	int facs = uap->facs & ~KTRFAC_ROOT;
 	int ops = KTROP(uap->ops);
@@ -1002,9 +1026,7 @@ done:
 
 /* ARGSUSED */
 int
-sys_utrace(td, uap)
-	struct thread *td;
-	register struct utrace_args *uap;
+sys_utrace(struct thread *td, struct utrace_args *uap)
 {
 
 #ifdef KTRACE
@@ -1038,11 +1060,7 @@ sys_utrace(td, uap)
 
 #ifdef KTRACE
 static int
-ktrops(td, p, ops, facs, vp)
-	struct thread *td;
-	struct proc *p;
-	int ops, facs;
-	struct vnode *vp;
+ktrops(struct thread *td, struct proc *p, int ops, int facs, struct vnode *vp)
 {
 	struct vnode *tracevp = NULL;
 	struct ucred *tracecred = NULL;
@@ -1093,14 +1111,11 @@ ktrops(td, p, ops, facs, vp)
 }
 
 static int
-ktrsetchildren(td, top, ops, facs, vp)
-	struct thread *td;
-	struct proc *top;
-	int ops, facs;
-	struct vnode *vp;
+ktrsetchildren(struct thread *td, struct proc *top, int ops, int facs,
+    struct vnode *vp)
 {
-	register struct proc *p;
-	register int ret = 0;
+	struct proc *p;
+	int ret = 0;
 
 	p = top;
 	PROC_LOCK_ASSERT(p, MA_OWNED);
@@ -1260,9 +1275,7 @@ ktr_writerequest(struct thread *td, struct ktr_request *req)
  * so, only root may further change it.
  */
 static int
-ktrcanset(td, targetp)
-	struct thread *td;
-	struct proc *targetp;
+ktrcanset(struct thread *td, struct proc *targetp)
 {
 
 	PROC_LOCK_ASSERT(targetp, MA_OWNED);

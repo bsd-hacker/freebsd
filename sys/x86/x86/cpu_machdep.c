@@ -47,14 +47,13 @@ __FBSDID("$FreeBSD$");
 #include "opt_ddb.h"
 #include "opt_inet.h"
 #include "opt_isa.h"
+#include "opt_kdb.h"
 #include "opt_kstack_pages.h"
 #include "opt_maxmem.h"
 #include "opt_mp_watchdog.h"
 #include "opt_platform.h"
 #ifdef __i386__
-#include "opt_npx.h"
 #include "opt_apic.h"
-#include "opt_xbox.h"
 #endif
 
 #include <sys/param.h>
@@ -129,12 +128,26 @@ acpi_cpu_c1(void)
 	__asm __volatile("sti; hlt");
 }
 
+/*
+ * Use mwait to pause execution while waiting for an interrupt or
+ * another thread to signal that there is more work.
+ *
+ * NOTE: Interrupts will cause a wakeup; however, this function does
+ * not enable interrupt handling. The caller is responsible to enable
+ * interrupts.
+ */
 void
 acpi_cpu_idle_mwait(uint32_t mwait_hint)
 {
 	int *state;
 
 	/*
+	 * A comment in Linux patch claims that 'CPUs run faster with
+	 * speculation protection disabled. All CPU threads in a core
+	 * must disable speculation protection for it to be
+	 * disabled. Disable it while we are idle so the other
+	 * hyperthread can run fast.'
+	 *
 	 * XXXKIB.  Software coordination mode should be supported,
 	 * but all Intel CPUs provide hardware coordination.
 	 */
@@ -143,9 +156,11 @@ acpi_cpu_idle_mwait(uint32_t mwait_hint)
 	KASSERT(*state == STATE_SLEEPING,
 		("cpu_mwait_cx: wrong monitorbuf state"));
 	*state = STATE_MWAIT;
+	handle_ibrs_entry();
 	cpu_monitor(state, 0, 0);
 	if (*state == STATE_MWAIT)
 		cpu_mwait(MWAIT_INTRBREAK, mwait_hint);
+	handle_ibrs_exit();
 
 	/*
 	 * We should exit on any event that interrupts mwait, because
@@ -242,7 +257,6 @@ static int	idle_mwait = 1;		/* Use MONITOR/MWAIT for short idle. */
 SYSCTL_INT(_machdep, OID_AUTO, idle_mwait, CTLFLAG_RWTUN, &idle_mwait,
     0, "Use MONITOR/MWAIT for short idle");
 
-#ifndef PC98
 static void
 cpu_idle_acpi(sbintime_t sbt)
 {
@@ -261,7 +275,6 @@ cpu_idle_acpi(sbintime_t sbt)
 		acpi_cpu_c1();
 	*state = STATE_RUNNING;
 }
-#endif /* !PC98 */
 
 static void
 cpu_idle_hlt(sbintime_t sbt)
@@ -368,11 +381,7 @@ cpu_probe_amdc1e(void)
 	}
 }
 
-#if defined(__i386__) && defined(PC98)
-void (*cpu_idle_fn)(sbintime_t) = cpu_idle_hlt;
-#else
 void (*cpu_idle_fn)(sbintime_t) = cpu_idle_acpi;
-#endif
 
 void
 cpu_idle(int busy)
@@ -449,9 +458,7 @@ struct {
 	{ cpu_idle_spin, "spin" },
 	{ cpu_idle_mwait, "mwait" },
 	{ cpu_idle_hlt, "hlt" },
-#if !defined(__i386__) || !defined(PC98)
 	{ cpu_idle_acpi, "acpi" },
-#endif
 	{ NULL, NULL }
 };
 
@@ -468,11 +475,9 @@ idle_sysctl_available(SYSCTL_HANDLER_ARGS)
 		if (strstr(idle_tbl[i].id_name, "mwait") &&
 		    (cpu_feature2 & CPUID2_MON) == 0)
 			continue;
-#if !defined(__i386__) || !defined(PC98)
 		if (strcmp(idle_tbl[i].id_name, "acpi") == 0 &&
 		    cpu_idle_hook == NULL)
 			continue;
-#endif
 		p += sprintf(p, "%s%s", p != avail ? ", " : "",
 		    idle_tbl[i].id_name);
 	}
@@ -507,11 +512,9 @@ idle_sysctl(SYSCTL_HANDLER_ARGS)
 		if (strstr(idle_tbl[i].id_name, "mwait") &&
 		    (cpu_feature2 & CPUID2_MON) == 0)
 			continue;
-#if !defined(__i386__) || !defined(PC98)
 		if (strcmp(idle_tbl[i].id_name, "acpi") == 0 &&
 		    cpu_idle_hook == NULL)
 			continue;
-#endif
 		if (strcmp(idle_tbl[i].id_name, buf))
 			continue;
 		cpu_idle_fn = idle_tbl[i].id_fn;
@@ -522,3 +525,99 @@ idle_sysctl(SYSCTL_HANDLER_ARGS)
 
 SYSCTL_PROC(_machdep, OID_AUTO, idle, CTLTYPE_STRING | CTLFLAG_RW, 0, 0,
     idle_sysctl, "A", "currently selected idle function");
+
+static int panic_on_nmi = 1;
+SYSCTL_INT(_machdep, OID_AUTO, panic_on_nmi, CTLFLAG_RWTUN,
+    &panic_on_nmi, 0,
+    "Panic on NMI");
+int nmi_is_broadcast = 1;
+SYSCTL_INT(_machdep, OID_AUTO, nmi_is_broadcast, CTLFLAG_RWTUN,
+    &nmi_is_broadcast, 0,
+    "Chipset NMI is broadcast");
+#ifdef KDB
+int kdb_on_nmi = 1;
+SYSCTL_INT(_machdep, OID_AUTO, kdb_on_nmi, CTLFLAG_RWTUN,
+    &kdb_on_nmi, 0,
+    "Go to KDB on NMI");
+#endif
+
+#ifdef DEV_ISA
+void
+nmi_call_kdb(u_int cpu, u_int type, struct trapframe *frame)
+{
+
+	/* machine/parity/power fail/"kitchen sink" faults */
+	if (isa_nmi(frame->tf_err) == 0) {
+#ifdef KDB
+		/*
+		 * NMI can be hooked up to a pushbutton for debugging.
+		 */
+		if (kdb_on_nmi) {
+			printf("NMI/cpu%d ... going to debugger\n", cpu);
+			kdb_trap(type, 0, frame);
+		}
+#endif /* KDB */
+	} else if (panic_on_nmi) {
+		panic("NMI indicates hardware failure");
+	}
+}
+#endif
+
+void
+nmi_handle_intr(u_int type, struct trapframe *frame)
+{
+
+#ifdef DEV_ISA
+#ifdef SMP
+	if (nmi_is_broadcast) {
+		nmi_call_kdb_smp(type, frame);
+		return;
+	}
+#endif
+	nmi_call_kdb(PCPU_GET(cpuid), type, frame);
+#endif
+}
+
+int hw_ibrs_active;
+int hw_ibrs_disable = 1;
+
+SYSCTL_INT(_hw, OID_AUTO, ibrs_active, CTLFLAG_RD, &hw_ibrs_active, 0,
+    "Indirect Branch Restricted Speculation active");
+
+void
+hw_ibrs_recalculate(void)
+{
+	uint64_t v;
+
+	if ((cpu_ia32_arch_caps & IA32_ARCH_CAP_IBRS_ALL) != 0) {
+		if (hw_ibrs_disable) {
+			v= rdmsr(MSR_IA32_SPEC_CTRL);
+			v &= ~(uint64_t)IA32_SPEC_CTRL_IBRS;
+			wrmsr(MSR_IA32_SPEC_CTRL, v);
+		} else {
+			v= rdmsr(MSR_IA32_SPEC_CTRL);
+			v |= IA32_SPEC_CTRL_IBRS;
+			wrmsr(MSR_IA32_SPEC_CTRL, v);
+		}
+		return;
+	}
+	hw_ibrs_active = (cpu_stdext_feature3 & CPUID_STDEXT3_IBPB) != 0 &&
+	    !hw_ibrs_disable;
+}
+
+static int
+hw_ibrs_disable_handler(SYSCTL_HANDLER_ARGS)
+{
+	int error, val;
+
+	val = hw_ibrs_disable;
+	error = sysctl_handle_int(oidp, &val, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	hw_ibrs_disable = val != 0;
+	hw_ibrs_recalculate();
+	return (0);
+}
+SYSCTL_PROC(_hw, OID_AUTO, ibrs_disable, CTLTYPE_INT | CTLFLAG_RWTUN |
+    CTLFLAG_NOFETCH | CTLFLAG_MPSAFE, NULL, 0, hw_ibrs_disable_handler, "I",
+    "Disable Indirect Branch Restricted Speculation");

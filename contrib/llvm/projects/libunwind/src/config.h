@@ -6,7 +6,7 @@
 // Source Licenses. See LICENSE.TXT for details.
 //
 //
-//  Defines macros used within libuwind project.
+//  Defines macros used within libunwind project.
 //
 //===----------------------------------------------------------------------===//
 
@@ -71,7 +71,7 @@
     (!defined(__APPLE__) && defined(__arm__)) ||                               \
     (defined(__arm64__) || defined(__aarch64__)) ||                            \
     (defined(__APPLE__) && defined(__mips__)) ||                               \
-    defined(__riscv__)
+    defined(__riscv)
 #define _LIBUNWIND_BUILD_ZERO_COST_APIS 1
 #else
 #define _LIBUNWIND_BUILD_ZERO_COST_APIS 0
@@ -84,7 +84,7 @@
     fflush(stderr);                                                            \
     abort();                                                                   \
   } while (0)
-#define _LIBUNWIND_LOG(msg, ...) fprintf(stderr, "libuwind: " msg, __VA_ARGS__)
+#define _LIBUNWIND_LOG(msg, ...) fprintf(stderr, "libunwind: " msg "\n", __VA_ARGS__)
 
 // Macros that define away in non-Debug builds
 #ifdef NDEBUG

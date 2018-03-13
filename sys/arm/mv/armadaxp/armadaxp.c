@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2011 Semihalf.
  * All rights reserved.
  *
@@ -40,7 +42,6 @@ __FBSDID("$FreeBSD$");
 #include <arm/mv/mvreg.h>
 #include <arm/mv/mvvar.h>
 
-#include <dev/fdt/fdt_common.h>
 #include <dev/ofw/openfirm.h>
 
 #include <machine/fdt.h>
@@ -135,6 +136,13 @@ get_tclk(void)
 		return (TCLK_250MHZ);
 	else
 		return (TCLK_200MHZ);
+}
+
+uint32_t
+get_cpu_freq(void)
+{
+
+	return (0);
 }
 
 static uint32_t

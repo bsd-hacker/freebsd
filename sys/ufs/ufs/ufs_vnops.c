@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1982, 1986, 1989, 1993, 1995
  *	The Regents of the University of California.  All rights reserved.
  * (c) UNIX System Laboratories, Inc.
@@ -15,7 +17,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -105,7 +107,7 @@ static vop_create_t	ufs_create;
 static vop_getattr_t	ufs_getattr;
 static vop_ioctl_t	ufs_ioctl;
 static vop_link_t	ufs_link;
-static int ufs_makeinode(int mode, struct vnode *, struct vnode **, struct componentname *);
+static int ufs_makeinode(int mode, struct vnode *, struct vnode **, struct componentname *, const char *);
 static vop_markatime_t	ufs_markatime;
 static vop_mkdir_t	ufs_mkdir;
 static vop_mknod_t	ufs_mknod;
@@ -122,7 +124,6 @@ static vop_symlink_t	ufs_symlink;
 static vop_whiteout_t	ufs_whiteout;
 static vop_close_t	ufsfifo_close;
 static vop_kqfilter_t	ufsfifo_kqfilter;
-static vop_pathconf_t	ufsfifo_pathconf;
 
 SYSCTL_NODE(_vfs, OID_AUTO, ufs, CTLFLAG_RD, 0, "UFS filesystem");
 
@@ -204,7 +205,7 @@ ufs_create(ap)
 
 	error =
 	    ufs_makeinode(MAKEIMODE(ap->a_vap->va_type, ap->a_vap->va_mode),
-	    ap->a_dvp, ap->a_vpp, ap->a_cnp);
+	    ap->a_dvp, ap->a_vpp, ap->a_cnp, "ufs_create");
 	if (error != 0)
 		return (error);
 	if ((ap->a_cnp->cn_flags & MAKEENTRY) != 0)
@@ -232,7 +233,7 @@ ufs_mknod(ap)
 	int error;
 
 	error = ufs_makeinode(MAKEIMODE(vap->va_type, vap->va_mode),
-	    ap->a_dvp, vpp, ap->a_cnp);
+	    ap->a_dvp, vpp, ap->a_cnp, "ufs_mknod");
 	if (error)
 		return (error);
 	ip = VTOI(*vpp);
@@ -942,6 +943,17 @@ out:
 	return (error);
 }
 
+static void
+print_bad_link_count(const char *funcname, struct vnode *dvp)
+{
+	struct inode *dip;
+
+	dip = VTOI(dvp);
+	uprintf("%s: Bad link count %d on parent inode %jd in file system %s\n",
+	    funcname, dip->i_effnlink, (intmax_t)dip->i_number,
+	    dvp->v_mount->mnt_stat.f_mntonname);
+}
+
 /*
  * link vnode call
  */
@@ -964,11 +976,13 @@ ufs_link(ap)
 	if ((cnp->cn_flags & HASBUF) == 0)
 		panic("ufs_link: no name");
 #endif
-	if (VTOI(tdvp)->i_effnlink < 2)
-		panic("ufs_link: Bad link count %d on parent",
-		    VTOI(tdvp)->i_effnlink);
+	if (VTOI(tdvp)->i_effnlink < 2) {
+		print_bad_link_count("ufs_link", tdvp);
+		error = EINVAL;
+		goto out;
+	}
 	ip = VTOI(vp);
-	if ((nlink_t)ip->i_nlink >= LINK_MAX) {
+	if (ip->i_nlink >= UFS_LINK_MAX) {
 		error = EMLINK;
 		goto out;
 	}
@@ -1040,7 +1054,7 @@ ufs_whiteout(ap)
 			panic("ufs_whiteout: old format filesystem");
 #endif
 
-		newdir.d_ino = WINO;
+		newdir.d_ino = UFS_WINO;
 		newdir.d_namlen = cnp->cn_namelen;
 		bcopy(cnp->cn_nameptr, newdir.d_name, (unsigned)cnp->cn_namelen + 1);
 		newdir.d_type = DT_WHT;
@@ -1253,7 +1267,7 @@ relock:
 	doingdirectory = 0;
 	newparent = 0;
 	ino = fip->i_number;
-	if (fip->i_nlink >= LINK_MAX) {
+	if (fip->i_nlink >= UFS_LINK_MAX) {
 		error = EMLINK;
 		goto unlockout;
 	}
@@ -1356,7 +1370,7 @@ relock:
 			 * actual link modification is completed when
 			 * .. is rewritten below.
 			 */
-			if ((nlink_t)tdp->i_nlink >= LINK_MAX) {
+			if (tdp->i_nlink >= UFS_LINK_MAX) {
 				error = EMLINK;
 				goto bad;
 			}
@@ -1531,8 +1545,9 @@ unlockout:
 		error = UFS_TRUNCATE(tdvp, endoff, IO_NORMAL |
 		    (DOINGASYNC(tdvp) ? 0 : IO_SYNC), tcnp->cn_cred);
 		if (error != 0)
-			vn_printf(tdvp, "ufs_rename: failed to truncate "
-			    "err %d", error);
+			vn_printf(tdvp,
+			    "ufs_rename: failed to truncate, error %d\n",
+			    error);
 #ifdef UFS_DIRHASH
 		else if (tdp->i_dirhash != NULL)
 			ufsdirhash_dirtrunc(tdp, endoff);
@@ -1710,10 +1725,10 @@ ufs_do_posix1e_acl_inheritance_file(struct vnode *dvp, struct vnode *tvp,
 		 * XXX: This should not happen, as EOPNOTSUPP above was
 		 * supposed to free acl.
 		 */
-		printf("ufs_makeinode: VOP_GETACL() but no "
-		    "VOP_SETACL()\n");
-		/* panic("ufs_makeinode: VOP_GETACL() but no "
-		    "VOP_SETACL()"); */
+		printf("ufs_do_posix1e_acl_inheritance_file: VOP_GETACL() "
+		    "but no VOP_SETACL()\n");
+		/* panic("ufs_do_posix1e_acl_inheritance_file: VOP_GETACL() "
+		    "but no VOP_SETACL()"); */
 		break;
 
 	default:
@@ -1780,7 +1795,7 @@ ufs_mkdir(ap)
 		panic("ufs_mkdir: no name");
 #endif
 	dp = VTOI(dvp);
-	if ((nlink_t)dp->i_nlink >= LINK_MAX) {
+	if (dp->i_nlink >= UFS_LINK_MAX) {
 		error = EMLINK;
 		goto out;
 	}
@@ -1791,6 +1806,11 @@ ufs_mkdir(ap)
 	 * but not have it entered in the parent directory. The entry is
 	 * made later after writing "." and ".." entries.
 	 */
+	if (dp->i_effnlink < 2) {
+		print_bad_link_count("ufs_mkdir", dvp);
+		error = EINVAL;
+		goto out;
+	}
 	error = UFS_VALLOC(dvp, dmode, cnp->cn_cred, &tvp);
 	if (error)
 		goto out;
@@ -2021,13 +2041,12 @@ ufs_rmdir(ap)
 	 * tries to remove a locally mounted on directory).
 	 */
 	error = 0;
-	if (ip->i_effnlink < 2) {
+	if (dp->i_effnlink <= 2) {
+		if (dp->i_effnlink == 2)
+			print_bad_link_count("ufs_rmdir", dvp);
 		error = EINVAL;
 		goto out;
 	}
-	if (dp->i_effnlink < 3)
-		panic("ufs_dirrem: Bad link count %d on parent",
-		    dp->i_effnlink);
 	if (!ufs_dirempty(ip, dp->i_number, cnp->cn_cred)) {
 		error = ENOTEMPTY;
 		goto out;
@@ -2106,7 +2125,7 @@ ufs_symlink(ap)
 	int len, error;
 
 	error = ufs_makeinode(IFLNK | ap->a_vap->va_mode, ap->a_dvp,
-	    vpp, ap->a_cnp);
+	    vpp, ap->a_cnp, "ufs_symlink");
 	if (error)
 		return (error);
 	vp = *vpp;
@@ -2151,7 +2170,7 @@ ufs_readdir(ap)
 	off_t offset, startoffset;
 	size_t readcnt, skipcnt;
 	ssize_t startresid;
-	int ncookies;
+	u_int ncookies;
 	int error;
 
 	if (uio->uio_offset < 0)
@@ -2160,7 +2179,10 @@ ufs_readdir(ap)
 	if (ip->i_effnlink == 0)
 		return (0);
 	if (ap->a_ncookies != NULL) {
-		ncookies = uio->uio_resid;
+		if (uio->uio_resid < 0)
+			ncookies = 0;
+		else
+			ncookies = uio->uio_resid;
 		if (uio->uio_offset >= ip->i_size)
 			ncookies = 0;
 		else if (ip->i_size - uio->uio_offset < ncookies)
@@ -2387,30 +2409,6 @@ ufsfifo_kqfilter(ap)
 }
 
 /*
- * Return POSIX pathconf information applicable to fifos.
- */
-static int
-ufsfifo_pathconf(ap)
-	struct vop_pathconf_args /* {
-		struct vnode *a_vp;
-		int a_name;
-		int *a_retval;
-	} */ *ap;
-{
-
-	switch (ap->a_name) {
-	case _PC_ACL_EXTENDED:
-	case _PC_ACL_NFS4:
-	case _PC_ACL_PATH_MAX:
-	case _PC_MAC_PRESENT:
-		return (ufs_pathconf(ap));
-	default:
-		return (fifo_specops.vop_pathconf(ap));
-	}
-	/* NOTREACHED */
-}
-
-/*
  * Return POSIX pathconf information applicable to ufs filesystems.
  */
 static int
@@ -2426,16 +2424,16 @@ ufs_pathconf(ap)
 	error = 0;
 	switch (ap->a_name) {
 	case _PC_LINK_MAX:
-		*ap->a_retval = LINK_MAX;
+		*ap->a_retval = UFS_LINK_MAX;
 		break;
 	case _PC_NAME_MAX:
-		*ap->a_retval = NAME_MAX;
-		break;
-	case _PC_PATH_MAX:
-		*ap->a_retval = PATH_MAX;
+		*ap->a_retval = UFS_MAXNAMLEN;
 		break;
 	case _PC_PIPE_BUF:
-		*ap->a_retval = PIPE_BUF;
+		if (ap->a_vp->v_type == VDIR || ap->a_vp->v_type == VFIFO)
+			*ap->a_retval = PIPE_BUF;
+		else
+			error = EINVAL;
 		break;
 	case _PC_CHOWN_RESTRICTED:
 		*ap->a_retval = 1;
@@ -2488,11 +2486,6 @@ ufs_pathconf(ap)
 	case _PC_MIN_HOLE_SIZE:
 		*ap->a_retval = ap->a_vp->v_mount->mnt_stat.f_iosize;
 		break;
-	case _PC_ASYNC_IO:
-		/* _PC_ASYNC_IO should have been handled by upper layers. */
-		KASSERT(0, ("_PC_ASYNC_IO should not get here"));
-		error = EINVAL;
-		break;
 	case _PC_PRIO_IO:
 		*ap->a_retval = 0;
 		break;
@@ -2522,7 +2515,7 @@ ufs_pathconf(ap)
 		break;
 
 	default:
-		error = EINVAL;
+		error = vop_stdpathconf(ap);
 		break;
 	}
 	return (error);
@@ -2547,7 +2540,7 @@ ufs_vinit(mntp, fifoops, vpp)
 	if (vp->v_type == VFIFO)
 		vp->v_op = fifoops;
 	ASSERT_VOP_LOCKED(vp, "ufs_vinit");
-	if (ip->i_number == ROOTINO)
+	if (ip->i_number == UFS_ROOTINO)
 		vp->v_vflag |= VV_ROOT;
 	*vpp = vp;
 	return (0);
@@ -2558,11 +2551,12 @@ ufs_vinit(mntp, fifoops, vpp)
  * Vnode dvp must be locked.
  */
 static int
-ufs_makeinode(mode, dvp, vpp, cnp)
+ufs_makeinode(mode, dvp, vpp, cnp, callfunc)
 	int mode;
 	struct vnode *dvp;
 	struct vnode **vpp;
 	struct componentname *cnp;
+	const char *callfunc;
 {
 	struct inode *ip, *pdir;
 	struct direct newdir;
@@ -2572,15 +2566,16 @@ ufs_makeinode(mode, dvp, vpp, cnp)
 	pdir = VTOI(dvp);
 #ifdef INVARIANTS
 	if ((cnp->cn_flags & HASBUF) == 0)
-		panic("ufs_makeinode: no name");
+		panic("%s: no name", callfunc);
 #endif
 	*vpp = NULL;
 	if ((mode & IFMT) == 0)
 		mode |= IFREG;
 
-	if (VTOI(dvp)->i_effnlink < 2)
-		panic("ufs_makeinode: Bad link count %d on parent",
-		    VTOI(dvp)->i_effnlink);
+	if (pdir->i_effnlink < 2) {
+		print_bad_link_count(callfunc, dvp);
+		return (EINVAL);
+	}
 	error = UFS_VALLOC(dvp, mode, cnp->cn_cred, &tvp);
 	if (error)
 		return (error);
@@ -2793,7 +2788,7 @@ struct vop_vector ufs_fifoops = {
 	.vop_inactive =		ufs_inactive,
 	.vop_kqfilter =		ufsfifo_kqfilter,
 	.vop_markatime =	ufs_markatime,
-	.vop_pathconf = 	ufsfifo_pathconf,
+	.vop_pathconf = 	ufs_pathconf,
 	.vop_print =		ufs_print,
 	.vop_read =		VOP_PANIC,
 	.vop_reclaim =		ufs_reclaim,

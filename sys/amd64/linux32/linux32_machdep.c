@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2004 Tim J. Robbins
  * Copyright (c) 2002 Doug Rabson
  * Copyright (c) 2000 Marcel Moolenaar
@@ -144,7 +146,7 @@ linux_execve(struct thread *td, struct linux_execve_args *args)
 
 CTASSERT(sizeof(struct l_iovec32) == 8);
 
-static int
+int
 linux32_copyinuio(struct l_iovec32 *iovp, l_ulong iovcnt, struct uio **uiop)
 {
 	struct l_iovec32 iov32;
@@ -645,7 +647,6 @@ linux_sigaltstack(struct thread *td, struct linux_sigaltstack_args *uap)
 int
 linux_ftruncate64(struct thread *td, struct linux_ftruncate64_args *args)
 {
-	struct ftruncate_args sa;
 
 #ifdef DEBUG
 	if (ldebug(ftruncate64))
@@ -653,9 +654,7 @@ linux_ftruncate64(struct thread *td, struct linux_ftruncate64_args *args)
 		    (intmax_t)args->length);
 #endif
 
-	sa.fd = args->fd;
-	sa.length = args->length;
-	return sys_ftruncate(td, &sa);
+	return (kern_ftruncate(td, args->fd, args->length));
 }
 
 int

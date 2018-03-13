@@ -61,16 +61,20 @@ cloudabi64_proc_setregs(struct thread *td, struct image_params *imgp,
 	 * tpidr_el0 to the TCB.
 	 */
 	regs = td->td_frame;
-	regs->tf_x[0] = td->td_retval[0] =
+	regs->tf_x[0] =
 	    stack + roundup(sizeof(cloudabi64_tcb_t), sizeof(register_t));
-	(void)cpu_set_user_tls(td, (void *)stack);
+	(void)cpu_set_user_tls(td, TO_PTR(stack));
 }
 
 static int
-cloudabi64_fetch_syscall_args(struct thread *td, struct syscall_args *sa)
+cloudabi64_fetch_syscall_args(struct thread *td)
 {
-	struct trapframe *frame = td->td_frame;
+	struct trapframe *frame;
+	struct syscall_args *sa;
 	int i;
+
+	frame = td->td_frame;
+	sa = &td->td_sa;
 
 	/* Obtain system call number. */
 	sa->code = frame->tf_x[8];
@@ -140,7 +144,7 @@ cloudabi64_thread_setregs(struct thread *td,
 
 	/* Perform standard register initialization. */
 	stack.ss_sp = TO_PTR(attr->stack);
-	stack.ss_size = attr->stack_size;
+	stack.ss_size = attr->stack_len;
 	cpu_set_upcall(td, TO_PTR(attr->entry_point), NULL, &stack);
 
 	/*
@@ -153,7 +157,7 @@ cloudabi64_thread_setregs(struct thread *td,
 	frame->tf_x[1] = attr->argument;
 
 	/* Set up TLS. */
-	return (cpu_set_user_tls(td, (void *)tcb));
+	return (cpu_set_user_tls(td, TO_PTR(tcb)));
 }
 
 static struct sysentvec cloudabi64_elf_sysvec = {
@@ -181,6 +185,5 @@ Elf64_Brandinfo cloudabi64_brand = {
 	.brand		= ELFOSABI_CLOUDABI,
 	.machine	= EM_AARCH64,
 	.sysvec		= &cloudabi64_elf_sysvec,
-	.flags		= BI_CAN_EXEC_DYN,
-	.compat_3_brand	= "CloudABI",
+	.flags		= BI_CAN_EXEC_DYN | BI_BRAND_ONLY_STATIC,
 };

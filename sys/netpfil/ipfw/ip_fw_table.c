@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2004 Ruslan Ermilov and Vsevolod Lobko.
  * Copyright (c) 2014 Yandex LLC
  * Copyright (c) 2014 Alexander V. Chernikov
@@ -53,6 +55,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/socketvar.h>
 #include <sys/queue.h>
 #include <net/if.h>	/* ip_fw.h requires IFNAMSIZ */
+#include <net/pfil.h>
 
 #include <netinet/in.h>
 #include <netinet/ip_var.h>	/* struct ipfw_rule_ref */
@@ -405,7 +408,7 @@ prepare_batch_buffer(struct ip_fw_chain *ch, struct table_algo *ta,
 	error = 0;
 	ta_buf_sz = ta->ta_buf_size;
 	if (count == 1) {
-		/* Sigle add/delete, use on-stack buffer */
+		/* Single add/delete, use on-stack buffer */
 		memset(*ta_buf, 0, TA_BUF_SZ);
 		ta_buf_m = *ta_buf;
 	} else {
@@ -1087,6 +1090,7 @@ find_table_entry(struct ip_fw_chain *ch, ip_fw3_opheader *op3,
 	struct table_config *tc;
 	struct table_algo *ta;
 	struct table_info *kti;
+	struct table_value *pval;
 	struct namedobj_instance *ni;
 	int error;
 	size_t sz;
@@ -1132,7 +1136,10 @@ find_table_entry(struct ip_fw_chain *ch, ip_fw3_opheader *op3,
 		return (ENOTSUP);
 
 	error = ta->find_tentry(tc->astate, kti, tent);
-
+	if (error == 0) {
+		pval = get_table_value(ch, tc, tent->v.kidx);
+		ipfw_export_table_value_v1(pval, &tent->v.value);
+	}
 	IPFW_UH_RUNLOCK(ch);
 
 	return (error);
@@ -1653,30 +1660,13 @@ ipfw_unref_table(struct ip_fw_chain *ch, uint16_t kidx)
 }
 
 /*
- * Lookup an IP @addr in table @tbl.
- * Stores found value in @val.
- *
- * Returns 1 if @addr was found.
- */
-int
-ipfw_lookup_table(struct ip_fw_chain *ch, uint16_t tbl, in_addr_t addr,
-    uint32_t *val)
-{
-	struct table_info *ti;
-
-	ti = KIDX_TO_TI(ch, tbl);
-
-	return (ti->lookup(ti, &addr, sizeof(in_addr_t), val));
-}
-
-/*
- * Lookup an arbtrary key @paddr of legth @plen in table @tbl.
+ * Lookup an arbitrary key @paddr of length @plen in table @tbl.
  * Stores found value in @val.
  *
  * Returns 1 if key was found.
  */
 int
-ipfw_lookup_table_extended(struct ip_fw_chain *ch, uint16_t tbl, uint16_t plen,
+ipfw_lookup_table(struct ip_fw_chain *ch, uint16_t tbl, uint16_t plen,
     void *paddr, uint32_t *val)
 {
 	struct table_info *ti;
@@ -1937,9 +1927,7 @@ create_table_internal(struct ip_fw_chain *ch, struct tid_info *ti,
 		tc->no.kidx = kidx;
 		tc->no.etlv = IPFW_TLV_TBL_NAME;
 
-		IPFW_WLOCK(ch);
 		link_table(ch, tc);
-		IPFW_WUNLOCK(ch);
 	}
 
 	if (compat != 0)
@@ -3241,7 +3229,6 @@ link_table(struct ip_fw_chain *ch, struct table_config *tc)
 	uint16_t kidx;
 
 	IPFW_UH_WLOCK_ASSERT(ch);
-	IPFW_WLOCK_ASSERT(ch);
 
 	ni = CHAIN_TO_NI(ch);
 	kidx = tc->no.kidx;

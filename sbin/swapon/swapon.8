@@ -9,7 +9,7 @@
 .\" 2. Redistributions in binary form must reproduce the above copyright
 .\"    notice, this list of conditions and the following disclaimer in the
 .\"    documentation and/or other materials provided with the distribution.
-.\" 4. Neither the name of the University nor the names of its contributors
+.\" 3. Neither the name of the University nor the names of its contributors
 .\"    may be used to endorse or promote products derived from this software
 .\"    without specific prior written permission.
 .\"
@@ -28,7 +28,7 @@
 .\"     @(#)swapon.8	8.1 (Berkeley) 6/5/93
 .\" $FreeBSD$
 .\"
-.Dd October 2, 2016
+.Dd October 21, 2016
 .Dt SWAPON 8
 .Os
 .Sh NAME
@@ -97,6 +97,12 @@ option is used, all swap devices in
 will be removed, unless their
 .Dq noauto
 option is also set.
+If the
+.Fl L
+option is specified,
+only swap devices with the
+.Dq late
+option will be removed.
 If the
 .Fl q
 option is used,

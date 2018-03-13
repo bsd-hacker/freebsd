@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2002-2004 M. Warner Losh.
  * Copyright (c) 2000-2001 Jonathan Chen.
  * All rights reserved.
@@ -351,7 +353,7 @@ cbb_pci_attach(device_t brdev)
 	/*
 	 * This is a gross hack.  We should be scanning the entire pci
 	 * tree, assigning bus numbers in a way such that we (1) can
-	 * reserve 1 extra bus just in case and (2) all sub busses
+	 * reserve 1 extra bus just in case and (2) all sub buses
 	 * are in an appropriate range.
 	 */
 	DEVPRINTF((brdev, "Secondary bus is %d\n", sc->bus.sec));

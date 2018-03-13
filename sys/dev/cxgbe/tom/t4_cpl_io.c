@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2012, 2015 Chelsio Communications, Inc.
  * All rights reserved.
  * Written by: Navdeep Parhar <np@FreeBSD.org>
@@ -29,6 +31,8 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
+#include "opt_inet6.h"
+#include "opt_ratelimit.h"
 
 #ifdef TCP_OFFLOAD
 #include <sys/param.h>
@@ -68,19 +72,6 @@ __FBSDID("$FreeBSD$");
 #include "common/t4_tcb.h"
 #include "tom/t4_tom_l2t.h"
 #include "tom/t4_tom.h"
-
-VNET_DECLARE(int, tcp_do_autosndbuf);
-#define V_tcp_do_autosndbuf VNET(tcp_do_autosndbuf)
-VNET_DECLARE(int, tcp_autosndbuf_inc);
-#define V_tcp_autosndbuf_inc VNET(tcp_autosndbuf_inc)
-VNET_DECLARE(int, tcp_autosndbuf_max);
-#define V_tcp_autosndbuf_max VNET(tcp_autosndbuf_max)
-VNET_DECLARE(int, tcp_do_autorcvbuf);
-#define V_tcp_do_autorcvbuf VNET(tcp_do_autorcvbuf)
-VNET_DECLARE(int, tcp_autorcvbuf_inc);
-#define V_tcp_autorcvbuf_inc VNET(tcp_autorcvbuf_inc)
-VNET_DECLARE(int, tcp_autorcvbuf_max);
-#define V_tcp_autorcvbuf_max VNET(tcp_autorcvbuf_max)
 
 #define	IS_AIOTX_MBUF(m)						\
 	((m)->m_flags & M_EXT && (m)->m_ext.ext_flags & EXT_FLAG_AIOTX)
@@ -186,6 +177,76 @@ send_flowc_wr(struct toepcb *toep, struct flowc_tx_params *ftxp)
         t4_wrq_tx(sc, wr);
 }
 
+#ifdef RATELIMIT
+/*
+ * Input is Bytes/second (so_max_pacing-rate), chip counts in Kilobits/second.
+ */
+static int
+update_tx_rate_limit(struct adapter *sc, struct toepcb *toep, u_int Bps)
+{
+	int tc_idx, rc;
+	const u_int kbps = (u_int) (uint64_t)Bps * 8ULL / 1000;
+	const int port_id = toep->vi->pi->port_id;
+
+	CTR3(KTR_CXGBE, "%s: tid %u, rate %uKbps", __func__, toep->tid, kbps);
+
+	if (kbps == 0) {
+		/* unbind */
+		tc_idx = -1;
+	} else {
+		rc = t4_reserve_cl_rl_kbps(sc, port_id, kbps, &tc_idx);
+		if (rc != 0)
+			return (rc);
+		MPASS(tc_idx >= 0 && tc_idx < sc->chip_params->nsched_cls);
+	}
+
+	if (toep->tc_idx != tc_idx) {
+		struct wrqe *wr;
+		struct fw_flowc_wr *flowc;
+		int nparams = 1, flowclen, flowclen16;
+		struct ofld_tx_sdesc *txsd = &toep->txsd[toep->txsd_pidx];
+
+		flowclen = sizeof(*flowc) + nparams * sizeof(struct
+		    fw_flowc_mnemval);
+		flowclen16 = howmany(flowclen, 16);
+		if (toep->tx_credits < flowclen16 || toep->txsd_avail == 0 ||
+		    (wr = alloc_wrqe(roundup2(flowclen, 16), toep->ofld_txq)) == NULL) {
+			if (tc_idx >= 0)
+				t4_release_cl_rl_kbps(sc, port_id, tc_idx);
+			return (ENOMEM);
+		}
+
+		flowc = wrtod(wr);
+		memset(flowc, 0, wr->wr_len);
+
+		flowc->op_to_nparams = htobe32(V_FW_WR_OP(FW_FLOWC_WR) |
+		    V_FW_FLOWC_WR_NPARAMS(nparams));
+		flowc->flowid_len16 = htonl(V_FW_WR_LEN16(flowclen16) |
+		    V_FW_WR_FLOWID(toep->tid));
+
+		flowc->mnemval[0].mnemonic = FW_FLOWC_MNEM_SCHEDCLASS;
+		if (tc_idx == -1)
+			flowc->mnemval[0].val = htobe32(0xff);
+		else
+			flowc->mnemval[0].val = htobe32(tc_idx);
+
+		txsd->tx_credits = flowclen16;
+		txsd->plen = 0;
+		toep->tx_credits -= txsd->tx_credits;
+		if (__predict_false(++toep->txsd_pidx == toep->txsd_total))
+			toep->txsd_pidx = 0;
+		toep->txsd_avail--;
+		t4_wrq_tx(sc, wr);
+	}
+
+	if (toep->tc_idx >= 0)
+		t4_release_cl_rl_kbps(sc, port_id, toep->tc_idx);
+	toep->tc_idx = tc_idx;
+
+	return (0);
+}
+#endif
+
 void
 send_reset(struct adapter *sc, struct toepcb *toep, uint32_t snd_nxt)
 {
@@ -260,6 +321,8 @@ assign_rxopt(struct tcpcb *tp, unsigned int opt)
 		n = sizeof(struct ip6_hdr) + sizeof(struct tcphdr);
 	else
 		n = sizeof(struct ip) + sizeof(struct tcphdr);
+	if (V_tcp_do_rfc1323)
+		n += TCPOLEN_TSTAMP_APPA;
 	tp->t_maxseg = sc->params.mtus[G_TCPOPT_MSS(opt)] - n;
 
 	CTR4(KTR_CXGBE, "%s: tid %d, mtu_idx %u (%u)", __func__, toep->tid,
@@ -306,14 +369,13 @@ make_established(struct toepcb *toep, uint32_t snd_isn, uint32_t rcv_isn,
 	uint16_t tcpopt = be16toh(opt);
 	struct flowc_tx_params ftxp;
 
-	CURVNET_SET(so->so_vnet);
 	INP_WLOCK_ASSERT(inp);
 	KASSERT(tp->t_state == TCPS_SYN_SENT ||
 	    tp->t_state == TCPS_SYN_RECEIVED,
 	    ("%s: TCP state %s", __func__, tcpstates[tp->t_state]));
 
-	CTR4(KTR_CXGBE, "%s: tid %d, toep %p, inp %p",
-	    __func__, toep->tid, toep, inp);
+	CTR6(KTR_CXGBE, "%s: tid %d, so %p, inp %p, tp %p, toep %p",
+	    __func__, toep->tid, so, inp, tp, toep);
 
 	tp->t_state = TCPS_ESTABLISHED;
 	tp->t_starttime = ticks;
@@ -357,7 +419,6 @@ make_established(struct toepcb *toep, uint32_t snd_isn, uint32_t rcv_isn,
 	send_flowc_wr(toep, &ftxp);
 
 	soisconnected(so);
-	CURVNET_RESTORE();
 }
 
 static int
@@ -621,7 +682,7 @@ t4_push_frames(struct adapter *sc, struct toepcb *toep, int drop)
 	struct socket *so = inp->inp_socket;
 	struct sockbuf *sb = &so->so_snd;
 	int tx_credits, shove, compl, sowwakeup;
-	struct ofld_tx_sdesc *txsd = &toep->txsd[toep->txsd_pidx];
+	struct ofld_tx_sdesc *txsd;
 	bool aiotx_mbuf_seen;
 
 	INP_WLOCK_ASSERT(inp);
@@ -640,6 +701,13 @@ t4_push_frames(struct adapter *sc, struct toepcb *toep, int drop)
 	if (__predict_false(toep->flags & TPF_ABORT_SHUTDOWN))
 		return;
 
+#ifdef RATELIMIT
+	if (__predict_false(inp->inp_flags2 & INP_RATE_LIMIT_CHANGED) &&
+	    (update_tx_rate_limit(sc, toep, so->so_max_pacing_rate) == 0)) {
+		inp->inp_flags2 &= ~INP_RATE_LIMIT_CHANGED;
+	}
+#endif
+
 	/*
 	 * This function doesn't resume by itself.  Someone else must clear the
 	 * flag and call this function.
@@ -650,6 +718,7 @@ t4_push_frames(struct adapter *sc, struct toepcb *toep, int drop)
 		return;
 	}
 
+	txsd = &toep->txsd[toep->txsd_pidx];
 	do {
 		tx_credits = min(toep->tx_credits, MAX_OFLD_TX_CREDITS);
 		max_imm = max_imm_payload(tx_credits);
@@ -1146,6 +1215,7 @@ do_peer_close(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 
 	KASSERT(toep->tid == tid, ("%s: toep tid mismatch", __func__));
 
+	CURVNET_SET(toep->vnet);
 	INP_INFO_RLOCK(&V_tcbinfo);
 	INP_WLOCK(inp);
 	tp = intotcpcb(inp);
@@ -1161,7 +1231,7 @@ do_peer_close(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 	so = inp->inp_socket;
 	if (toep->ulp_mode == ULP_MODE_TCPDDP) {
 		DDP_LOCK(toep);
-		if (__predict_false(toep->ddp_flags &
+		if (__predict_false(toep->ddp.flags &
 		    (DDP_BUF0_ACTIVE | DDP_BUF1_ACTIVE)))
 			handle_ddp_close(toep, tp, cpl->rcv_nxt);
 		DDP_UNLOCK(toep);
@@ -1191,6 +1261,7 @@ do_peer_close(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 		tcp_twstart(tp);
 		INP_UNLOCK_ASSERT(inp);	 /* safe, we have a ref on the inp */
 		INP_INFO_RUNLOCK(&V_tcbinfo);
+		CURVNET_RESTORE();
 
 		INP_WLOCK(inp);
 		final_cpl_received(toep);
@@ -1203,6 +1274,7 @@ do_peer_close(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 done:
 	INP_WUNLOCK(inp);
 	INP_INFO_RUNLOCK(&V_tcbinfo);
+	CURVNET_RESTORE();
 	return (0);
 }
 
@@ -1229,6 +1301,7 @@ do_close_con_rpl(struct sge_iq *iq, const struct rss_header *rss,
 	KASSERT(m == NULL, ("%s: wasn't expecting payload", __func__));
 	KASSERT(toep->tid == tid, ("%s: toep tid mismatch", __func__));
 
+	CURVNET_SET(toep->vnet);
 	INP_INFO_RLOCK(&V_tcbinfo);
 	INP_WLOCK(inp);
 	tp = intotcpcb(inp);
@@ -1248,6 +1321,7 @@ do_close_con_rpl(struct sge_iq *iq, const struct rss_header *rss,
 release:
 		INP_UNLOCK_ASSERT(inp);	/* safe, we have a ref on the  inp */
 		INP_INFO_RUNLOCK(&V_tcbinfo);
+		CURVNET_RESTORE();
 
 		INP_WLOCK(inp);
 		final_cpl_received(toep);	/* no more CPLs expected */
@@ -1272,6 +1346,7 @@ release:
 done:
 	INP_WUNLOCK(inp);
 	INP_INFO_RUNLOCK(&V_tcbinfo);
+	CURVNET_RESTORE();
 	return (0);
 }
 
@@ -1345,6 +1420,7 @@ do_abort_req(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 	}
 
 	inp = toep->inp;
+	CURVNET_SET(toep->vnet);
 	INP_INFO_RLOCK(&V_tcbinfo);	/* for tcp_close */
 	INP_WLOCK(inp);
 
@@ -1380,6 +1456,7 @@ do_abort_req(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 	final_cpl_received(toep);
 done:
 	INP_INFO_RUNLOCK(&V_tcbinfo);
+	CURVNET_RESTORE();
 	send_abort_rpl(sc, ofld_txq, tid, CPL_ABORT_NO_RST);
 	return (0);
 }
@@ -1501,18 +1578,21 @@ do_rx_data(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 			DDP_UNLOCK(toep);
 		INP_WUNLOCK(inp);
 
+		CURVNET_SET(toep->vnet);
 		INP_INFO_RLOCK(&V_tcbinfo);
 		INP_WLOCK(inp);
 		tp = tcp_drop(tp, ECONNRESET);
 		if (tp)
 			INP_WUNLOCK(inp);
 		INP_INFO_RUNLOCK(&V_tcbinfo);
+		CURVNET_RESTORE();
 
 		return (0);
 	}
 
 	/* receive buffer autosize */
-	CURVNET_SET(so->so_vnet);
+	MPASS(toep->vnet == so->so_vnet);
+	CURVNET_SET(toep->vnet);
 	if (sb->sb_flags & SB_AUTOSIZE &&
 	    V_tcp_do_autorcvbuf &&
 	    sb->sb_hiwat < V_tcp_autorcvbuf_max &&
@@ -1527,23 +1607,23 @@ do_rx_data(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 			toep->rx_credits += newsize - hiwat;
 	}
 
-	if (toep->ddp_waiting_count != 0 || toep->ddp_active_count != 0)
-		CTR3(KTR_CXGBE, "%s: tid %u, non-ddp rx (%d bytes)", __func__,
-		    tid, len);
-
 	if (toep->ulp_mode == ULP_MODE_TCPDDP) {
-		int changed = !(toep->ddp_flags & DDP_ON) ^ cpl->ddp_off;
+		int changed = !(toep->ddp.flags & DDP_ON) ^ cpl->ddp_off;
+
+		if (toep->ddp.waiting_count != 0 || toep->ddp.active_count != 0)
+			CTR3(KTR_CXGBE, "%s: tid %u, non-ddp rx (%d bytes)",
+			    __func__, tid, len);
 
 		if (changed) {
-			if (toep->ddp_flags & DDP_SC_REQ)
-				toep->ddp_flags ^= DDP_ON | DDP_SC_REQ;
+			if (toep->ddp.flags & DDP_SC_REQ)
+				toep->ddp.flags ^= DDP_ON | DDP_SC_REQ;
 			else {
 				KASSERT(cpl->ddp_off == 1,
 				    ("%s: DDP switched on by itself.",
 				    __func__));
 
 				/* Fell out of DDP mode */
-				toep->ddp_flags &= ~DDP_ON;
+				toep->ddp.flags &= ~DDP_ON;
 				CTR1(KTR_CXGBE, "%s: fell out of DDP mode",
 				    __func__);
 
@@ -1551,7 +1631,7 @@ do_rx_data(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 			}
 		}
 
-		if (toep->ddp_flags & DDP_ON) {
+		if (toep->ddp.flags & DDP_ON) {
 			/*
 			 * CPL_RX_DATA with DDP on can only be an indicate.
 			 * Start posting queued AIO requests via DDP.  The
@@ -1577,7 +1657,8 @@ do_rx_data(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 		tp->rcv_adv += credits;
 	}
 
-	if (toep->ddp_waiting_count > 0 && sbavail(sb) != 0) {
+	if (toep->ulp_mode == ULP_MODE_TCPDDP && toep->ddp.waiting_count > 0 &&
+	    sbavail(sb) != 0) {
 		CTR2(KTR_CXGBE, "%s: tid %u queueing AIO task", __func__,
 		    tid);
 		ddp_queue_toep(toep);
@@ -1713,10 +1794,12 @@ do_fw4_ack(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 		    tid);
 #endif
 		toep->flags &= ~TPF_TX_SUSPENDED;
+		CURVNET_SET(toep->vnet);
 		if (toep->ulp_mode == ULP_MODE_ISCSI)
 			t4_push_pdus(sc, toep, plen);
 		else
 			t4_push_frames(sc, toep, plen);
+		CURVNET_RESTORE();
 	} else if (plen > 0) {
 		struct sockbuf *sb = &so->so_snd;
 		int sbu;
@@ -1837,12 +1920,12 @@ void
 t4_uninit_cpl_io_handlers(void)
 {
 
-	t4_register_cpl_handler(CPL_PEER_CLOSE, do_peer_close);
-	t4_register_cpl_handler(CPL_CLOSE_CON_RPL, do_close_con_rpl);
-	t4_register_cpl_handler(CPL_ABORT_REQ_RSS, do_abort_req);
-	t4_register_cpl_handler(CPL_ABORT_RPL_RSS, do_abort_rpl);
-	t4_register_cpl_handler(CPL_RX_DATA, do_rx_data);
-	t4_register_cpl_handler(CPL_FW4_ACK, do_fw4_ack);
+	t4_register_cpl_handler(CPL_PEER_CLOSE, NULL);
+	t4_register_cpl_handler(CPL_CLOSE_CON_RPL, NULL);
+	t4_register_cpl_handler(CPL_ABORT_REQ_RSS, NULL);
+	t4_register_cpl_handler(CPL_ABORT_RPL_RSS, NULL);
+	t4_register_cpl_handler(CPL_RX_DATA, NULL);
+	t4_register_cpl_handler(CPL_FW4_ACK, NULL);
 }
 
 /*
@@ -1886,9 +1969,9 @@ free_aiotx_buffer(struct aiotx_buffer *ab)
 }
 
 static void
-t4_aiotx_mbuf_free(struct mbuf *m, void *buffer, void *arg)
+t4_aiotx_mbuf_free(struct mbuf *m)
 {
-	struct aiotx_buffer *ab = buffer;
+	struct aiotx_buffer *ab = m->m_ext.ext_arg1;
 
 #ifdef VERBOSE_TRACES
 	CTR3(KTR_CXGBE, "%s: completed %d bytes for tid %d", __func__,
@@ -2143,7 +2226,7 @@ t4_aiotx_task(void *context, int pending)
 	struct socket *so = inp->inp_socket;
 	struct kaiocb *job;
 
-	CURVNET_SET(so->so_vnet);
+	CURVNET_SET(toep->vnet);
 	SOCKBUF_LOCK(&so->so_snd);
 	while (!TAILQ_EMPTY(&toep->aiotx_jobq) && sowriteable(so)) {
 		job = TAILQ_FIRST(&toep->aiotx_jobq);

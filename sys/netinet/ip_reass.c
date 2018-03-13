@@ -12,7 +12,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -377,6 +377,7 @@ ip_reass(struct mbuf *m)
 		q->m_nextpkt = NULL;
 		m->m_pkthdr.csum_flags &= q->m_pkthdr.csum_flags;
 		m->m_pkthdr.csum_data += q->m_pkthdr.csum_data;
+		m_demote_pkthdr(q);
 		m_cat(m, q);
 	}
 	/*

@@ -43,7 +43,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/machdep.h>
 #include <machine/platformvar.h>
 
-#include <dev/fdt/fdt_common.h>
 #include <dev/ofw/openfirm.h>
 
 #include <arm/nvidia/tegra124/tegra124_mp.h>
@@ -61,12 +60,11 @@ __FBSDID("$FreeBSD$");
 					PMC_SCRATCH0_MODE_BOOTLOADER | \
 					PMC_SCRATCH0_MODE_RCM)
 
-static vm_offset_t
-tegra124_lastaddr(platform_t plat)
-{
-
-	return (devmap_lastaddr());
-}
+static platform_attach_t tegra124_attach;
+static platform_lastaddr_t tegra124_lastaddr;
+static platform_devmap_init_t tegra124_devmap_init;
+static platform_late_init_t tegra124_late_init;
+static platform_cpu_reset_t tegra124_cpu_reset;
 
 static int
 tegra124_attach(platform_t plat)
@@ -120,28 +118,29 @@ tegra124_cpu_reset(platform_t plat)
 
 /*
  * Early putc routine for EARLY_PRINTF support.  To use, add to kernel config:
- *   option SOCDEV_PA=0x02000000
- *   option SOCDEV_VA=0x02000000
+ *   option SOCDEV_PA=0x70000000
+ *   option SOCDEV_VA=0x70000000
  *   option EARLY_PRINTF
  */
 #if 0
+#ifdef EARLY_PRINTF
 static void
 tegra124_early_putc(int c)
 {
-	volatile uint32_t * UART_STAT_REG = (uint32_t *)0x02020098;
-	volatile uint32_t * UART_TX_REG   = (uint32_t *)0x02020040;
-	const uint32_t      UART_TXRDY    = (1 << 3);
 
+	volatile uint32_t * UART_STAT_REG = (uint32_t *)(0x70006314);
+	volatile uint32_t * UART_TX_REG   = (uint32_t *)(0x70006300);
+	const uint32_t      UART_TXRDY    = (1 << 6);
 	while ((*UART_STAT_REG & UART_TXRDY) == 0)
 		continue;
 	*UART_TX_REG = c;
 }
 early_putc_t *early_putc = tegra124_early_putc;
 #endif
+#endif
 
 static platform_method_t tegra124_methods[] = {
 	PLATFORMMETHOD(platform_attach,		tegra124_attach),
-	PLATFORMMETHOD(platform_lastaddr,	tegra124_lastaddr),
 	PLATFORMMETHOD(platform_devmap_init,	tegra124_devmap_init),
 	PLATFORMMETHOD(platform_late_init,	tegra124_late_init),
 	PLATFORMMETHOD(platform_cpu_reset,	tegra124_cpu_reset),

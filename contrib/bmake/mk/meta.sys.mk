@@ -1,4 +1,4 @@
-# $Id: meta.sys.mk,v 1.29 2016/08/13 17:51:45 sjg Exp $
+# $Id: meta.sys.mk,v 1.32 2017/06/11 03:24:04 sjg Exp $
 
 #
 #	@(#) Copyright (c) 2010, Simon J. Gerraty
@@ -102,9 +102,6 @@ _metaError: .NOMETA .NOTMAIN
 
 .endif
 
-META_COOKIE_TOUCH=
-# some targets need to be .PHONY in non-meta mode
-META_NOPHONY= .PHONY
 # Are we, after all, in meta mode?
 .if ${.MAKE.MODE:Uno:Mmeta*} != ""
 MKDEP_MK = meta.autodep.mk
@@ -121,8 +118,9 @@ MKDEP_MK = meta.autodep.mk
 
 # we can afford to use cookies to prevent some targets
 # re-running needlessly
-META_COOKIE_TOUCH= touch ${COOKIE.${.TARGET}:U${.OBJDIR}/${.TARGET}}
+META_COOKIE_TOUCH?= touch ${COOKIE.${.TARGET}:U${.OBJDIR}/${.TARGET:T}}
 META_NOPHONY=
+META_NOECHO= :
 
 # some targets involve old pre-built targets
 # ignore mtime of shell
@@ -162,5 +160,10 @@ BUILD_AT_LEVEL0 ?= no
 .endif
 
 .endif
+.else
+META_COOKIE_TOUCH=
+# some targets need to be .PHONY in non-meta mode
+META_NOPHONY= .PHONY
+META_NOECHO= echo
 .endif
 .endif

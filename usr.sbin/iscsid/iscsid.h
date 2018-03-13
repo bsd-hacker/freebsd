@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2012 The FreeBSD Foundation
  * All rights reserved.
  *
@@ -44,8 +46,6 @@
 
 #define	CONN_MUTUAL_CHALLENGE_LEN	1024
 #define	SOCKBUF_SIZE			1048576
-#define	MAX_BURST_LENGTH		(256 * 1024)
-#define	FIRST_BURST_LENGTH		(128 * 1024)
 
 struct connection {
 	int			conn_iscsi_fd;

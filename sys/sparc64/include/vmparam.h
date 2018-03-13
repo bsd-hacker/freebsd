@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1990 The Regents of the University of California.
  * All rights reserved.
  * Copyright (c) 1994 John S. Dyson
@@ -15,7 +17,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -238,10 +240,12 @@ extern vm_offset_t vm_max_kernel_address;
  */
 #define	ZERO_REGION_SIZE	PAGE_SIZE
 
+#include <machine/tlb.h>
+
 #define	SFBUF
 #define	SFBUF_MAP
-#define	SFBUF_OPTIONAL_DIRECT_MAP	dcache_color_ignore
-#include <machine/tlb.h>
-#define	SFBUF_PHYS_DMAP(x)		TLB_PHYS_TO_DIRECT(x)
+
+#define	PMAP_HAS_DMAP	dcache_color_ignore
+#define	PHYS_TO_DMAP(x)	(TLB_PHYS_TO_DIRECT(x))
 
 #endif /* !_MACHINE_VMPARAM_H_ */

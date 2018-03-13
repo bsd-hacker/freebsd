@@ -607,9 +607,7 @@ swcr_authenc(struct cryptop *crp)
 					bzero(blk, blksz);
 				crypto_copydata(crp->crp_flags, buf,
 				    crde->crd_skip + i, len, blk);
-				if (!(crde->crd_flags & CRD_F_ENCRYPT)) {
-					exf->decrypt(swe->sw_kschedule, blk);
-				}
+				exf->decrypt(swe->sw_kschedule, blk);
 				crypto_copyback(crp->crp_flags, buf,
 				    crde->crd_skip + i, len, blk);
 			}
@@ -930,8 +928,11 @@ swcr_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 			axf = &auth_hash_nist_gmac_aes_256;
 		auth4common:
 			len = cri->cri_klen / 8;
-			if (len != 16 && len != 24 && len != 32)
+			if (len != 16 && len != 24 && len != 32) {
+				swcr_freesession_locked(dev, i);
+				rw_runlock(&swcr_sessions_lock);
 				return EINVAL;
+			}
 
 			(*swd)->sw_ictx = malloc(axf->ctxsize, M_CRYPTO_DATA,
 			    M_NOWAIT);
@@ -983,7 +984,6 @@ swcr_freesession_locked(device_t dev, u_int64_t tid)
 	struct swcr_data *swd;
 	struct enc_xform *txf;
 	struct auth_hash *axf;
-	struct comp_algo *cxf;
 	u_int32_t sid = CRYPTO_SESID2LID(tid);
 
 	if (sid > swcr_sesnum || swcr_sessions == NULL ||
@@ -1058,7 +1058,7 @@ swcr_freesession_locked(device_t dev, u_int64_t tid)
 			break;
 
 		case CRYPTO_DEFLATE_COMP:
-			cxf = swd->sw_cxf;
+			/* Nothing to do */
 			break;
 		}
 

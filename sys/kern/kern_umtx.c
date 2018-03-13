@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2015, 2016 The FreeBSD Foundation
  * Copyright (c) 2004, David Xu <davidxu@freebsd.org>
  * Copyright (c) 2002, Jeffrey Roberson <jeff@freebsd.org>
@@ -59,6 +61,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysproto.h>
 #include <sys/syscallsubr.h>
 #include <sys/taskqueue.h>
+#include <sys/time.h>
 #include <sys/eventhandler.h>
 #include <sys/umtx.h>
 
@@ -70,6 +73,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_map.h>
 #include <vm/vm_object.h>
 
+#include <machine/atomic.h>
 #include <machine/cpu.h>
 
 #ifdef COMPAT_FREEBSD32
@@ -198,7 +202,9 @@ struct umtxq_chain {
 			 PRI_MAX_TIMESHARE : (td)->td_user_pri)
 
 #define	GOLDEN_RATIO_PRIME	2654404609U
+#ifndef	UMTX_CHAINS
 #define	UMTX_CHAINS		512
+#endif
 #define	UMTX_SHIFTS		(__WORD_BIT - 9)
 
 #define	GET_SHARE(flags)	\
@@ -208,6 +214,7 @@ struct umtxq_chain {
 
 struct abs_timeout {
 	int clockid;
+	bool is_abs_real;	/* TIMER_ABSTIME && CLOCK_REALTIME* */
 	struct timespec cur;
 	struct timespec end;
 };
@@ -254,6 +261,8 @@ static long max_length;
 SYSCTL_LONG(_debug_umtx, OID_AUTO, max_length, CTLFLAG_RD, &max_length, 0, "max_length");
 static SYSCTL_NODE(_debug_umtx, OID_AUTO, chains, CTLFLAG_RD, 0, "umtx chain stats");
 #endif
+
+static void abs_timeout_update(struct abs_timeout *timo);
 
 static void umtx_shm_init(void);
 static void umtxq_sysinit(void *);
@@ -770,12 +779,22 @@ abs_timeout_init(struct abs_timeout *timo, int clockid, int absolute,
 
 	timo->clockid = clockid;
 	if (!absolute) {
-		kern_clock_gettime(curthread, clockid, &timo->end);
-		timo->cur = timo->end;
+		timo->is_abs_real = false;
+		abs_timeout_update(timo);
+		timo->end = timo->cur;
 		timespecadd(&timo->end, timeout);
 	} else {
 		timo->end = *timeout;
-		kern_clock_gettime(curthread, clockid, &timo->cur);
+		timo->is_abs_real = clockid == CLOCK_REALTIME ||
+		    clockid == CLOCK_REALTIME_FAST ||
+		    clockid == CLOCK_REALTIME_PRECISE;
+		/*
+		 * If is_abs_real, umtxq_sleep will read the clock
+		 * after setting td_rtcgen; otherwise, read it here.
+		 */
+		if (!timo->is_abs_real) {
+			abs_timeout_update(timo);
+		}
 	}
 }
 
@@ -829,26 +848,41 @@ umtxq_sleep(struct umtx_q *uq, const char *wmesg, struct abs_timeout *abstime)
 	struct umtxq_chain *uc;
 	int error, timo;
 
+	if (abstime != NULL && abstime->is_abs_real) {
+		curthread->td_rtcgen = atomic_load_acq_int(&rtc_generation);
+		abs_timeout_update(abstime);
+	}
+
 	uc = umtxq_getchain(&uq->uq_key);
 	UMTXQ_LOCKED_ASSERT(uc);
 	for (;;) {
-		if (!(uq->uq_flags & UQF_UMTXQ))
-			return (0);
+		if (!(uq->uq_flags & UQF_UMTXQ)) {
+			error = 0;
+			break;
+		}
 		if (abstime != NULL) {
 			timo = abs_timeout_gethz(abstime);
-			if (timo < 0)
-				return (ETIMEDOUT);
+			if (timo < 0) {
+				error = ETIMEDOUT;
+				break;
+			}
 		} else
 			timo = 0;
 		error = msleep(uq, &uc->uc_lock, PCATCH | PDROP, wmesg, timo);
-		if (error != EWOULDBLOCK) {
+		if (error == EINTR || error == ERESTART) {
 			umtxq_lock(&uq->uq_key);
 			break;
 		}
-		if (abstime != NULL)
+		if (abstime != NULL) {
+			if (abstime->is_abs_real)
+				curthread->td_rtcgen =
+				    atomic_load_acq_int(&rtc_generation);
 			abs_timeout_update(abstime);
+		}
 		umtxq_lock(&uq->uq_key);
 	}
+
+	curthread->td_rtcgen = 0;
 	return (error);
 }
 
@@ -1547,8 +1581,7 @@ umtx_pi_setowner(struct umtx_pi *pi, struct thread *owner)
 
 	uq_owner = owner->td_umtxq;
 	mtx_assert(&umtx_lock, MA_OWNED);
-	if (pi->pi_owner != NULL)
-		panic("pi_owner != NULL");
+	MPASS(pi->pi_owner == NULL);
 	pi->pi_owner = owner;
 	TAILQ_INSERT_TAIL(&uq_owner->uq_pi_contested, pi, pi_link);
 }
@@ -3217,10 +3250,16 @@ do_sem2_wait(struct thread *td, struct _usem2 *sem, struct _umtx_time *timeout)
 		error = 0;
 	else {
 		umtxq_remove(uq);
-		/* A relative timeout cannot be restarted. */
-		if (error == ERESTART && timeout != NULL &&
-		    (timeout->_flags & UMTX_ABSTIME) == 0)
-			error = EINTR;
+		if (timeout != NULL && (timeout->_flags & UMTX_ABSTIME) == 0) {
+			/* A relative timeout cannot be restarted. */
+			if (error == ERESTART)
+				error = EINTR;
+			if (error == EINTR) {
+				abs_timeout_update(&timo);
+				timeout->_timeout = timo.end;
+				timespecsub(&timeout->_timeout, &timo.cur);
+			}
+		}
 	}
 	umtxq_unlock(&uq->uq_key);
 	umtx_key_release(&uq->uq_key);
@@ -3583,19 +3622,33 @@ static int
 __umtx_op_sem2_wait(struct thread *td, struct _umtx_op_args *uap)
 {
 	struct _umtx_time *tm_p, timeout;
+	size_t uasize;
 	int error;
 
 	/* Allow a null timespec (wait forever). */
-	if (uap->uaddr2 == NULL)
+	if (uap->uaddr2 == NULL) {
+		uasize = 0;
 		tm_p = NULL;
-	else {
-		error = umtx_copyin_umtx_time(
-		    uap->uaddr2, (size_t)uap->uaddr1, &timeout);
+	} else {
+		uasize = (size_t)uap->uaddr1;
+		error = umtx_copyin_umtx_time(uap->uaddr2, uasize, &timeout);
 		if (error != 0)
 			return (error);
 		tm_p = &timeout;
 	}
-	return (do_sem2_wait(td, uap->obj, tm_p));
+	error = do_sem2_wait(td, uap->obj, tm_p);
+	if (error == EINTR && uap->uaddr2 != NULL &&
+	    (timeout._flags & UMTX_ABSTIME) == 0 &&
+	    uasize >= sizeof(struct _umtx_time) + sizeof(struct timespec)) {
+		error = copyout(&timeout._timeout,
+		    (struct _umtx_time *)uap->uaddr2 + 1,
+		    sizeof(struct timespec));
+		if (error == 0) {
+			error = EINTR;
+		}
+	}
+
+	return (error);
 }
 
 static int
@@ -4065,7 +4118,7 @@ __umtx_op_lock_umutex_compat32(struct thread *td, struct _umtx_op_args *uap)
 	if (uap->uaddr2 == NULL)
 		tm_p = NULL;
 	else {
-		error = umtx_copyin_umtx_time(uap->uaddr2,
+		error = umtx_copyin_umtx_time32(uap->uaddr2,
 			    (size_t)uap->uaddr1, &timeout);
 		if (error != 0)
 			return (error);
@@ -4192,19 +4245,37 @@ static int
 __umtx_op_sem2_wait_compat32(struct thread *td, struct _umtx_op_args *uap)
 {
 	struct _umtx_time *tm_p, timeout;
+	size_t uasize;
 	int error;
 
 	/* Allow a null timespec (wait forever). */
-	if (uap->uaddr2 == NULL)
+	if (uap->uaddr2 == NULL) {
+		uasize = 0;
 		tm_p = NULL;
-	else {
-		error = umtx_copyin_umtx_time32(uap->uaddr2,
-		    (size_t)uap->uaddr1, &timeout);
+	} else {
+		uasize = (size_t)uap->uaddr1;
+		error = umtx_copyin_umtx_time32(uap->uaddr2, uasize, &timeout);
 		if (error != 0)
 			return (error);
 		tm_p = &timeout;
 	}
-	return (do_sem2_wait(td, uap->obj, tm_p));
+	error = do_sem2_wait(td, uap->obj, tm_p);
+	if (error == EINTR && uap->uaddr2 != NULL &&
+	    (timeout._flags & UMTX_ABSTIME) == 0 &&
+	    uasize >= sizeof(struct umtx_time32) + sizeof(struct timespec32)) {
+		struct timespec32 remain32 = {
+			.tv_sec = timeout._timeout.tv_sec,
+			.tv_nsec = timeout._timeout.tv_nsec
+		};
+		error = copyout(&remain32,
+		    (struct umtx_time32 *)uap->uaddr2 + 1,
+		    sizeof(struct timespec32));
+		if (error == 0) {
+			error = EINTR;
+		}
+	}
+
+	return (error);
 }
 
 static int

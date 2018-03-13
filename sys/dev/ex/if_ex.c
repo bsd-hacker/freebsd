@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1996, Javier Martín Rueda (jmrueda@diatel.upm.es)
  * All rights reserved.
  *
@@ -812,7 +814,7 @@ rx_another: ;
 
 
 static int
-ex_ioctl(register struct ifnet *ifp, u_long cmd, caddr_t data)
+ex_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 {
 	struct ex_softc *	sc = ifp->if_softc;
 	struct ifreq *		ifr = (struct ifreq *)data;

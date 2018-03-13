@@ -1,10 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Common support for CompuLab CM-T3x CoMs
  */
 
 / {
 
-	memory {
+	memory@80000000 {
 		device_type = "memory";
 		reg = <0x80000000 0x10000000>; /* 256 MB */
 	};
@@ -42,12 +43,14 @@
 	hsusb1_phy: hsusb1_phy {
 		compatible = "usb-nop-xceiv";
 		vcc-supply = <&hsusb1_power>;
+		#phy-cells = <0>;
 	};
 
 	/* HS USB Host PHY on PORT 2 */
 	hsusb2_phy: hsusb2_phy {
 		compatible = "usb-nop-xceiv";
 		vcc-supply = <&hsusb2_power>;
+		#phy-cells = <0>;
 	};
 
 	ads7846reg: ads7846-reg {
@@ -57,7 +60,7 @@
 		regulator-max-microvolt = <3300000>;
 	};
 
-	tv0: connector@1 {
+	tv0: connector {
 		compatible = "svideo-connector";
 		label = "tv";
 
@@ -188,7 +191,7 @@
 	clock-frequency = <400000>;
 
 	at24@50 {
-		compatible = "at24,24c02";
+		compatible = "atmel,24c02";
 		pagesize = <16>;
 		reg = <0x50>;
 	};

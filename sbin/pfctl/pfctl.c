@@ -1,6 +1,8 @@
 /*	$OpenBSD: pfctl.c,v 1.278 2008/08/31 20:18:17 jmc Exp $ */
 
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
  * Copyright (c) 2001 Daniel Hartmeier
  * Copyright (c) 2002,2003 Henning Brauer
  * All rights reserved.
@@ -1339,7 +1341,7 @@ pfctl_load_rule(struct pfctl *pf, char *path, struct pf_rule *r, int depth)
 			else
 				snprintf(&path[len], MAXPATHLEN - len,
 				    "%s", r->anchor->name);
-			name = path;
+			name = r->anchor->name;
 		} else
 			name = r->anchor->path;
 	} else
@@ -1508,6 +1510,7 @@ pfctl_rules(int dev, char *filename, int opts, int optimize,
 		if (pfctl_trans(dev, t, DIOCXCOMMIT, osize))
 			ERR("DIOCXCOMMIT");
 	}
+	free(path);
 	return (0);
 
 _error:
@@ -1517,6 +1520,7 @@ _error:
 				err(1, "DIOCXROLLBACK");
 		exit(1);
 	} else {		/* sub ruleset */
+		free(path);
 		return (-1);
 	}
 

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright 2012 Konstantin Belousov <kib@FreeBSD.ORG>.
  * Copyright 2016 The FreeBSD Foundation.
  * All rights reserved.
@@ -39,6 +41,7 @@
 
 #define	VDSO_TH_ALGO_X86_TSC	VDSO_TH_ALGO_1
 #define	VDSO_TH_ALGO_X86_HPET	VDSO_TH_ALGO_2
+#define	VDSO_TH_ALGO_X86_HVTSC	VDSO_TH_ALGO_3	/* Hyper-V ref. TSC */
 
 #ifdef _KERNEL
 #ifdef COMPAT_FREEBSD32

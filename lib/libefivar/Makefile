@@ -26,12 +26,25 @@
 
 .include <src.opts.mk>
 
+EFIBOOT=${SRCTOP}/stand/efi
+EDK2INC=${SRCTOP}/sys/contrib/edk2/Include
+
+.PATH:	${EFIBOOT}/libefi
+
 PACKAGE=lib${LIB}
 LIB=		efivar
-SRCS=		efivar.c libefivar.c
-INCS=		efivar.h
+SRCS=		efivar.c efichar.c efivar-dp-format.c \
+		efivar-dp-parse.c \
+		efivar-dp-xlate.c \
+		uefi-guid.c uefi-dputil.c
+INCS=		efivar.h efivar-dp.h
 SHLIB_MAJOR=	1
 MAN=		efivar.3
+
+CFLAGS+=	-I${EFIBOOT}/include
+CFLAGS+=	-I${.CURDIR} -I${EDK2INC}
+
+CFLAGS.efivar-dp-format.c=-Wno-unused-parameter
 
 MLINKS+=efivar.3 efi_set_variables_supported.3 \
 	efivar.3 efi_del_variable.3 \
@@ -51,3 +64,5 @@ MLINKS+=efivar.3 efi_set_variables_supported.3 \
 WARNS?=		9
 
 .include <bsd.lib.mk>
+
+CFLAGS+= -fno-strict-aliasing -Wno-cast-align -Wno-unused-parameter

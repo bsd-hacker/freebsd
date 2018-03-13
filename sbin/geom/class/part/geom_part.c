@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2007, 2008 Marcel Moolenaar
  * All rights reserved.
  *
@@ -73,6 +75,7 @@ volatile sig_atomic_t undo_restore;
 
 static struct gclass *find_class(struct gmesh *, const char *);
 static struct ggeom * find_geom(struct gclass *, const char *);
+static int geom_is_withered(struct ggeom *);
 static const char *find_geomcfg(struct ggeom *, const char *);
 static const char *find_provcfg(struct gprovider *, const char *);
 static struct gprovider *find_provider(struct ggeom *, off_t);
@@ -81,7 +84,7 @@ static int gpart_autofill(struct gctl_req *);
 static int gpart_autofill_resize(struct gctl_req *);
 static void gpart_bootcode(struct gctl_req *, unsigned int);
 static void *gpart_bootfile_read(const char *, ssize_t *);
-static void gpart_issue(struct gctl_req *, unsigned int);
+static _Noreturn void gpart_issue(struct gctl_req *, unsigned int);
 static void gpart_show(struct gctl_req *, unsigned int);
 static void gpart_show_geom(struct ggeom *, const char *, int);
 static int gpart_show_hasopt(struct gctl_req *, const char *, const char *);
@@ -215,12 +218,24 @@ find_geom(struct gclass *classp, const char *name)
 	LIST_FOREACH(gp, &classp->lg_geom, lg_geom) {
 		if (strcmp(gp->lg_name, name) != 0)
 			continue;
-		if (find_geomcfg(gp, "wither") == NULL)
+		if (!geom_is_withered(gp))
 			return (gp);
 		else
 			wgp = gp;
 	}
 	return (wgp);
+}
+
+static int
+geom_is_withered(struct ggeom *gp)
+{
+	struct gconfig *gc;
+
+	LIST_FOREACH(gc, &gp->lg_config, lg_config) {
+		if (!strcmp(gc->lg_name, "wither"))
+			return (1);
+	}
+	return (0);
 }
 
 static const char *
@@ -534,7 +549,7 @@ gpart_autofill(struct gctl_req *req)
 	last = (off_t)strtoimax(s, NULL, 0);
 	grade = ~0ULL;
 	a_first = ALIGNUP(first + offset, alignment);
-	last = ALIGNDOWN(last + offset, alignment);
+	last = ALIGNDOWN(last + offset + 1, alignment) - 1;
 	if (a_first < start)
 		a_first = start;
 	while ((pp = find_provider(gp, first)) != NULL) {
@@ -614,7 +629,7 @@ gpart_show_geom(struct ggeom *gp, const char *element, int show_providers)
 	off_t length, secsz;
 	int idx, wblocks, wname, wmax;
 
-	if (find_geomcfg(gp, "wither"))
+	if (geom_is_withered(gp))
 		return;
 	scheme = find_geomcfg(gp, "scheme");
 	if (scheme == NULL)
@@ -1270,6 +1285,7 @@ gpart_bootcode(struct gctl_req *req, unsigned int fl)
 		gpart_issue(req, fl);
 
 	geom_deletetree(&mesh);
+	free(partcode);
 }
 
 static void
@@ -1290,7 +1306,7 @@ gpart_print_error(const char *errstr)
 		warnx("%s", errmsg);
 }
 
-static void
+static _Noreturn void
 gpart_issue(struct gctl_req *req, unsigned int fl __unused)
 {
 	char buf[4096];

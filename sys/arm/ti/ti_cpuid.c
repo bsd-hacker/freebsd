@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2011
  *	Ben Gray <ben.r.gray@gmail.com>.
  * All rights reserved.
@@ -42,6 +44,10 @@ __FBSDID("$FreeBSD$");
 #include <machine/fdt.h>
 #include <machine/resource.h>
 #include <machine/intr.h>
+
+#include <dev/fdt/simplebus.h>
+#include <dev/fdt/fdt_common.h>
+#include <dev/ofw/ofw_bus_subr.h>
 
 #include <arm/ti/tivar.h>
 #include <arm/ti/ti_cpuid.h>
@@ -268,6 +274,8 @@ am335x_get_revision(void)
 static void
 ti_cpu_ident(void *dummy)
 {
+	if (!ti_soc_is_supported())
+		return;
 	switch(ti_chip()) {
 	case CHIP_OMAP_4:
 		omap4_get_revision();

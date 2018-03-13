@@ -53,12 +53,18 @@ CFLAGS += -mllvm -arm-enable-ehabi
 .endif
 .endif
 
+# "makeoptions KERNVIRTADDR=" is now optional, supply the default value.
+.if empty(KERNVIRTADDR)
+KERNVIRTADDR= 0xc0000000
+.endif
+
 # hack because genassym.c includes sys/bus.h which includes these.
 genassym.o: bus_if.h device_if.h
 
-SYSTEM_LD_ = ${LD} -Bdynamic -T ldscript.$M.noheader ${_LDFLAGS} \
-	  -warn-common -export-dynamic -dynamic-linker /red/herring -o \
-	   ${FULLKERNEL}.noheader -X ${SYSTEM_OBJS} vers.o
+SYSTEM_LD_ = ${LD} -m ${LD_EMULATION} -Bdynamic -T ldscript.$M.noheader \
+	${_LDFLAGS} --no-warn-mismatch --warn-common --export-dynamic \
+	--dynamic-linker /red/herring \
+	-o ${FULLKERNEL}.noheader -X ${SYSTEM_OBJS} vers.o
 SYSTEM_LD_TAIL +=;sed s/" + SIZEOF_HEADERS"// ldscript.$M\
 		>ldscript.$M.noheader; \
 		${SYSTEM_LD_}; \
@@ -74,7 +80,7 @@ FILES_CPU_FUNC = \
 	$S/$M/$M/cpufunc_asm_pj4b.S $S/$M/$M/cpufunc_asm_armv6.S \
 	$S/$M/$M/cpufunc_asm_armv7.S
 
-.if ${TARGET_ARCH} != "armv6" && defined(KERNPHYSADDR)
+.if ${MACHINE_ARCH:Marmv[67]*} == "" && defined(KERNPHYSADDR)
 KERNEL_EXTRA=trampoline
 KERNEL_EXTRA_INSTALL=kernel.gz.tramp
 trampoline: ${KERNEL_KO}.tramp

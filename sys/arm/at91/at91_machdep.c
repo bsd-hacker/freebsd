@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1994-1998 Mark Brinicombe.
  * Copyright (c) 1994 Brini.
  * All rights reserved.
@@ -186,9 +188,8 @@ const struct devmap_entry at91_devmap[] = {
 };
 
 #ifdef LINUX_BOOT_ABI
-extern int membanks;
-extern int memstart[];
-extern int memsize[];
+static int membanks;
+static int memsize[];
 #endif
 
 long
@@ -671,8 +672,10 @@ void
 DELAY(int n)
 {
 
+	TSENTER();
 	if (soc_info.soc_data)
 		soc_info.soc_data->soc_delay(n);
+	TSEXIT();
 }
 
 void

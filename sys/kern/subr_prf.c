@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1986, 1988, 1991, 1993
  *	The Regents of the University of California.  All rights reserved.
  * (c) UNIX System Laboratories, Inc.
@@ -72,7 +74,19 @@ __FBSDID("$FreeBSD$");
  * Note that stdarg.h and the ANSI style va_start macro is used for both
  * ANSI and traditional C compilers.
  */
+#ifdef _KERNEL
 #include <machine/stdarg.h>
+#else
+#include <stdarg.h>
+#endif
+
+/*
+ * This is needed for sbuf_putbuf() when compiled into userland.  Due to the
+ * shared nature of this file, it's the only place to put it.
+ */
+#ifndef _KERNEL
+#include <stdio.h>
+#endif
 
 #ifdef _KERNEL
 
@@ -108,6 +122,7 @@ static void  snprintf_func(int ch, void *arg);
 
 static int msgbufmapped;		/* Set when safe to use msgbuf */
 int msgbuftrigger;
+struct msgbuf *msgbufp;
 
 static int log_console_output = 1;
 SYSCTL_INT(_kern, OID_AUTO, log_console_output, CTLFLAG_RWTUN,
@@ -261,6 +276,7 @@ _vprintf(int level, int flags, const char *fmt, va_list ap)
 	char bufr[PRINTF_BUFR_SIZE];
 #endif
 
+	TSENTER();
 	pca.tty = NULL;
 	pca.pri = level;
 	pca.flags = flags;
@@ -288,6 +304,7 @@ _vprintf(int level, int flags, const char *fmt, va_list ap)
 	}
 #endif
 
+	TSEXIT();
 	return (retval);
 }
 
@@ -377,7 +394,6 @@ log_console(struct uio *uio)
 	msgbuftrigger = 1;
 	free(uio, M_IOV);
 	free(consbuffer, M_TEMP);
-	return;
 }
 
 int
@@ -407,6 +423,23 @@ vprintf(const char *fmt, va_list ap)
 }
 
 static void
+prf_putbuf(char *bufr, int flags, int pri)
+{
+
+	if (flags & TOLOG)
+		msglogstr(bufr, pri, /*filter_cr*/1);
+
+	if (flags & TOCONS) {
+		if ((panicstr == NULL) && (constty != NULL))
+			msgbuf_addstr(&consmsgbuf, -1,
+			    bufr, /*filter_cr*/ 0);
+
+		if ((constty == NULL) ||(always_console_output))
+			cnputs(bufr);
+	}
+}
+
+static void
 putbuf(int c, struct putchar_arg *ap)
 {
 	/* Check if no console output buffer was provided. */
@@ -427,18 +460,7 @@ putbuf(int c, struct putchar_arg *ap)
 
 		/* Check if the buffer needs to be flushed. */
 		if (ap->remain == 2 || c == '\n') {
-
-			if (ap->flags & TOLOG)
-				msglogstr(ap->p_bufr, ap->pri, /*filter_cr*/1);
-
-			if (ap->flags & TOCONS) {
-				if ((panicstr == NULL) && (constty != NULL))
-					msgbuf_addstr(&consmsgbuf, -1,
-					    ap->p_bufr, /*filter_cr*/ 0);
-
-				if ((constty == NULL) ||(always_console_output))
-					cnputs(ap->p_bufr);
-			}
+			prf_putbuf(ap->p_bufr, ap->flags, ap->pri);
 
 			ap->p_next = ap->p_bufr;
 			ap->remain = ap->n_bufr;
@@ -633,7 +655,7 @@ kvprintf(char const *fmt, void (*func)(int, void*), void *arg, int radix, va_lis
 	uintmax_t num;
 	int base, lflag, qflag, tmp, width, ladjust, sharpflag, neg, sign, dot;
 	int cflag, hflag, jflag, tflag, zflag;
-	int dwidth, upper;
+	int bconv, dwidth, upper;
 	char padc;
 	int stop = 0, retval = 0;
 
@@ -659,7 +681,7 @@ kvprintf(char const *fmt, void (*func)(int, void*), void *arg, int radix, va_lis
 		}
 		percent = fmt - 1;
 		qflag = 0; lflag = 0; ladjust = 0; sharpflag = 0; neg = 0;
-		sign = 0; dot = 0; dwidth = 0; upper = 0;
+		sign = 0; dot = 0; bconv = 0; dwidth = 0; upper = 0;
 		cflag = 0; hflag = 0; jflag = 0; tflag = 0; zflag = 0;
 reswitch:	switch (ch = (u_char)*fmt++) {
 		case '.':
@@ -707,28 +729,9 @@ reswitch:	switch (ch = (u_char)*fmt++) {
 				width = n;
 			goto reswitch;
 		case 'b':
-			num = (u_int)va_arg(ap, int);
-			p = va_arg(ap, char *);
-			for (q = ksprintn(nbuf, num, *p++, NULL, 0); *q;)
-				PCHAR(*q--);
-
-			if (num == 0)
-				break;
-
-			for (tmp = 0; *p;) {
-				n = *p++;
-				if (num & (1 << (n - 1))) {
-					PCHAR(tmp ? ',' : '<');
-					for (; (n = *p) > ' '; ++p)
-						PCHAR(n);
-					tmp = 1;
-				} else
-					for (; *p > ' '; ++p)
-						continue;
-			}
-			if (tmp)
-				PCHAR('>');
-			break;
+			ladjust = 1;
+			bconv = 1;
+			goto handle_nosign;
 		case 'c':
 			width -= 1;
 
@@ -866,6 +869,10 @@ handle_nosign:
 				num = (u_char)va_arg(ap, int);
 			else
 				num = va_arg(ap, u_int);
+			if (bconv) {
+				q = va_arg(ap, char *);
+				base = *q++;
+			}
 			goto number;
 handle_sign:
 			if (jflag)
@@ -922,6 +929,26 @@ number:
 
 			while (*p)
 				PCHAR(*p--);
+
+			if (bconv && num != 0) {
+				/* %b conversion flag format. */
+				tmp = retval;
+				while (*q) {
+					n = *q++;
+					if (num & (1 << (n - 1))) {
+						PCHAR(retval != tmp ?
+						    ',' : '<');
+						for (; (n = *q) > ' '; ++q)
+							PCHAR(n);
+					} else
+						for (; *q > ' '; ++q)
+							continue;
+				}
+				if (retval != tmp) {
+					PCHAR('>');
+					width -= retval - tmp;
+				}
+			}
 
 			if (ladjust)
 				while (width-- > 0)
@@ -1215,5 +1242,21 @@ counted_warning(unsigned *counter, const char *msg)
 			break;
 		}
 	}
+}
+#endif
+
+#ifdef _KERNEL
+void
+sbuf_putbuf(struct sbuf *sb)
+{
+
+	prf_putbuf(sbuf_data(sb), TOLOG | TOCONS, -1);
+}
+#else
+void
+sbuf_putbuf(struct sbuf *sb)
+{
+
+	printf("%s", sbuf_data(sb));
 }
 #endif

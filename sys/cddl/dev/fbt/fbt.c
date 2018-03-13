@@ -95,16 +95,16 @@ static dtrace_pattr_t fbt_attr = {
 };
 
 static dtrace_pops_t fbt_pops = {
-	NULL,
-	fbt_provide_module,
-	fbt_enable,
-	fbt_disable,
-	fbt_suspend,
-	fbt_resume,
-	fbt_getargdesc,
-	NULL,
-	NULL,
-	fbt_destroy
+	.dtps_provide =		NULL,
+	.dtps_provide_module =	fbt_provide_module,
+	.dtps_enable =		fbt_enable,
+	.dtps_disable =		fbt_disable,
+	.dtps_suspend =		fbt_suspend,
+	.dtps_resume =		fbt_resume,
+	.dtps_getargdesc =	fbt_getargdesc,
+	.dtps_getargval =	NULL,
+	.dtps_usermode =	NULL,
+	.dtps_destroy =		fbt_destroy
 };
 
 static struct cdev		*fbt_cdev;
@@ -125,6 +125,15 @@ fbt_excluded(const char *name)
 		 */
 		return (1);
 	}
+
+	/*
+	 * Lock owner methods may be called from probe context.
+	 */
+	if (strcmp(name, "owner_mtx") == 0 ||
+	    strcmp(name, "owner_rm") == 0 ||
+	    strcmp(name, "owner_rw") == 0 ||
+	    strcmp(name, "owner_sx") == 0)
+		return (1);
 
 	/*
 	 * When DTrace is built into the kernel we need to exclude

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) KATO Takenori, 1997, 1998.
  * 
  * All rights reserved.  Unpublished rights reserved under the copyright
@@ -48,6 +50,11 @@ __FBSDID("$FreeBSD$");
 static int	hw_instruction_sse;
 SYSCTL_INT(_hw, OID_AUTO, instruction_sse, CTLFLAG_RD,
     &hw_instruction_sse, 0, "SIMD/MMX2 instructions available in CPU");
+static int	lower_sharedpage_init;
+int		hw_lower_amd64_sharedpage;
+SYSCTL_INT(_hw, OID_AUTO, lower_amd64_sharedpage, CTLFLAG_RDTUN,
+    &hw_lower_amd64_sharedpage, 0,
+   "Lower sharedpage to work around Ryzen issue with executing code near the top of user memory");
 /*
  * -1: automatic (default)
  *  0: keep enable CLFLUSH
@@ -122,6 +129,28 @@ init_amd(void)
 			wrmsr(0xc0011020, msr);
 		}
 	}
+
+	/*
+	 * Work around a problem on Ryzen that is triggered by executing
+	 * code near the top of user memory, in our case the signal
+	 * trampoline code in the shared page on amd64.
+	 *
+	 * This function is executed once for the BSP before tunables take
+	 * effect so the value determined here can be overridden by the
+	 * tunable.  This function is then executed again for each AP and
+	 * also on resume.  Set a flag the first time so that value set by
+	 * the tunable is not overwritten.
+	 *
+	 * The stepping and/or microcode versions should be checked after
+	 * this issue is fixed by AMD so that we don't use this mode if not
+	 * needed.
+	 */
+	if (lower_sharedpage_init == 0) {
+		lower_sharedpage_init = 1;
+		if (CPUID_TO_FAMILY(cpu_id) == 0x17) {
+			hw_lower_amd64_sharedpage = 1;
+		}
+	}
 }
 
 /*
@@ -189,11 +218,12 @@ initializecpu(void)
 	if (!IS_BSP() && (cpu_stdext_feature & CPUID_STDEXT_SMEP))
 		cr4 |= CR4_SMEP;
 	load_cr4(cr4);
-	if ((amd_feature & AMDID_NX) != 0) {
+	if (IS_BSP() && (amd_feature & AMDID_NX) != 0) {
 		msr = rdmsr(MSR_EFER) | EFER_NXE;
 		wrmsr(MSR_EFER, msr);
 		pg_nx = PG_NX;
 	}
+	hw_ibrs_recalculate();
 	switch (cpu_vendor_id) {
 	case CPU_VENDOR_AMD:
 		init_amd();

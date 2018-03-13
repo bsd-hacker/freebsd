@@ -197,7 +197,7 @@ ath_ioctl_diag(struct ath_softc *sc, struct ath_diag *ad)
 		 * pointer for us to use below in reclaiming the buffer;
 		 * may want to be more defensive.
 		 */
-		outdata = malloc(outsize, M_TEMP, M_NOWAIT);
+		outdata = malloc(outsize, M_TEMP, M_NOWAIT | M_ZERO);
 		if (outdata == NULL) {
 			error = ENOMEM;
 			goto bad;
@@ -296,6 +296,8 @@ ath_ioctl(struct ieee80211com *ic, u_long cmd, void *data)
 		return (ath_ioctl_spectral(sc, data));
 	case SIOCGATHNODERATESTATS:
 		return (ath_ioctl_ratestats(sc, data));
+	case SIOCGATHBTCOEX:
+		return (ath_btcoex_ioctl(sc, data));
 	default:
 		/*
 		 * This signals the net80211 layer that we didn't handle this

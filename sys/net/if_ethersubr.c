@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1982, 1989, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -10,7 +12,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -38,6 +40,8 @@
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/bus.h>
+#include <sys/eventhandler.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
@@ -286,7 +290,6 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 	int hlen;	/* link layer header length */
 	uint32_t pflags;
 	struct llentry *lle = NULL;
-	struct rtentry *rt0 = NULL;
 	int addref = 0;
 
 	phdr = NULL;
@@ -316,7 +319,6 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 				pflags = lle->r_flags;
 			}
 		}
-		rt0 = ro->ro_rt;
 	}
 
 #ifdef MAC
@@ -916,6 +918,9 @@ ether_ifattach(struct ifnet *ifp, const u_int8_t *lla)
 	sdl->sdl_alen = ifp->if_addrlen;
 	bcopy(lla, LLADDR(sdl), ifp->if_addrlen);
 
+	if (ifp->if_hw_addr != NULL)
+		bcopy(lla, ifp->if_hw_addr, ifp->if_addrlen);
+
 	bpfattach(ifp, DLT_EN10MB, ETHER_HDR_LEN);
 	if (ng_ether_attach_p != NULL)
 		(*ng_ether_attach_p)(ifp);
@@ -928,6 +933,11 @@ ether_ifattach(struct ifnet *ifp, const u_int8_t *lla)
 		if_printf(ifp, "Ethernet address: %6D\n", lla, ":");
 
 	uuid_ether_add(LLADDR(sdl));
+
+	/* Add necessary bits are setup; announce it now. */
+	EVENTHANDLER_INVOKE(ether_ifattach_event, ifp);
+	if (IS_DEFAULT_VNET(curvnet))
+		devctl_notify("ETHERNET", ifp->if_xname, "IFATTACH", NULL);
 }
 
 /*

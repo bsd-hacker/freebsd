@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 2001-2007, by Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2008-2012, by Randall Stewart. All rights reserved.
  * Copyright (c) 2008-2012, by Michael Tuexen. All rights reserved.
@@ -140,7 +142,6 @@ sctp_gather_internal_ifa_flags(struct sctp_ifa *ifa)
 		ifa->localifa_flags &= ~SCTP_ADDR_IFA_UNUSEABLE;
 	}
 }
-
 #endif				/* INET6 */
 
 
@@ -201,10 +202,8 @@ sctp_init_ifns_for_vrf(int vrfid)
 	struct ifaddr *ifa;
 	struct sctp_ifa *sctp_ifa;
 	uint32_t ifa_flags;
-
 #ifdef INET6
 	struct in6_ifaddr *ifa6;
-
 #endif
 
 	IFNET_RLOCK();
@@ -480,7 +479,7 @@ again_locked:
 	lenat++;
 	*lenat = value;
 	lenat++;
-	tick_tock = (uint32_t *) lenat;
+	tick_tock = (uint32_t *)lenat;
 	lenat++;
 	*tick_tock = sctp_get_tick_count();
 	copyto = (void *)lenat;
@@ -501,7 +500,7 @@ no_log:
 
 
 int
-sctp_copy_out_packet_log(uint8_t * target, int length)
+sctp_copy_out_packet_log(uint8_t *target, int length)
 {
 	/*
 	 * We wind through the packet log starting at start copying up to

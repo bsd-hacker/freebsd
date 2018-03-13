@@ -1,5 +1,5 @@
 #
-# $File: Makefile.am,v 1.116 2016/06/13 19:09:31 christos Exp $
+# $File: Makefile.am,v 1.126 2017/08/10 11:01:38 christos Exp $
 #
 MAGIC_FRAGMENT_BASE = Magdir
 MAGIC_DIR = $(top_srcdir)/magic
@@ -13,6 +13,7 @@ $(MAGIC_DIR)/Localstuff \
 $(MAGIC_FRAGMENT_DIR)/acorn \
 $(MAGIC_FRAGMENT_DIR)/adi \
 $(MAGIC_FRAGMENT_DIR)/adventure \
+$(MAGIC_FRAGMENT_DIR)/algol68 \
 $(MAGIC_FRAGMENT_DIR)/allegro \
 $(MAGIC_FRAGMENT_DIR)/alliant \
 $(MAGIC_FRAGMENT_DIR)/amanda \
@@ -20,9 +21,12 @@ $(MAGIC_FRAGMENT_DIR)/amigaos \
 $(MAGIC_FRAGMENT_DIR)/android \
 $(MAGIC_FRAGMENT_DIR)/animation \
 $(MAGIC_FRAGMENT_DIR)/aout \
+$(MAGIC_FRAGMENT_DIR)/apache \
 $(MAGIC_FRAGMENT_DIR)/apl \
 $(MAGIC_FRAGMENT_DIR)/apple \
+$(MAGIC_FRAGMENT_DIR)/application \
 $(MAGIC_FRAGMENT_DIR)/applix \
+$(MAGIC_FRAGMENT_DIR)/apt \
 $(MAGIC_FRAGMENT_DIR)/archive \
 $(MAGIC_FRAGMENT_DIR)/assembler \
 $(MAGIC_FRAGMENT_DIR)/asterix \
@@ -31,6 +35,7 @@ $(MAGIC_FRAGMENT_DIR)/audio \
 $(MAGIC_FRAGMENT_DIR)/basis \
 $(MAGIC_FRAGMENT_DIR)/ber \
 $(MAGIC_FRAGMENT_DIR)/bflt \
+$(MAGIC_FRAGMENT_DIR)/bhl \
 $(MAGIC_FRAGMENT_DIR)/bioinformatics \
 $(MAGIC_FRAGMENT_DIR)/blackberry \
 $(MAGIC_FRAGMENT_DIR)/blcr \
@@ -94,6 +99,7 @@ $(MAGIC_FRAGMENT_DIR)/fsav \
 $(MAGIC_FRAGMENT_DIR)/fusecompress \
 $(MAGIC_FRAGMENT_DIR)/games \
 $(MAGIC_FRAGMENT_DIR)/gcc \
+$(MAGIC_FRAGMENT_DIR)/gconv \
 $(MAGIC_FRAGMENT_DIR)/geo \
 $(MAGIC_FRAGMENT_DIR)/geos \
 $(MAGIC_FRAGMENT_DIR)/gimp \
@@ -101,6 +107,7 @@ $(MAGIC_FRAGMENT_DIR)/gnome \
 $(MAGIC_FRAGMENT_DIR)/gnu \
 $(MAGIC_FRAGMENT_DIR)/gnumeric \
 $(MAGIC_FRAGMENT_DIR)/gpt \
+$(MAGIC_FRAGMENT_DIR)/gpu \
 $(MAGIC_FRAGMENT_DIR)/grace \
 $(MAGIC_FRAGMENT_DIR)/graphviz \
 $(MAGIC_FRAGMENT_DIR)/gringotts \
@@ -207,6 +214,7 @@ $(MAGIC_FRAGMENT_DIR)/polyml \
 $(MAGIC_FRAGMENT_DIR)/printer \
 $(MAGIC_FRAGMENT_DIR)/project \
 $(MAGIC_FRAGMENT_DIR)/psdbms \
+$(MAGIC_FRAGMENT_DIR)/psl \
 $(MAGIC_FRAGMENT_DIR)/pulsar \
 $(MAGIC_FRAGMENT_DIR)/pwsafe \
 $(MAGIC_FRAGMENT_DIR)/pyramid \
@@ -271,6 +279,7 @@ $(MAGIC_FRAGMENT_DIR)/vorbis \
 $(MAGIC_FRAGMENT_DIR)/vxl \
 $(MAGIC_FRAGMENT_DIR)/warc \
 $(MAGIC_FRAGMENT_DIR)/weak \
+$(MAGIC_FRAGMENT_DIR)/webassembly \
 $(MAGIC_FRAGMENT_DIR)/windows \
 $(MAGIC_FRAGMENT_DIR)/wireless \
 $(MAGIC_FRAGMENT_DIR)/wordprocessors \
@@ -281,6 +290,7 @@ $(MAGIC_FRAGMENT_DIR)/xenix \
 $(MAGIC_FRAGMENT_DIR)/xilinx \
 $(MAGIC_FRAGMENT_DIR)/xo65 \
 $(MAGIC_FRAGMENT_DIR)/xwindows \
+$(MAGIC_FRAGMENT_DIR)/yara \
 $(MAGIC_FRAGMENT_DIR)/zfs \
 $(MAGIC_FRAGMENT_DIR)/zilog \
 $(MAGIC_FRAGMENT_DIR)/zyxel 

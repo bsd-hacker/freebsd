@@ -185,7 +185,7 @@ generic_ohci_attach(device_t dev)
 
 	/* Enable phy */
 	if (phy_get_by_ofw_name(dev, 0, "usb", &sc->phy) == 0) {
-		err = phy_enable(dev, sc->phy);
+		err = phy_enable(sc->phy);
 		if (err != 0) {
 			device_printf(dev, "Could not enable phy\n");
 			goto error;
@@ -214,17 +214,10 @@ static int
 generic_ohci_detach(device_t dev)
 {
 	struct generic_ohci_softc *sc = device_get_softc(dev);
-	device_t bdev;
 	int err;
 #ifdef EXT_RESOURCES
 	struct clk_list *clk, *clk_tmp;
 #endif
-
-	if (sc->ohci_sc.sc_bus.bdev) {
-		bdev = sc->ohci_sc.sc_bus.bdev;
-		device_detach(bdev);
-		device_delete_child(dev, bdev);
-	}
 
 	/* during module unload there are lots of children leftover */
 	device_delete_children(dev);
@@ -266,7 +259,7 @@ generic_ohci_detach(device_t dev)
 #ifdef EXT_RESOURCES
 	/* Disable phy */
 	if (sc->phy) {
-		err = phy_disable(dev, sc->phy);
+		err = phy_disable(sc->phy);
 		if (err != 0)
 			device_printf(dev, "Could not disable phy\n");
 		phy_release(sc->phy);

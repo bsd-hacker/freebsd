@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 1995, 1996
  *	Matt Thomas <matt@3am-software.com>.  All rights reserved.
  * Copyright (c) 1982, 1989, 1993
@@ -400,7 +402,7 @@ fddi_input(ifp, m)
 	m_adj(m, FDDI_HDR_LEN);
 
 	m = m_pullup(m, LLC_SNAPFRAMELEN);
-	if (m == 0) {
+	if (m == NULL) {
 		if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
 		goto dropanyway;
 	}

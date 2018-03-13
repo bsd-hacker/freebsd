@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1982, 1986, 1988, 1993
  *	The Regents of the University of California.
  * Copyright (c) 2006-2007 Robert N. M. Watson
@@ -16,7 +18,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -41,6 +43,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_ddb.h"
 #include "opt_inet.h"
 #include "opt_inet6.h"
+#include "opt_ipsec.h"
 #include "opt_tcpdebug.h"
 
 #include <sys/param.h>
@@ -59,6 +62,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/protosw.h>
 #include <sys/proc.h>
 #include <sys/jail.h>
+#include <sys/syslog.h>
 
 #ifdef DDB
 #include <ddb/ddb.h>
@@ -81,9 +85,6 @@ __FBSDID("$FreeBSD$");
 #include <netinet6/ip6_var.h>
 #include <netinet6/scope6_var.h>
 #endif
-#ifdef TCP_RFC7413
-#include <netinet/tcp_fastopen.h>
-#endif
 #include <netinet/tcp.h>
 #include <netinet/tcp_fsm.h>
 #include <netinet/tcp_seq.h>
@@ -91,6 +92,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/tcp_var.h>
 #include <netinet/tcpip.h>
 #include <netinet/cc/cc.h>
+#include <netinet/tcp_fastopen.h>
 #ifdef TCPPCAP
 #include <netinet/tcp_pcap.h>
 #endif
@@ -100,6 +102,7 @@ __FBSDID("$FreeBSD$");
 #ifdef TCP_OFFLOAD
 #include <netinet/tcp_offload.h>
 #endif
+#include <netipsec/ipsec_support.h>
 
 /*
  * TCP protocol interface to socket abstraction.
@@ -210,10 +213,26 @@ tcp_detach(struct socket *so, struct inpcb *inp)
 		 *  In all three cases the tcptw should not be freed here.
 		 */
 		if (inp->inp_flags & INP_DROPPED) {
-			KASSERT(tp == NULL, ("tcp_detach: INP_TIMEWAIT && "
-			    "INP_DROPPED && tp != NULL"));
 			in_pcbdetach(inp);
-			in_pcbfree(inp);
+			if (__predict_true(tp == NULL)) {
+				in_pcbfree(inp);
+			} else {
+				/*
+				 * This case should not happen as in TIMEWAIT
+				 * state the inp should not be destroyed before
+				 * its tcptw.  If INVARIANTS is defined, panic.
+				 */
+#ifdef INVARIANTS
+				panic("%s: Panic before an inp double-free: "
+				    "INP_TIMEWAIT && INP_DROPPED && tp != NULL"
+				    , __func__);
+#else
+				log(LOG_ERR, "%s: Avoid an inp double-free: "
+				    "INP_TIMEWAIT && INP_DROPPED && tp != NULL"
+				    , __func__);
+#endif
+				INP_WUNLOCK(inp);
+			}
 		} else {
 			in_pcbdetach(inp);
 			INP_WUNLOCK(inp);
@@ -409,10 +428,9 @@ tcp_usr_listen(struct socket *so, int backlog, struct thread *td)
 	}
 	SOCK_UNLOCK(so);
 
-#ifdef TCP_RFC7413
 	if (IS_FASTOPEN(tp->t_flags))
 		tp->t_tfo_pending = tcp_fastopen_alloc_counter();
-#endif
+
 out:
 	TCPDEBUG2(PRU_LISTEN);
 	TCP_PROBE2(debug__user, tp, PRU_LISTEN);
@@ -459,10 +477,9 @@ tcp6_usr_listen(struct socket *so, int backlog, struct thread *td)
 	}
 	SOCK_UNLOCK(so);
 
-#ifdef TCP_RFC7413
 	if (IS_FASTOPEN(tp->t_flags))
 		tp->t_tfo_pending = tcp_fastopen_alloc_counter();
-#endif
+
 out:
 	TCPDEBUG2(PRU_LISTEN);
 	TCP_PROBE2(debug__user, tp, PRU_LISTEN);
@@ -578,6 +595,10 @@ tcp6_usr_connect(struct socket *so, struct sockaddr *nam, struct thread *td)
 			error = EINVAL;
 			goto out;
 		}
+		if ((inp->inp_vflag & INP_IPV4) == 0) {
+			error = EAFNOSUPPORT;
+			goto out;
+		}
 
 		in6_sin6_2_sin(&sin, sin6p);
 		inp->inp_vflag |= INP_IPV4;
@@ -595,6 +616,11 @@ tcp6_usr_connect(struct socket *so, struct sockaddr *nam, struct thread *td)
 #endif
 		error = tp->t_fb->tfb_tcp_output(tp);
 		goto out;
+	} else {
+		if ((inp->inp_vflag & INP_IPV6) == 0) {
+			error = EAFNOSUPPORT;
+			goto out;
+		}
 	}
 #endif
 	inp->inp_vflag &= ~INP_IPV4;
@@ -818,7 +844,6 @@ tcp_usr_rcvd(struct socket *so, int flags)
 	}
 	tp = intotcpcb(inp);
 	TCPDEBUG1();
-#ifdef TCP_RFC7413
 	/*
 	 * For passively-created TFO connections, don't attempt a window
 	 * update while still in SYN_RECEIVED as this may trigger an early
@@ -829,7 +854,6 @@ tcp_usr_rcvd(struct socket *so, int flags)
 	if (IS_FASTOPEN(tp->t_flags) &&
 	    (tp->t_state == TCPS_SYN_RECEIVED))
 		goto out;
-#endif
 #ifdef TCP_OFFLOAD
 	if (tp->t_flags & TF_TOE)
 		tcp_offload_rcvd(tp);
@@ -920,8 +944,12 @@ tcp_usr_send(struct socket *so, int flags, struct mbuf *m,
 #endif
 			if (error)
 				goto out;
-			tp->snd_wnd = TTCP_CLIENT_SND_WND;
-			tcp_mss(tp, -1);
+			if (IS_FASTOPEN(tp->t_flags))
+				tcp_fastopen_connect(tp);
+			else {
+				tp->snd_wnd = TTCP_CLIENT_SND_WND;
+				tcp_mss(tp, -1);
+			}
 		}
 		if (flags & PRUS_EOF) {
 			/*
@@ -967,6 +995,12 @@ tcp_usr_send(struct socket *so, int flags, struct mbuf *m,
 			 * initialize window to default value, and
 			 * initialize maxseg using peer's cached MSS.
 			 */
+
+			/*
+			 * Not going to contemplate SYN|URG
+			 */
+			if (IS_FASTOPEN(tp->t_flags))
+				tp->t_flags &= ~TF_FASTOPEN;
 #ifdef INET6
 			if (isipv6)
 				error = tcp6_connect(tp, nam, td);
@@ -1535,21 +1569,17 @@ tcp_default_ctloutput(struct socket *so, struct sockopt *sopt, struct inpcb *inp
 	switch (sopt->sopt_dir) {
 	case SOPT_SET:
 		switch (sopt->sopt_name) {
-#ifdef TCP_SIGNATURE
+#if defined(IPSEC_SUPPORT) || defined(TCP_SIGNATURE)
 		case TCP_MD5SIG:
-			INP_WUNLOCK(inp);
-			error = sooptcopyin(sopt, &optval, sizeof optval,
-			    sizeof optval);
+			if (!TCPMD5_ENABLED()) {
+				INP_WUNLOCK(inp);
+				return (ENOPROTOOPT);
+			}
+			error = TCPMD5_PCBCTL(inp, sopt);
 			if (error)
 				return (error);
-
-			INP_WLOCK_RECHECK(inp);
-			if (optval > 0)
-				tp->t_flags |= TF_SIGNATURE;
-			else
-				tp->t_flags &= ~TF_SIGNATURE;
 			goto unlock_and_done;
-#endif /* TCP_SIGNATURE */
+#endif /* IPSEC */
 
 		case TCP_NODELAY:
 		case TCP_NOOPT:
@@ -1742,28 +1772,52 @@ unlock_and_done:
 			goto unlock_and_done;
 #endif
 
-#ifdef TCP_RFC7413
-		case TCP_FASTOPEN:
+		case TCP_FASTOPEN: {
+			struct tcp_fastopen tfo_optval;
+
 			INP_WUNLOCK(inp);
-			if (!V_tcp_fastopen_enabled)
+			if (!V_tcp_fastopen_client_enable &&
+			    !V_tcp_fastopen_server_enable)
 				return (EPERM);
 
-			error = sooptcopyin(sopt, &optval, sizeof optval,
-			    sizeof optval);
+			error = sooptcopyin(sopt, &tfo_optval,
+				    sizeof(tfo_optval), sizeof(int));
 			if (error)
 				return (error);
 
 			INP_WLOCK_RECHECK(inp);
-			if (optval) {
-				tp->t_flags |= TF_FASTOPEN;
-				if ((tp->t_state == TCPS_LISTEN) &&
-				    (tp->t_tfo_pending == NULL))
-					tp->t_tfo_pending =
-					    tcp_fastopen_alloc_counter();
+			if (tfo_optval.enable) {
+				if (tp->t_state == TCPS_LISTEN) {
+					if (!V_tcp_fastopen_server_enable) {
+						error = EPERM;
+						goto unlock_and_done;
+					}
+
+					tp->t_flags |= TF_FASTOPEN;
+					if (tp->t_tfo_pending == NULL)
+						tp->t_tfo_pending =
+						    tcp_fastopen_alloc_counter();
+				} else {
+					/*
+					 * If a pre-shared key was provided,
+					 * stash it in the client cookie
+					 * field of the tcpcb for use during
+					 * connect.
+					 */
+					if (sopt->sopt_valsize ==
+					    sizeof(tfo_optval)) {
+						memcpy(tp->t_tfo_cookie.client,
+						       tfo_optval.psk,
+						       TCP_FASTOPEN_PSK_LEN);
+						tp->t_tfo_client_cookie_len =
+						    TCP_FASTOPEN_PSK_LEN;
+					}
+					tp->t_flags |= TF_FASTOPEN;
+				}
 			} else
 				tp->t_flags &= ~TF_FASTOPEN;
 			goto unlock_and_done;
-#endif
+		}
 
 		default:
 			INP_WUNLOCK(inp);
@@ -1775,11 +1829,13 @@ unlock_and_done:
 	case SOPT_GET:
 		tp = intotcpcb(inp);
 		switch (sopt->sopt_name) {
-#ifdef TCP_SIGNATURE
+#if defined(IPSEC_SUPPORT) || defined(TCP_SIGNATURE)
 		case TCP_MD5SIG:
-			optval = (tp->t_flags & TF_SIGNATURE) ? 1 : 0;
-			INP_WUNLOCK(inp);
-			error = sooptcopyout(sopt, &optval, sizeof optval);
+			if (!TCPMD5_ENABLED()) {
+				INP_WUNLOCK(inp);
+				return (ENOPROTOOPT);
+			}
+			error = TCPMD5_PCBCTL(inp, sopt);
 			break;
 #endif
 
@@ -1843,14 +1899,11 @@ unlock_and_done:
 			error = sooptcopyout(sopt, &optval, sizeof optval);
 			break;
 #endif
-
-#ifdef TCP_RFC7413
 		case TCP_FASTOPEN:
 			optval = tp->t_flags & TF_FASTOPEN;
 			INP_WUNLOCK(inp);
 			error = sooptcopyout(sopt, &optval, sizeof optval);
 			break;
-#endif
 		default:
 			INP_WUNLOCK(inp);
 			error = ENOPROTOOPT;
@@ -1892,6 +1945,8 @@ tcp_attach(struct socket *so)
 #ifdef INET6
 	if (inp->inp_vflag & INP_IPV6PROTO) {
 		inp->inp_vflag |= INP_IPV6;
+		if ((inp->inp_flags & IN6P_IPV6_V6ONLY) == 0)
+			inp->inp_vflag |= INP_IPV4;
 		inp->in6p_hops = -1;	/* use kernel default */
 	}
 	else

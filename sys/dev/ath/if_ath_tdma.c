@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2002-2009 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
@@ -270,7 +272,7 @@ ath_tdma_config(struct ath_softc *sc, struct ieee80211vap *vap)
 	 * fixed/lowest transmit rate.  Note that the interface
 	 * mtu does not include the 802.11 overhead so we must
 	 * tack that on (ath_hal_computetxtime includes the
-	 * preamble and plcp in it's calculation).
+	 * preamble and plcp in its calculation).
 	 */
 	tdma = vap->iv_tdma;
 	if (tp->ucastrate != IEEE80211_FIXED_RATE_NONE)

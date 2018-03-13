@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2000-2004
  *	Poul-Henning Kamp.  All rights reserved.
  * Copyright (c) 1989, 1992-1993, 1995
@@ -677,32 +679,6 @@ devfs_close_f(struct file *fp, struct thread *td)
 }
 
 static int
-devfs_fsync(struct vop_fsync_args *ap)
-{
-	int error;
-	struct bufobj *bo;
-	struct devfs_dirent *de;
-
-	if (!vn_isdisk(ap->a_vp, &error)) {
-		bo = &ap->a_vp->v_bufobj;
-		de = ap->a_vp->v_data;
-		if (error == ENXIO && bo->bo_dirty.bv_cnt > 0) {
-			printf("Device %s went missing before all of the data "
-			    "could be written to it; expect data loss.\n",
-			    de->de_dirent->d_name);
-
-			error = vop_stdfsync(ap);
-			if (bo->bo_dirty.bv_cnt != 0 || error != 0)
-				panic("devfs_fsync: vop_stdfsync failed.");
-		}
-
-		return (0);
-	}
-
-	return (vop_stdfsync(ap));
-}
-
-static int
 devfs_getattr(struct vop_getattr_args *ap)
 {
 	struct vnode *vp = ap->a_vp;
@@ -920,6 +896,7 @@ devfs_lookupx(struct vop_lookup_args *ap, int *dm_unlock)
 	struct devfs_dirent *de, *dd;
 	struct devfs_dirent **dde;
 	struct devfs_mount *dmp;
+	struct mount *mp;
 	struct cdev *cdev;
 	int error, flags, nameiop, dvplocked;
 	char specname[SPECNAMELEN + 1], *pname;
@@ -931,7 +908,8 @@ devfs_lookupx(struct vop_lookup_args *ap, int *dm_unlock)
 	td = cnp->cn_thread;
 	flags = cnp->cn_flags;
 	nameiop = cnp->cn_nameiop;
-	dmp = VFSTODEVFS(dvp->v_mount);
+	mp = dvp->v_mount;
+	dmp = VFSTODEVFS(mp);
 	dd = dvp->v_data;
 	*vpp = NULLVP;
 
@@ -964,8 +942,8 @@ devfs_lookupx(struct vop_lookup_args *ap, int *dm_unlock)
 			return (ENOENT);
 		dvplocked = VOP_ISLOCKED(dvp);
 		VOP_UNLOCK(dvp, 0);
-		error = devfs_allocv(de, dvp->v_mount,
-		    cnp->cn_lkflags & LK_TYPE_MASK, vpp);
+		error = devfs_allocv(de, mp, cnp->cn_lkflags & LK_TYPE_MASK,
+		    vpp);
 		*dm_unlock = 0;
 		vn_lock(dvp, dvplocked | LK_RETRY);
 		return (error);
@@ -1050,8 +1028,7 @@ devfs_lookupx(struct vop_lookup_args *ap, int *dm_unlock)
 			return (0);
 		}
 	}
-	error = devfs_allocv(de, dvp->v_mount, cnp->cn_lkflags & LK_TYPE_MASK,
-	    vpp);
+	error = devfs_allocv(de, mp, cnp->cn_lkflags & LK_TYPE_MASK, vpp);
 	*dm_unlock = 0;
 	return (error);
 }
@@ -1204,6 +1181,36 @@ devfs_pathconf(struct vop_pathconf_args *ap)
 {
 
 	switch (ap->a_name) {
+	case _PC_FILESIZEBITS:
+		*ap->a_retval = 64;
+		return (0);
+	case _PC_NAME_MAX:
+		*ap->a_retval = NAME_MAX;
+		return (0);
+	case _PC_LINK_MAX:
+		*ap->a_retval = INT_MAX;
+		return (0);
+	case _PC_SYMLINK_MAX:
+		*ap->a_retval = MAXPATHLEN;
+		return (0);
+	case _PC_MAX_CANON:
+		if (ap->a_vp->v_vflag & VV_ISTTY) {
+			*ap->a_retval = MAX_CANON;
+			return (0);
+		}
+		return (EINVAL);
+	case _PC_MAX_INPUT:
+		if (ap->a_vp->v_vflag & VV_ISTTY) {
+			*ap->a_retval = MAX_INPUT;
+			return (0);
+		}
+		return (EINVAL);
+	case _PC_VDISABLE:
+		if (ap->a_vp->v_vflag & VV_ISTTY) {
+			*ap->a_retval = _POSIX_VDISABLE;
+			return (0);
+		}
+		return (EINVAL);
 	case _PC_MAC_PRESENT:
 #ifdef MAC
 		/*
@@ -1214,6 +1221,9 @@ devfs_pathconf(struct vop_pathconf_args *ap)
 #else
 		*ap->a_retval = 0;
 #endif
+		return (0);
+	case _PC_CHOWN_RESTRICTED:
+		*ap->a_retval = 1;
 		return (0);
 	default:
 		return (vop_stdpathconf(ap));
@@ -1341,6 +1351,7 @@ devfs_readdir(struct vop_readdir_args *ap)
 		else
 			de = dd;
 		dp = dd->de_dirent;
+		MPASS(dp->d_reclen == GENERIC_DIRSIZ(dp));
 		if (dp->d_reclen > uio->uio_resid)
 			break;
 		dp->d_fileno = de->de_inode;
@@ -1803,9 +1814,11 @@ devfs_mmap_f(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size,
 	 * compatible.
 	 */
 	mp = vp->v_mount;
-	if (mp != NULL && (mp->mnt_flag & MNT_NOEXEC) != 0)
+	if (mp != NULL && (mp->mnt_flag & MNT_NOEXEC) != 0) {
 		maxprot = VM_PROT_NONE;
-	else
+		if ((prot & VM_PROT_EXECUTE) != 0)
+			return (EACCES);
+	} else
 		maxprot = VM_PROT_EXECUTE;
 	if ((fp->f_flag & FREAD) != 0)
 		maxprot |= VM_PROT_READ;
@@ -1910,7 +1923,7 @@ static struct vop_vector devfs_specops = {
 	.vop_bmap =		VOP_PANIC,
 	.vop_close =		devfs_close,
 	.vop_create =		VOP_PANIC,
-	.vop_fsync =		devfs_fsync,
+	.vop_fsync =		vop_stdfsync,
 	.vop_getattr =		devfs_getattr,
 	.vop_ioctl =		devfs_ioctl,
 	.vop_link =		VOP_PANIC,

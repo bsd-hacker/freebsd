@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1990, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -39,6 +41,8 @@
 #include <sys/cdefs.h>
 #include <sys/_null.h>
 #include <sys/_types.h>
+
+__NULLABILITY_PRAGMA_PUSH
 
 typedef	__off_t		fpos_t;
 
@@ -123,10 +127,10 @@ struct __sFILE {
 
 	/* operations */
 	void	*_cookie;	/* (*) cookie passed to io functions */
-	int	(*_close)(void *);
-	int	(*_read)(void *, char *, int);
-	fpos_t	(*_seek)(void *, fpos_t, int);
-	int	(*_write)(void *, const char *, int);
+	int	(* _Nullable _close)(void *);
+	int	(* _Nullable _read)(void *, char *, int);
+	fpos_t	(* _Nullable _seek)(void *, fpos_t, int);
+	int	(* _Nullable _write)(void *, const char *, int);
 
 	/* separate buffer for long sequences of ungetc() */
 	struct	__sbuf _ub;	/* ungetc buffer */
@@ -336,7 +340,7 @@ int	 ferror_unlocked(FILE *);
 int	 fileno_unlocked(FILE *);
 #endif
 
-#if __POSIX_VISIBLE >= 200112
+#if __POSIX_VISIBLE >= 200112 || __XSI_VISIBLE >= 500
 int	 fseeko(FILE *, __off_t, int);
 __off_t	 ftello(FILE *);
 #endif
@@ -390,10 +394,10 @@ extern const char * const sys_errlist[];
  * Stdio function-access interface.
  */
 FILE	*funopen(const void *,
-	    int (*)(void *, char *, int),
-	    int (*)(void *, const char *, int),
-	    fpos_t (*)(void *, fpos_t, int),
-	    int (*)(void *));
+	    int (* _Nullable)(void *, char *, int),
+	    int (* _Nullable)(void *, const char *, int),
+	    fpos_t (* _Nullable)(void *, fpos_t, int),
+	    int (* _Nullable)(void *));
 #define	fropen(cookie, fn) funopen(cookie, fn, 0, 0, 0)
 #define	fwopen(cookie, fn) funopen(cookie, 0, fn, 0, 0)
 
@@ -462,7 +466,10 @@ static __inline int __sputc(int _c, FILE *_p) {
 		(*(p)->_p = (c), (int)*(p)->_p++))
 #endif
 
+#ifndef __LIBC_ISTHREADED_DECLARED
+#define __LIBC_ISTHREADED_DECLARED
 extern int __isthreaded;
+#endif
 
 #ifndef __cplusplus
 
@@ -506,4 +513,6 @@ extern int __isthreaded;
 #endif /* __cplusplus */
 
 __END_DECLS
+__NULLABILITY_PRAGMA_POP
+
 #endif /* !_STDIO_H_ */

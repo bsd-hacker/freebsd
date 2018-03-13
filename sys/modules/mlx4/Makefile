@@ -1,5 +1,5 @@
 # $FreeBSD$
-.PATH:  ${.CURDIR}/../../dev/mlx4/mlx4_core
+.PATH:  ${SRCTOP}/sys/dev/mlx4/mlx4_core
 
 KMOD=	mlx4
 SRCS=	device_if.h bus_if.h vnode_if.h pci_if.h \
@@ -10,6 +10,7 @@ SRCS=	device_if.h bus_if.h vnode_if.h pci_if.h \
 	mlx4_cq.c \
 	mlx4_eq.c \
 	mlx4_fw.c \
+	mlx4_fw_qos.c \
 	mlx4_icm.c \
 	mlx4_intf.c \
 	mlx4_main.c \
@@ -22,14 +23,12 @@ SRCS=	device_if.h bus_if.h vnode_if.h pci_if.h \
 	mlx4_reset.c \
 	mlx4_sense.c \
 	mlx4_srq.c \
-	mlx4_resource_tracker.c \
-	mlx4_sys_tune.c
+	mlx4_resource_tracker.c
 
-CFLAGS+= -I${.CURDIR}/../../ofed/include
-CFLAGS+= -I${.CURDIR}/../../compat/linuxkpi/common/include
+CFLAGS+= -I${SRCTOP}/sys/ofed/include
+CFLAGS+= -I${SRCTOP}/sys/ofed/include/uapi
+CFLAGS+= -I${SRCTOP}/sys/compat/linuxkpi/common/include
 
 .include <bsd.kmod.mk>
 
 CFLAGS+= -Wno-cast-qual -Wno-pointer-arith
-
-CWARNFLAGS.mlx4_mcg.c=	-Wno-unused

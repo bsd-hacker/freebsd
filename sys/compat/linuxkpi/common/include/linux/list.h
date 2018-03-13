@@ -70,12 +70,22 @@
 #include <vm/vm_object.h>
 #include <vm/pmap.h>
 
+#ifndef prefetch
 #define	prefetch(x)
+#endif
 
+#define LINUX_LIST_HEAD_INIT(name) { &(name), &(name) }
+
+#define LINUX_LIST_HEAD(name) \
+	struct list_head name = LINUX_LIST_HEAD_INIT(name)
+
+#ifndef LIST_HEAD_DEF
+#define	LIST_HEAD_DEF
 struct list_head {
 	struct list_head *next;
 	struct list_head *prev;
 };
+#endif
 
 static inline void
 INIT_LIST_HEAD(struct list_head *list)
@@ -91,12 +101,33 @@ list_empty(const struct list_head *head)
 	return (head->next == head);
 }
 
+static inline int
+list_empty_careful(const struct list_head *head)
+{
+	struct list_head *next = head->next;
+
+	return ((next == head) && (next == head->prev));
+}
+
+static inline void
+__list_del(struct list_head *prev, struct list_head *next)
+{
+	next->prev = prev;
+	WRITE_ONCE(prev->next, next);
+}
+
+static inline void
+__list_del_entry(struct list_head *entry)
+{
+
+	__list_del(entry->prev, entry->next);
+}
+
 static inline void
 list_del(struct list_head *entry)
 {
 
-	entry->next->prev = entry->prev;
-	entry->prev->next = entry->next;
+	__list_del(entry->prev, entry->next);
 }
 
 static inline void
@@ -148,6 +179,9 @@ list_del_init(struct list_head *entry)
 #define	list_next_entry(ptr, member)					\
 	list_entry(((ptr)->member.next), typeof(*(ptr)), member)
 
+#define	list_safe_reset_next(ptr, n, member) \
+	(n) = list_next_entry(ptr, member)
+
 #define	list_prev_entry(ptr, member)					\
 	list_entry(((ptr)->member.prev), typeof(*(ptr)), member)
 
@@ -182,6 +216,11 @@ list_del_init(struct list_head *entry)
 #define	list_for_each_entry_reverse(p, h, field)			\
 	for (p = list_entry((h)->prev, typeof(*p), field); &(p)->field != (h); \
 	    p = list_entry((p)->field.prev, typeof(*p), field))
+
+#define	list_for_each_entry_safe_reverse(p, n, h, field)		\
+	for (p = list_entry((h)->prev, typeof(*p), field), 		\
+	    n = list_entry((p)->field.prev, typeof(*p), field); &(p)->field != (h); \
+	    p = n, n = list_entry(n->field.prev, typeof(*n), field))
 
 #define	list_for_each_entry_continue_reverse(p, h, field) \
 	for (p = list_entry((p)->field.prev, typeof(*p), field); &(p)->field != (h); \
@@ -362,10 +401,6 @@ hlist_move_list(struct hlist_head *old, struct hlist_head *new)
 	old->first = NULL;
 }
 
-/**
- * list_is_singular - tests whether a list has just one entry.
- * @head: the list to test.
- */
 static inline int list_is_singular(const struct list_head *head)
 {
 	return !list_empty(head) && (head->next == head->prev);
@@ -383,20 +418,6 @@ static inline void __list_cut_position(struct list_head *list,
 	new_first->prev = head;
 }
 
-/**
- * list_cut_position - cut a list into two
- * @list: a new list to add all removed entries
- * @head: a list with entries
- * @entry: an entry within head, could be the head itself
- *	and if so we won't cut the list
- *
- * This helper moves the initial part of @head, up to and
- * including @entry, from @head to @list. You should
- * pass on @entry an element you know is on @head. @list
- * should be an empty list or a list you do not care about
- * losing its data.
- *
- */
 static inline void list_cut_position(struct list_head *list,
 		struct list_head *head, struct list_head *entry)
 {
@@ -411,11 +432,6 @@ static inline void list_cut_position(struct list_head *list,
 		__list_cut_position(list, head, entry);
 }
 
-/**
- *  list_is_last - tests whether @list is the last entry in list @head
- *   @list: the entry to test
- *    @head: the head of the list
- */
 static inline int list_is_last(const struct list_head *list,
                                 const struct list_head *head)
 {

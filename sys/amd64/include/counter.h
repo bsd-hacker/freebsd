@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2012 Konstantin Belousov <kib@FreeBSD.org>
  * All rights reserved.
  *
@@ -31,7 +33,9 @@
 
 #include <sys/pcpu.h>
 
-extern struct pcpu __pcpu[1];
+extern struct pcpu __pcpu[];
+
+#define	EARLY_COUNTER	&__pcpu[0].pc_early_dummy_counter
 
 #define	counter_enter()	do {} while (0)
 #define	counter_exit()	do {} while (0)
@@ -69,8 +73,8 @@ static inline void
 counter_u64_zero_inline(counter_u64_t c)
 {
 
-	smp_rendezvous(smp_no_rendevous_barrier, counter_u64_zero_one_cpu,
-	    smp_no_rendevous_barrier, c);
+	smp_rendezvous(smp_no_rendezvous_barrier, counter_u64_zero_one_cpu,
+	    smp_no_rendezvous_barrier, c);
 }
 #endif
 

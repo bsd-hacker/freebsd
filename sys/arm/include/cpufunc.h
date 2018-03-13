@@ -1,6 +1,8 @@
 /*	$NetBSD: cpufunc.h,v 1.29 2003/09/06 09:08:35 rearnsha Exp $	*/
 
 /*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 1997 Mark Brinicombe.
  * Copyright (c) 1997 Causality Limited
  * All rights reserved.
@@ -48,7 +50,6 @@
 
 #include <sys/types.h>
 #include <machine/armreg.h>
-#include <machine/cpuconf.h>
 
 static __inline void
 breakpoint(void)
@@ -277,15 +278,11 @@ void	sheeva_l2cache_wbinv_all	(void);
 #if defined(CPU_MV_PJ4B)
 void	armv6_idcache_wbinv_all		(void);
 #endif
-#if defined(CPU_CORTEXA8) || defined(CPU_CORTEXA_MP) || \
-    defined(CPU_MV_PJ4B) || defined(CPU_KRAIT)
-void	armv7_setttb			(u_int);
+#if defined(CPU_CORTEXA) || defined(CPU_MV_PJ4B) || defined(CPU_KRAIT)
 void	armv7_idcache_wbinv_all		(void);
 void	armv7_cpu_sleep			(int);
 void	armv7_setup			(void);
 void	armv7_drain_writebuf		(void);
-
-void	armadaxp_idcache_wbinv_all	(void);
 
 void 	cortexa_setup			(void);
 #endif
@@ -297,7 +294,6 @@ void	pj4bv7_setup			(void);
 #if defined(CPU_ARM1176)
 void	arm11_drain_writebuf	(void);
 
-void    arm11x6_setttb                  (u_int);
 void    arm11x6_setup                   (void);
 void    arm11x6_sleep                   (int);  /* no ref. for errata */
 #endif

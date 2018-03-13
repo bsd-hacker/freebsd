@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2012 Chelsio Communications, Inc.
  * All rights reserved.
  * Written by: Navdeep Parhar <np@FreeBSD.org>
@@ -209,7 +211,7 @@ alloc_lctx(struct adapter *sc, struct inpcb *inp, struct vi_info *vi)
 	    !IN6_ARE_ADDR_EQUAL(&in6addr_any, &inp->in6p_laddr)) {
 		struct tom_data *td = sc->tom_softc;
 
-		lctx->ce = hold_lip(td, &inp->in6p_laddr);
+		lctx->ce = hold_lip(td, &inp->in6p_laddr, NULL);
 		if (lctx->ce == NULL) {
 			free(lctx, M_CXGBE);
 			return (NULL);
@@ -222,6 +224,7 @@ alloc_lctx(struct adapter *sc, struct inpcb *inp, struct vi_info *vi)
 	TAILQ_INIT(&lctx->synq);
 
 	lctx->inp = inp;
+	lctx->vnet = inp->inp_socket->so_vnet;
 	in_pcbref(inp);
 
 	return (lctx);
@@ -824,14 +827,16 @@ done_with_synqe(struct adapter *sc, struct synq_entry *synqe)
 	struct inpcb *inp = lctx->inp;
 	struct vi_info *vi = synqe->syn->m_pkthdr.rcvif->if_softc;
 	struct l2t_entry *e = &sc->l2t->l2tab[synqe->l2e_idx];
+	int ntids;
 
 	INP_WLOCK_ASSERT(inp);
+	ntids = inp->inp_vflag & INP_IPV6 ? 2 : 1;
 
 	TAILQ_REMOVE(&lctx->synq, synqe, link);
 	inp = release_lctx(sc, lctx);
 	if (inp)
 		INP_WUNLOCK(inp);
-	remove_tid(sc, synqe->tid);
+	remove_tid(sc, synqe->tid, ntids);
 	release_tid(sc, synqe->tid, &sc->sge.ctrlq[vi->pi->port_id]);
 	t4_l2t_release(e);
 	release_synqe(synqe);	/* removed from synq list */
@@ -1039,10 +1044,13 @@ calc_opt2p(struct adapter *sc, struct port_info *pi, int rxqid,
 		opt2 |= F_RX_COALESCE_VALID;
 	else {
 		opt2 |= F_T5_OPT_2_VALID;
-		opt2 |= F_CONG_CNTRL_VALID; /* OPT_2_ISS really, for T5 */
+		opt2 |= F_T5_ISS;
 	}
 	if (sc->tt.rx_coalesce)
 		opt2 |= V_RX_COALESCE(M_RX_COALESCE);
+
+	if (sc->tt.cong_algorithm != -1)
+		opt2 |= V_CONG_CNTRL(sc->tt.cong_algorithm & M_CONG_CNTRL);
 
 #ifdef USE_DDP_RX_FLOW_CONTROL
 	if (ulp_mode == ULP_MODE_TCPDDP)
@@ -1180,8 +1188,9 @@ do_pass_accept_req(struct sge_iq *iq, const struct rss_header *rss,
 	struct l2t_entry *e = NULL;
 	int rscale, mtu_idx, rx_credits, rxqid, ulp_mode;
 	struct synq_entry *synqe = NULL;
-	int reject_reason, v;
+	int reject_reason, v, ntids;
 	uint16_t vid;
+	u_int wnd;
 #ifdef INVARIANTS
 	unsigned int opcode = G_CPL_OPCODE(be32toh(OPCODE_TID(cpl)));
 #endif
@@ -1197,6 +1206,8 @@ do_pass_accept_req(struct sge_iq *iq, const struct rss_header *rss,
 	t4opt_to_tcpopt(&cpl->tcpopt, &to);
 
 	pi = sc->port[G_SYN_INTF(be16toh(cpl->l2info))];
+
+	CURVNET_SET(lctx->vnet);
 
 	/*
 	 * Use the MAC index to lookup the associated VI.  If this SYN
@@ -1254,6 +1265,8 @@ found:
 		 */
 		if (!in6_ifhasaddr(ifp, &inc.inc6_laddr))
 			REJECT_PASS_ACCEPT();
+
+		ntids = 2;
 	} else {
 
 		/* Don't offload if the ifcap isn't enabled */
@@ -1266,7 +1279,16 @@ found:
 		 */
 		if (!in_ifhasaddr(ifp, inc.inc_laddr))
 			REJECT_PASS_ACCEPT();
+
+		ntids = 1;
 	}
+
+	/*
+	 * Don't offload if the ifnet that the SYN came in on is not in the same
+	 * vnet as the listening socket.
+	 */
+	if (lctx->vnet != ifp->if_vnet)
+		REJECT_PASS_ACCEPT();
 
 	e = get_l2te_for_nexthop(pi, ifp, &inc);
 	if (e == NULL)
@@ -1307,14 +1329,13 @@ found:
 		REJECT_PASS_ACCEPT();
 	}
 	so = inp->inp_socket;
-	CURVNET_SET(so->so_vnet);
 
 	mtu_idx = find_best_mtu_idx(sc, &inc, be16toh(cpl->tcpopt.mss));
 	rscale = cpl->tcpopt.wsf && V_tcp_do_rfc1323 ? select_rcv_wscale() : 0;
-	SOCKBUF_LOCK(&so->so_rcv);
 	/* opt0 rcv_bufsiz initially, assumes its normal meaning later */
-	rx_credits = min(select_rcv_wnd(so) >> 10, M_RCV_BUFSIZ);
-	SOCKBUF_UNLOCK(&so->so_rcv);
+	wnd = max(so->sol_sbrcv_hiwat, MIN_RCV_WND);
+	wnd = min(wnd, MAX_RCV_WND);
+	rx_credits = min(wnd >> 10, M_RCV_BUFSIZ);
 
 	save_qids_in_mbuf(m, vi);
 	get_qids_from_mbuf(m, NULL, &rxqid);
@@ -1343,7 +1364,7 @@ found:
 	synqe->rcv_bufsize = rx_credits;
 	atomic_store_rel_ptr(&synqe->wr, (uintptr_t)wr);
 
-	insert_tid(sc, tid, synqe);
+	insert_tid(sc, tid, synqe, ntids);
 	TAILQ_INSERT_TAIL(&lctx->synq, synqe, link);
 	hold_synqe(synqe);	/* hold for the duration it's in the synq */
 	hold_lctx(lctx);	/* A synqe on the list has a ref on its lctx */
@@ -1354,7 +1375,6 @@ found:
 	 */
 	toe_syncache_add(&inc, &to, &th, inp, tod, synqe);
 	INP_UNLOCK_ASSERT(inp);	/* ok to assert, we have a ref on the inp */
-	CURVNET_RESTORE();
 
 	/*
 	 * If we replied during syncache_add (synqe->wr has been consumed),
@@ -1372,7 +1392,7 @@ found:
 		if (m)
 			m->m_pkthdr.rcvif = hw_ifp;
 
-		remove_tid(sc, synqe->tid);
+		remove_tid(sc, synqe->tid, ntids);
 		free(wr, M_CXGBE);
 
 		/* Yank the synqe out of the lctx synq. */
@@ -1404,15 +1424,18 @@ found:
 		if (!(synqe->flags & TPF_SYNQE_EXPANDED))
 			send_reset_synqe(tod, synqe);
 		INP_WUNLOCK(inp);
+		CURVNET_RESTORE();
 
 		release_synqe(synqe);	/* extra hold */
 		return (__LINE__);
 	}
 	INP_WUNLOCK(inp);
+	CURVNET_RESTORE();
 
 	release_synqe(synqe);	/* extra hold */
 	return (0);
 reject:
+	CURVNET_RESTORE();
 	CTR4(KTR_CXGBE, "%s: stid %u, tid %u, REJECT (%d)", __func__, stid, tid,
 	    reject_reason);
 
@@ -1484,6 +1507,7 @@ do_pass_establish(struct sge_iq *iq, const struct rss_header *rss,
 	KASSERT(synqe->flags & TPF_SYNQE,
 	    ("%s: tid %u (ctx %p) not a synqe", __func__, tid, synqe));
 
+	CURVNET_SET(lctx->vnet);
 	INP_INFO_RLOCK(&V_tcbinfo);	/* for syncache_expand */
 	INP_WLOCK(inp);
 
@@ -1501,6 +1525,7 @@ do_pass_establish(struct sge_iq *iq, const struct rss_header *rss,
 
 		INP_WUNLOCK(inp);
 		INP_INFO_RUNLOCK(&V_tcbinfo);
+		CURVNET_RESTORE();
 		return (0);
 	}
 
@@ -1526,6 +1551,7 @@ reset:
 		send_reset_synqe(TOEDEV(ifp), synqe);
 		INP_WUNLOCK(inp);
 		INP_INFO_RUNLOCK(&V_tcbinfo);
+		CURVNET_RESTORE();
 		return (0);
 	}
 	toep->tid = tid;
@@ -1562,6 +1588,10 @@ reset:
 	/* New connection inpcb is already locked by syncache_expand(). */
 	new_inp = sotoinpcb(so);
 	INP_WLOCK_ASSERT(new_inp);
+	MPASS(so->so_vnet == lctx->vnet);
+	toep->vnet = lctx->vnet;
+	if (inc.inc_flags & INC_ISIPV6)
+		toep->ce = hold_lip(sc->tom_softc, &inc.inc6_laddr, lctx->ce);
 
 	/*
 	 * This is for the unlikely case where the syncache entry that we added
@@ -1585,6 +1615,7 @@ reset:
 	if (inp != NULL)
 		INP_WUNLOCK(inp);
 	INP_INFO_RUNLOCK(&V_tcbinfo);
+	CURVNET_RESTORE();
 	release_synqe(synqe);
 
 	return (0);
@@ -1598,5 +1629,15 @@ t4_init_listen_cpl_handlers(void)
 	t4_register_cpl_handler(CPL_CLOSE_LISTSRV_RPL, do_close_server_rpl);
 	t4_register_cpl_handler(CPL_PASS_ACCEPT_REQ, do_pass_accept_req);
 	t4_register_cpl_handler(CPL_PASS_ESTABLISH, do_pass_establish);
+}
+
+void
+t4_uninit_listen_cpl_handlers(void)
+{
+
+	t4_register_cpl_handler(CPL_PASS_OPEN_RPL, NULL);
+	t4_register_cpl_handler(CPL_CLOSE_LISTSRV_RPL, NULL);
+	t4_register_cpl_handler(CPL_PASS_ACCEPT_REQ, NULL);
+	t4_register_cpl_handler(CPL_PASS_ESTABLISH, NULL);
 }
 #endif

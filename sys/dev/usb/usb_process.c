@@ -1,5 +1,7 @@
 /* $FreeBSD$ */
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2008 Hans Petter Selasky. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -184,7 +186,7 @@ usb_process(void *arg)
 
 			continue;
 		}
-		/* end if messages - check if anyone is waiting for sync */
+		/* end of messages - check if anyone is waiting for sync */
 		if (up->up_dsleep) {
 			up->up_dsleep = 0;
 			cv_broadcast(&up->up_drain);
@@ -455,14 +457,15 @@ usb_proc_drain(struct usb_process *up)
 			up->up_csleep = 0;
 			cv_signal(&up->up_cv);
 		}
+#ifndef EARLY_AP_STARTUP
 		/* Check if we are still cold booted */
-
 		if (cold) {
 			USB_THREAD_SUSPEND(up->up_ptr);
 			printf("WARNING: A USB process has "
 			    "been left suspended\n");
 			break;
 		}
+#endif
 		cv_wait(&up->up_cv, up->up_mtx);
 	}
 	/* Check if someone is waiting - should not happen */

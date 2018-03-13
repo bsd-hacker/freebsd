@@ -1,6 +1,8 @@
 #!/bin/sh
 
 #-
+# SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+#
 # Copyright 2004-2005 Colin Percival
 # All rights reserved
 #
@@ -619,8 +621,10 @@ fetch_progress() {
 
 pct_fmt()
 {
-	printf "                                     \r"
-	printf "($1/$2) %02.2f%% " `echo "scale=4;$LNC / $TOTAL * 100"|bc`
+	if [ $TOTAL -gt 0 ]; then
+		printf "                                     \r"
+		printf "($1/$2) %02.2f%% " `echo "scale=4;$LNC / $TOTAL * 100"|bc`
+	fi
 }
 
 fetch_progress_percent() {

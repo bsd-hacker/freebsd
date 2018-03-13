@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2011 Semihalf.
  * All rights reserved.
  *
@@ -60,7 +62,6 @@ __FBSDID("$FreeBSD$");
 #endif
 #ifdef CPU_MV_PJ4B
 #include <arm/mv/mvwin.h>
-#include <dev/fdt/fdt_common.h>
 #endif
 
 extern struct pcpu __pcpu[];
@@ -155,11 +156,9 @@ init_secondary(int cpu)
 #ifndef INTRNG
 	int start = 0, end = 0;
 #endif
-	uint32_t actlr_mask, actlr_set;
 
 	pmap_set_tex();
-	cpuinfo_get_actlr_modifier(&actlr_mask, &actlr_set);
-	reinit_mmu(pmap_kern_ttb, actlr_mask, actlr_set);
+	cpuinfo_reinit_mmu(pmap_kern_ttb);
 	cpu_setup();
 
 	/* Provide stack pointers for other processor modes. */
@@ -201,6 +200,9 @@ init_secondary(int cpu)
 
 	/* Configure the interrupt controller */
 	intr_pic_init_secondary();
+
+	/* Apply possible BP hardening */
+	cpuinfo_init_bp_hardening();
 
 	mtx_lock_spin(&ap_boot_mtx);
 

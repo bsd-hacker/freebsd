@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1998, 2001 Nicolas Souchu
  * All rights reserved.
  *
@@ -208,7 +210,9 @@ iicbus_write_ivar(device_t bus, device_t child, int which, uintptr_t value)
 	default:
 		return (EINVAL);
 	case IICBUS_IVAR_ADDR:
-		return (EINVAL);
+		if (devi->addr != 0)
+			return (EINVAL);
+		devi->addr = value;
 	case IICBUS_IVAR_NOSTOP:
 		devi->nostop = value;
 		break;

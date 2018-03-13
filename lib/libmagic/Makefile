@@ -2,13 +2,15 @@
 # Copyright (c) David E. O'Brien, 2000-2004, 2006, 2009
 
 PACKAGE=lib${LIB}
-CONTRDIR=	${.CURDIR}/../../contrib/file
+CONTRDIR=	${SRCTOP}/contrib/file
 .PATH: ${CONTRDIR}/src
 .PATH: ${CONTRDIR}/doc
 
 LIB=	magic
 SHLIB_MAJOR=	4
+.if !make(build-tools)
 LIBADD=	z
+.endif
 MAN=	libmagic.3 magic.5
 
 SRCS=	apprentice.c apptype.c ascmagic.c cdf.c cdf_time.c compress.c \

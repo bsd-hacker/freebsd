@@ -9,7 +9,7 @@
 #
 # COMPILER_VERSION is a numeric constant equal to:
 #     major * 10000 + minor * 100 + tiny
-# It too can be overriden on the command line. When testing it, be sure to
+# It too can be overridden on the command line. When testing it, be sure to
 # make sure that you are limiting the test to a specific compiler. Testing
 # against 30300 for gcc likely isn't  what you wanted (since versions of gcc
 # prior to 4.2 likely have no prayer of working).
@@ -19,7 +19,9 @@
 # COMPILER_FEATURES will contain one or more of the following, based on
 # compiler support for that feature:
 #
-# - c++11 : supports full (or nearly full) C++11 programming environment.
+# - c++11:     supports full (or nearly full) C++11 programming environment.
+# - retpoline: supports the retpoline speculative execution vulnerability
+#              mitigation.
 #
 # These variables with an X_ prefix will also be provided if XCC is set.
 #
@@ -31,6 +33,9 @@ __<bsd.compiler.mk>__:
 
 .include <bsd.opts.mk>
 
+# command = /usr/local/bin/ccache cc ...
+# wrapper = /usr/local/libexec/ccache/cc ...
+CCACHE_BUILD_TYPE?=	command
 # Handle ccache after CC is determined, but not if CC/CXX are already
 # overridden with a manual setup.
 .if ${MK_CCACHE_BUILD:Uno} == "yes" && \
@@ -65,19 +70,26 @@ CCACHE_COMPILERCHECK?=	content
 CCACHE_COMPILERCHECK?=	mtime
 .endif
 .export CCACHE_COMPILERCHECK
-# Remove ccache from the PATH to prevent double calls and wasted CPP/LD time.
-PATH:=	${PATH:C,:?${CCACHE_WRAPPER_PATH}(/world)?(:$)?,,g}
 # Ensure no bogus CCACHE_PATH leaks in which might avoid the in-tree compiler.
 .if !empty(CCACHE_PATH)
 CCACHE_PATH=
 .export CCACHE_PATH
 .endif
+.if ${CCACHE_BUILD_TYPE} == "command"
+# Remove ccache from the PATH to prevent double calls and wasted CPP/LD time.
+PATH:=	${PATH:C,:?${CCACHE_WRAPPER_PATH}(/world)?(:$)?,,g}
 # Override various toolchain vars.
 .for var in CC CXX HOST_CC HOST_CXX
 .if defined(${var}) && ${${var}:M${CCACHE_BIN}} == ""
 ${var}:=	${CCACHE_BIN} ${${var}}
 .endif
 .endfor
+.else
+# Need to ensure CCACHE_WRAPPER_PATH is the first in ${PATH}
+PATH:=	${PATH:C,:?${CCACHE_WRAPPER_PATH}(/world)?(:$)?,,g}
+PATH:=	${CCACHE_WRAPPER_PATH}:${PATH}
+CCACHE_WRAPPER_PATH_PFX=	${CCACHE_WRAPPER_PATH}:
+.endif	# ${CCACHE_BUILD_TYPE} == "command"
 # GCC does not need the CCACHE_CPP2 hack enabled by default in devel/ccache.
 # The port enables it due to ccache passing preprocessed C to clang
 # which fails with -Wparentheses-equality, -Wtautological-compare, and
@@ -147,7 +159,7 @@ ${X_}COMPILER_TYPE:=	clang
 ${X_}COMPILER_TYPE:=	gcc
 . elif ${_v:M\(GCC\)}
 ${X_}COMPILER_TYPE:=	gcc
-. elif ${_v:Mclang}
+. elif ${_v:Mclang} || ${_v:M(clang-*.*.*)}
 ${X_}COMPILER_TYPE:=	clang
 . else
 .error Unable to determine compiler type for ${cc}=${${cc}}.  Consider setting ${X_}COMPILER_TYPE.
@@ -168,11 +180,13 @@ ${X_}COMPILER_FREEBSD_VERSION=	unknown
 .endif
 .endif
 
+${X_}COMPILER_FEATURES=
 .if ${${X_}COMPILER_TYPE} == "clang" || \
 	(${${X_}COMPILER_TYPE} == "gcc" && ${${X_}COMPILER_VERSION} >= 40800)
-${X_}COMPILER_FEATURES=	c++11
-.else
-${X_}COMPILER_FEATURES=
+${X_}COMPILER_FEATURES+=	c++11
+.endif
+.if ${${X_}COMPILER_TYPE} == "clang" && ${${X_}COMPILER_VERSION} >= 60000
+${X_}COMPILER_FEATURES+=	retpoline
 .endif
 
 .else
@@ -194,4 +208,5 @@ ${var}.${${X_}_cc_hash}:=	${${var}}
 .endif	# ${cc} == "CC" || !empty(XCC)
 .endfor	# .for cc in CC XCC
 
+.include <bsd.linker.mk>
 .endif	# !target(__<bsd.compiler.mk>__)

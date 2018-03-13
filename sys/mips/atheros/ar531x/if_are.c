@@ -35,7 +35,7 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * AR231x Ethernet interface driver
+ * AR531x Ethernet interface driver
  * copy from mips/idt/if_kr.c and netbsd code
  */
 #include <sys/param.h>
@@ -89,8 +89,6 @@ MODULE_DEPEND(are, miibus, 1, 1, 1);
 #include <mips/atheros/ar531x/ar5312reg.h>
 #include <mips/atheros/ar531x/ar5315_setup.h>
 #include <mips/atheros/ar531x/if_arereg.h>
-
-//#define ARE_DEBUG
 
 #ifdef ARE_DEBUG
 void dump_txdesc(struct are_softc *, int);
@@ -226,7 +224,7 @@ are_attach(device_t dev)
 	unit = device_get_unit(dev);
 	sc->are_dev = dev;
 
-	// hardcode macaddress
+	/* hardcode macaddress */
 	sc->are_eaddr[0] = 0x00;
 	sc->are_eaddr[1] = 0x0C;
 	sc->are_eaddr[2] = 0x42;
@@ -234,7 +232,7 @@ are_attach(device_t dev)
 	sc->are_eaddr[4] = 0x5E;
 	sc->are_eaddr[5] = 0x6B;
 
-	// try to get from hints
+	/* try to get from hints */
 	if (!resource_string_value(device_get_name(dev),
 		device_get_unit(dev), "macaddr", (const char **)&local_macstr)) {
 		uint32_t tmpmac[ETHER_ADDR_LEN];
@@ -302,11 +300,15 @@ are_attach(device_t dev)
 	ifp->if_ioctl = are_ioctl;
 	ifp->if_start = are_start;
 	ifp->if_init = are_init;
+	sc->are_if_flags = ifp->if_flags;
 
-	/* XXX: add real size */
-	IFQ_SET_MAXLEN(&ifp->if_snd, 9);
-	ifp->if_snd.ifq_maxlen = 9;
+	/* ifqmaxlen is sysctl value in net/if.c */
+	IFQ_SET_MAXLEN(&ifp->if_snd, ifqmaxlen);
+	ifp->if_snd.ifq_maxlen = ifqmaxlen;
 	IFQ_SET_READY(&ifp->if_snd);
+
+	/* Tell the upper layer(s) we support long frames. */
+	ifp->if_capabilities |= IFCAP_VLAN_MTU;
 
 	ifp->if_capenable = ifp->if_capabilities;
 
@@ -315,14 +317,6 @@ are_attach(device_t dev)
 		goto fail;
 	}
 
-	/* TODO: calculate prescale */
-/*
-	CSR_WRITE_4(sc, ARE_ETHMCP, (165000000 / (1250000 + 1)) & ~1);
-
-	CSR_WRITE_4(sc, ARE_MIIMCFG, ARE_MIIMCFG_R);
-	DELAY(1000);
-	CSR_WRITE_4(sc, ARE_MIIMCFG, 0);
-*/
 	CSR_WRITE_4(sc, CSR_BUSMODE, BUSMODE_SWR);
 	DELAY(1000);
 
@@ -350,11 +344,11 @@ are_attach(device_t dev)
 
 #ifdef INTRNG
 	char *name;
-	if(ar531x_soc >= AR531X_SOC_AR5315) {
+	if (ar531x_soc >= AR531X_SOC_AR5315) {
 		enetirq = AR5315_CPU_IRQ_ENET;
 		name = "enet";
 	} else {
-		if(device_get_unit(dev) == 0) {
+		if (device_get_unit(dev) == 0) {
 			enetirq = AR5312_IRQ_ENET0;
 			name = "enet0";
 		} else {
@@ -465,7 +459,6 @@ are_miibus_readreg(device_t dev, int phy, int reg)
 
 	addr = (phy << MIIADDR_PHY_SHIFT) | (reg << MIIADDR_REG_SHIFT);
 	CSR_WRITE_4(sc, CSR_MIIADDR, addr);
-//	AE_BARRIER(sc);
 	for (i = 0; i < 100000000; i++) {
 		if ((CSR_READ_4(sc, CSR_MIIADDR) & MIIADDR_BUSY) == 0)
 			break;
@@ -488,7 +481,6 @@ are_miibus_writereg(device_t dev, int phy, int reg, int data)
 	addr = (phy << MIIADDR_PHY_SHIFT) | (reg << MIIADDR_REG_SHIFT) |
 	    MIIADDR_WRITE;
 	CSR_WRITE_4(sc, CSR_MIIADDR, addr);
-//	AE_BARRIER(sc);
 
 	for (i = 0; i < 100000000; i++) {
 		if ((CSR_READ_4(sc, CSR_MIIADDR) & MIIADDR_BUSY) == 0)
@@ -610,7 +602,6 @@ are_init_locked(struct are_softc *sc)
 	 */
 	CSR_WRITE_4(sc, CSR_BUSMODE,
 	    /* XXX: not sure if this is a good thing or not... */
-	    //BUSMODE_ALIGN_16B |
 	    BUSMODE_BAR | BUSMODE_BLE | BUSMODE_PBL_4LW);
 
 	/*
@@ -648,15 +639,16 @@ are_init_locked(struct are_softc *sc)
 	/*
 	 * Start the mac.
 	 */
-	CSR_WRITE_4(sc, CSR_MACCTL, CSR_READ_4(sc, CSR_MACCTL) | 
-	    (MACCTL_RE | MACCTL_TE));
+	CSR_WRITE_4(sc, CSR_FLOWC, FLOWC_FCE);
+	CSR_WRITE_4(sc, CSR_MACCTL, MACCTL_RE | MACCTL_TE |
+	    MACCTL_PM | MACCTL_FDX | MACCTL_HBD | MACCTL_RA);
 
 	/*
 	 * Write out the opmode.
 	 */
-	CSR_WRITE_4(sc, CSR_OPMODE, OPMODE_SR | OPMODE_ST |
-//	    ae_txthresh[sc->sc_txthresh].txth_opmode);
+	CSR_WRITE_4(sc, CSR_OPMODE, OPMODE_SR | OPMODE_ST | OPMODE_SF |
 	    OPMODE_TR_64);
+
 	/*
 	 * Start the receive process.
 	 */
@@ -694,19 +686,92 @@ are_encap(struct are_softc *sc, struct mbuf **m_head)
 {
 	struct are_txdesc	*txd;
 	struct are_desc		*desc, *prev_desc;
+	struct mbuf		*m;
 	bus_dma_segment_t	txsegs[ARE_MAXFRAGS];
 	uint32_t		link_addr;
 	int			error, i, nsegs, prod, si, prev_prod;
 	int			txstat;
+	int			startcount;
+	int			padlen;
+
+	startcount = sc->are_cdata.are_tx_cnt;
 
 	ARE_LOCK_ASSERT(sc);
 
+	/*
+	 * Some VIA Rhine wants packet buffers to be longword
+	 * aligned, but very often our mbufs aren't. Rather than
+	 * waste time trying to decide when to copy and when not
+	 * to copy, just do it all the time.
+	 */
+	m = m_defrag(*m_head, M_NOWAIT);
+	if (m == NULL) {
+		device_printf(sc->are_dev, "are_encap m_defrag error\n");
+		m_freem(*m_head);
+		*m_head = NULL;
+		return (ENOBUFS);
+	}
+	*m_head = m;
+
+	/*
+	 * The Rhine chip doesn't auto-pad, so we have to make
+	 * sure to pad short frames out to the minimum frame length
+	 * ourselves.
+	 */
+	if ((*m_head)->m_pkthdr.len < ARE_MIN_FRAMELEN) {
+		m = *m_head;
+		padlen = ARE_MIN_FRAMELEN - m->m_pkthdr.len;
+		if (M_WRITABLE(m) == 0) {
+			/* Get a writable copy. */
+			m = m_dup(*m_head, M_NOWAIT);
+			m_freem(*m_head);
+			if (m == NULL) {
+				device_printf(sc->are_dev, "are_encap m_dup error\n");
+				*m_head = NULL;
+				return (ENOBUFS);
+			}
+			*m_head = m;
+		}
+		if (m->m_next != NULL || M_TRAILINGSPACE(m) < padlen) {
+			m = m_defrag(m, M_NOWAIT);
+			if (m == NULL) {
+				device_printf(sc->are_dev, "are_encap m_defrag error\n");
+				m_freem(*m_head);
+				*m_head = NULL;
+				return (ENOBUFS);
+			}
+		}
+		/*
+		 * Manually pad short frames, and zero the pad space
+		 * to avoid leaking data.
+		 */
+		bzero(mtod(m, char *) + m->m_pkthdr.len, padlen);
+		m->m_pkthdr.len += padlen;
+		m->m_len = m->m_pkthdr.len;
+		*m_head = m;
+	}
+
 	prod = sc->are_cdata.are_tx_prod;
 	txd = &sc->are_cdata.are_txdesc[prod];
-	error = bus_dmamap_load_mbuf_sg(sc->are_cdata.are_tx_tag, txd->tx_dmamap,
-	    *m_head, txsegs, &nsegs, BUS_DMA_NOWAIT);
+	error = bus_dmamap_load_mbuf_sg(sc->are_cdata.are_tx_tag,
+	    txd->tx_dmamap, *m_head, txsegs, &nsegs, BUS_DMA_NOWAIT);
 	if (error == EFBIG) {
-		panic("EFBIG");
+		device_printf(sc->are_dev, "are_encap EFBIG error\n");
+		m = m_defrag(*m_head, M_NOWAIT);
+		if (m == NULL) {
+			m_freem(*m_head);
+			*m_head = NULL;
+			return (ENOBUFS);
+		}
+		*m_head = m;
+		error = bus_dmamap_load_mbuf_sg(sc->are_cdata.are_tx_tag,
+		    txd->tx_dmamap, *m_head, txsegs, &nsegs, BUS_DMA_NOWAIT);
+		if (error != 0) {
+			m_freem(*m_head);
+			*m_head = NULL;
+			return (error);
+		}
+
 	} else if (error != 0)
 		return (error);
 	if (nsegs == 0) {
@@ -737,14 +802,12 @@ are_encap(struct are_softc *sc, struct mbuf **m_head)
 	for (i = 0; i < nsegs; i++) {
 		desc = &sc->are_rdata.are_tx_ring[prod];
 		desc->are_stat = ADSTAT_OWN;
-		desc->are_devcs = ARE_DMASIZE(txsegs[i].ds_len) | ADCTL_CH;
-		if (i == 0)
-			desc->are_devcs |= ADCTL_Tx_FS;
+		desc->are_devcs = ARE_DMASIZE(txsegs[i].ds_len);
 		desc->are_addr = txsegs[i].ds_addr;
-//		desc->are_link = 0;
 		/* link with previous descriptor */
-		if (prev_desc)
-			prev_desc->are_link = ARE_TX_RING_ADDR(sc, prod);
+		/* end of descriptor */
+		if (prod == ARE_TX_RING_CNT - 1)
+			desc->are_devcs |= ADCTL_ER;
 
 		sc->are_cdata.are_tx_cnt++;
 		prev_desc = desc;
@@ -770,16 +833,16 @@ are_encap(struct are_softc *sc, struct mbuf **m_head)
 	/* Start transmitting */
 	/* Check if new list is queued in NDPTR */
 	txstat = (CSR_READ_4(sc, CSR_STATUS) >> 20) & 7;
-	if (txstat == 0 || txstat == 6) {
-		/* Transmit Process Stat is stop or suspended */
-		CSR_WRITE_4(sc, CSR_TXPOLL, TXPOLL_TPD);
+	if (startcount == 0 && (txstat == 0 || txstat == 6)) {
+		desc = &sc->are_rdata.are_tx_ring[si];
+		desc->are_devcs |= ADCTL_Tx_FS;
 	}
 	else {
 		link_addr = ARE_TX_RING_ADDR(sc, si);
 		/* Get previous descriptor */
 		si = (si + ARE_TX_RING_CNT - 1) % ARE_TX_RING_CNT;
 		desc = &sc->are_rdata.are_tx_ring[si];
-		desc->are_link = link_addr;
+		desc->are_devcs &= ~(ADCTL_Tx_IC | ADCTL_Tx_LS);
 	}
 
 	return (0);
@@ -791,6 +854,7 @@ are_start_locked(struct ifnet *ifp)
 	struct are_softc		*sc;
 	struct mbuf		*m_head;
 	int			enq;
+	int			txstat;
 
 	sc = ifp->if_softc;
 
@@ -825,6 +889,14 @@ are_start_locked(struct ifnet *ifp)
 		 */
 		ETHER_BPF_MTAP(ifp, m_head);
 	}
+
+	if (enq > 0) { 
+		txstat = (CSR_READ_4(sc, CSR_STATUS) >> 20) & 7;
+		if (txstat == 0 || txstat == 6) {
+			/* Transmit Process Stat is stop or suspended */
+			CSR_WRITE_4(sc, CSR_TXPOLL, TXPOLL_TPD);
+		}
+	}
 }
 
 static void
@@ -850,6 +922,36 @@ are_stop(struct are_softc *sc)
 
 }
 
+static int
+are_set_filter(struct are_softc *sc)
+{
+	struct ifnet	    *ifp;
+	int mchash[2];
+	int macctl;
+
+	ifp = sc->are_ifp;
+
+	macctl = CSR_READ_4(sc, CSR_MACCTL);
+	macctl &= ~(MACCTL_PR | MACCTL_PM);
+	macctl |= MACCTL_HBD;
+
+	if (ifp->if_flags & IFF_PROMISC)
+		macctl |= MACCTL_PR;
+
+	/* Todo: hash table set. 
+	 * But I don't know how to use multicast hash table at this soc.
+	 */
+
+	/* this is allmulti */
+	mchash[0] = mchash[1] = 0xffffffff;
+	macctl |= MACCTL_PM;
+
+	CSR_WRITE_4(sc, CSR_HTLO, mchash[0]);
+	CSR_WRITE_4(sc, CSR_HTHI, mchash[1]);
+	CSR_WRITE_4(sc, CSR_MACCTL, macctl);
+
+	return 0;
+}
 
 static int
 are_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
@@ -863,7 +965,6 @@ are_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 
 	switch (command) {
 	case SIOCSIFFLAGS:
-#if 0
 		ARE_LOCK(sc);
 		if (ifp->if_flags & IFF_UP) {
 			if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
@@ -880,16 +981,13 @@ are_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 		}
 		sc->are_if_flags = ifp->if_flags;
 		ARE_UNLOCK(sc);
-#endif
 		error = 0;
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:
-#if 0
 		ARE_LOCK(sc);
 		are_set_filter(sc);
 		ARE_UNLOCK(sc);
-#endif
 		error = 0;
 		break;
 	case SIOCGIFMEDIA:
@@ -903,28 +1001,6 @@ are_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 		break;
 	case SIOCSIFCAP:
 		error = 0;
-#if 0
-		mask = ifr->ifr_reqcap ^ ifp->if_capenable;
-		if ((mask & IFCAP_HWCSUM) != 0) {
-			ifp->if_capenable ^= IFCAP_HWCSUM;
-			if ((IFCAP_HWCSUM & ifp->if_capenable) &&
-			    (IFCAP_HWCSUM & ifp->if_capabilities))
-				ifp->if_hwassist = ARE_CSUM_FEATURES;
-			else
-				ifp->if_hwassist = 0;
-		}
-		if ((mask & IFCAP_VLAN_HWTAGGING) != 0) {
-			ifp->if_capenable ^= IFCAP_VLAN_HWTAGGING;
-			if (IFCAP_VLAN_HWTAGGING & ifp->if_capenable &&
-			    IFCAP_VLAN_HWTAGGING & ifp->if_capabilities &&
-			    ifp->if_drv_flags & IFF_DRV_RUNNING) {
-				ARE_LOCK(sc);
-				are_vlan_setup(sc);
-				ARE_UNLOCK(sc);
-			}
-		}
-		VLAN_CAPABILITIES(ifp);
-#endif
 		break;
 	default:
 		error = ether_ioctl(ifp, command, data);
@@ -1343,7 +1419,7 @@ are_newbuf(struct are_softc *sc, int idx)
 		return (ENOBUFS);
 	m->m_len = m->m_pkthdr.len = MCLBYTES;
 
-	// tcp header boundary margin
+	/* tcp header boundary margin */
 	m_adj(m, 4);
 
 	if (bus_dmamap_load_mbuf_sg(sc->are_cdata.are_rx_tag,
@@ -1355,9 +1431,11 @@ are_newbuf(struct are_softc *sc, int idx)
 
 	rxd = &sc->are_cdata.are_rxdesc[idx];
 	if (rxd->rx_m != NULL) {
-// This code make bug. Make scranble on buffer data.
-//		bus_dmamap_sync(sc->are_cdata.are_rx_tag, rxd->rx_dmamap,
-//		    BUS_DMASYNC_POSTREAD);
+		/*
+		 * THis is if_kr.c original code but make bug. Make scranble on buffer data.
+		 * bus_dmamap_sync(sc->are_cdata.are_rx_tag, rxd->rx_dmamap,
+		 *    BUS_DMASYNC_POSTREAD);
+		 */
 		bus_dmamap_unload(sc->are_cdata.are_rx_tag, rxd->rx_dmamap);
 	}
 	map = rxd->rx_dmamap;
@@ -1551,7 +1629,6 @@ are_intr(void *arg)
 	struct are_softc		*sc = arg;
 	uint32_t		status;
 	struct ifnet		*ifp = sc->are_ifp;
-//kdb_break();
 
 	ARE_LOCK(sc);
 

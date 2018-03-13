@@ -1,6 +1,8 @@
 /*	$NetBSD: pcmcia.c,v 1.23 2000/07/28 19:17:02 drochner Exp $	*/
 
 /*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 1997 Marc Horowitz.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -470,7 +472,7 @@ pccard_function_init(struct pccard_function *pf, int entry)
 	struct pccard_ivar *devi = PCCARD_IVAR(pf->dev);
 	struct resource_list *rl = &devi->resources;
 	struct resource_list_entry *rle;
-	struct resource *r = 0;
+	struct resource *r = NULL;
 	struct pccard_ce_iospace *ios;
 	struct pccard_ce_memspace *mems;
 	device_t bus;
@@ -1115,7 +1117,7 @@ pccard_alloc_resource(device_t dev, device_t child, int type, int *rid,
     rman_res_t start, rman_res_t end, rman_res_t count, u_int flags)
 {
 	struct pccard_ivar *dinfo;
-	struct resource_list_entry *rle = 0;
+	struct resource_list_entry *rle = NULL;
 	int passthrough = (device_get_parent(child) != dev);
 	int isdefault = (RMAN_IS_DEFAULT_RANGE(start, end) && count == 1);
 	struct resource *r = NULL;
@@ -1165,7 +1167,7 @@ pccard_release_resource(device_t dev, device_t child, int type, int rid,
 {
 	struct pccard_ivar *dinfo;
 	int passthrough = (device_get_parent(child) != dev);
-	struct resource_list_entry *rle = 0;
+	struct resource_list_entry *rle = NULL;
 
 	if (passthrough)
 		return BUS_RELEASE_RESOURCE(device_get_parent(dev), child,

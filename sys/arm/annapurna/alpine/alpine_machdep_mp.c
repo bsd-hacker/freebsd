@@ -43,10 +43,14 @@ __FBSDID("$FreeBSD$");
 #include <machine/fdt.h>
 #include <machine/intr.h>
 #include <machine/cpu-v6.h>
+#include <machine/platformvar.h>
 
 #include <dev/fdt/fdt_common.h>
+#include <dev/ofw/openfirm.h>
 #include <dev/ofw/ofw_cpu.h>
 #include <dev/ofw/ofw_bus_subr.h>
+
+#include <arm/annapurna/alpine/alpine_mp.h>
 
 #define AL_CPU_RESUME_WATERMARK_REG		0x00
 #define AL_CPU_RESUME_FLAGS_REG			0x04
@@ -81,7 +85,7 @@ static boolean_t alpine_validate_cpu(u_int, phandle_t, u_int, pcell_t *);
 static boolean_t
 alpine_validate_cpu(u_int id, phandle_t child, u_int addr_cell, pcell_t *reg)
 {
-	return fdt_is_compatible(child, "arm,cortex-a15");
+	return ofw_bus_node_is_compatible(child, "arm,cortex-a15");
 }
 
 static int
@@ -111,7 +115,7 @@ platform_mp_get_core_cnt(void)
 }
 
 void
-platform_mp_setmaxid(void)
+alpine_mp_setmaxid(platform_t plat)
 {
 
 	mp_ncpus = platform_mp_get_core_cnt();
@@ -171,7 +175,7 @@ alpine_get_nb_base(u_long *pbase, u_long *psize)
 }
 
 void
-platform_mp_start_ap(void)
+alpine_mp_start_ap(platform_t plat)
 {
 	uint32_t physaddr;
 	vm_offset_t vaddr;

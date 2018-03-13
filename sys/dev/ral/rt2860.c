@@ -1459,7 +1459,7 @@ rt2860_tx(struct rt2860_softc *sc, struct mbuf *m, struct ieee80211_node *ni)
 	struct rt2860_txd *txd;
 	struct rt2860_txwi *txwi;
 	struct ieee80211_frame *wh;
-	const struct ieee80211_txparam *tp;
+	const struct ieee80211_txparam *tp = ni->ni_txparms;
 	struct ieee80211_key *k;
 	struct mbuf *m1;
 	bus_dma_segment_t segs[RT2860_MAX_SCATTER];
@@ -1488,11 +1488,10 @@ rt2860_tx(struct rt2860_softc *sc, struct mbuf *m, struct ieee80211_node *ni)
 	hdrlen = ieee80211_anyhdrsize(wh);
 	type = wh->i_fc[0] & IEEE80211_FC0_TYPE_MASK;
 
-	tp = &vap->iv_txparms[ieee80211_chan2mode(ni->ni_chan)];
-	if (IEEE80211_IS_MULTICAST(wh->i_addr1)) {
-		rate = tp->mcastrate;
-	} else if (m->m_flags & M_EAPOL) {
+	if (m->m_flags & M_EAPOL) {
 		rate = tp->mgmtrate;
+	} else if (IEEE80211_IS_MULTICAST(wh->i_addr1)) {
+		rate = tp->mcastrate;
 	} else if (tp->ucastrate != IEEE80211_FIXED_RATE_NONE) {
 		rate = tp->ucastrate;
 	} else {
@@ -3116,10 +3115,13 @@ static int
 rt2860_updateedca(struct ieee80211com *ic)
 {
 	struct rt2860_softc *sc = ic->ic_softc;
+	struct chanAccParams chp;
 	const struct wmeParams *wmep;
 	int aci;
 
-	wmep = ic->ic_wme.wme_chanParams.cap_wmeParams;
+	ieee80211_wme_ic_getparams(ic, &chp);
+
+	wmep = chp.cap_wmeParams;
 
 	/* update MAC TX configuration registers */
 	for (aci = 0; aci < WME_NUM_AC; aci++) {

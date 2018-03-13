@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 2013 Oleksandr Tymoshenko <gonzo@freebsd.org>
- * Copyright (c) 2016 Emmanuel Vadot <manu@bidouilliste.com>
+ * Copyright (c) 2016 Emmanuel Vadot <manu@freebsd.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -38,7 +38,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 #include <sys/rman.h>
 
-#include <dev/fdt/fdt_common.h>
 #include <dev/ofw/openfirm.h>
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
@@ -116,9 +115,6 @@ static void aw_wdog_shutdown_fn(void *, int);
 static int
 aw_wdog_probe(device_t dev)
 {
-	struct aw_wdog_softc *sc;
-
-	sc = device_get_softc(dev);
 
 	if (!ofw_bus_status_okay(dev))
 		return (ENXIO);
@@ -238,7 +234,7 @@ aw_wdog_shutdown_fn(void *private, int howto)
 }
 
 void
-aw_wdog_watchdog_reset()
+aw_wdog_watchdog_reset(void)
 {
 
 	if (aw_wdog_sc == NULL) {

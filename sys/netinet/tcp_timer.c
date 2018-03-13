@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1982, 1986, 1988, 1990, 1993, 1995
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -10,7 +12,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -116,9 +118,9 @@ SYSCTL_PROC(_net_inet_tcp, OID_AUTO, rexmit_slop, CTLTYPE_INT|CTLFLAG_RW,
     &tcp_rexmit_slop, 0, sysctl_msec_to_ticks, "I",
     "Retransmission Timer Slop");
 
-static int	always_keepalive = 1;
+int	tcp_always_keepalive = 1;
 SYSCTL_INT(_net_inet_tcp, OID_AUTO, always_keepalive, CTLFLAG_RW,
-    &always_keepalive , 0, "Assume SO_KEEPALIVE on all TCP connections");
+    &tcp_always_keepalive , 0, "Assume SO_KEEPALIVE on all TCP connections");
 
 int    tcp_fast_finwait2_recycle = 0;
 SYSCTL_INT(_net_inet_tcp, OID_AUTO, fast_finwait2_recycle, CTLFLAG_RW, 
@@ -141,39 +143,14 @@ SYSCTL_INT(_net_inet_tcp, OID_AUTO, rexmit_drop_options, CTLFLAG_RW,
     &tcp_rexmit_drop_options, 0,
     "Drop TCP options from 3rd and later retransmitted SYN");
 
-static VNET_DEFINE(int, tcp_pmtud_blackhole_detect);
-#define	V_tcp_pmtud_blackhole_detect	VNET(tcp_pmtud_blackhole_detect)
+VNET_DEFINE(int, tcp_pmtud_blackhole_detect);
 SYSCTL_INT(_net_inet_tcp, OID_AUTO, pmtud_blackhole_detection,
     CTLFLAG_RW|CTLFLAG_VNET,
     &VNET_NAME(tcp_pmtud_blackhole_detect), 0,
     "Path MTU Discovery Black Hole Detection Enabled");
 
-static VNET_DEFINE(int, tcp_pmtud_blackhole_activated);
-#define	V_tcp_pmtud_blackhole_activated \
-    VNET(tcp_pmtud_blackhole_activated)
-SYSCTL_INT(_net_inet_tcp, OID_AUTO, pmtud_blackhole_activated,
-    CTLFLAG_RD|CTLFLAG_VNET,
-    &VNET_NAME(tcp_pmtud_blackhole_activated), 0,
-    "Path MTU Discovery Black Hole Detection, Activation Count");
-
-static VNET_DEFINE(int, tcp_pmtud_blackhole_activated_min_mss);
-#define	V_tcp_pmtud_blackhole_activated_min_mss \
-    VNET(tcp_pmtud_blackhole_activated_min_mss)
-SYSCTL_INT(_net_inet_tcp, OID_AUTO, pmtud_blackhole_activated_min_mss,
-    CTLFLAG_RD|CTLFLAG_VNET,
-    &VNET_NAME(tcp_pmtud_blackhole_activated_min_mss), 0,
-    "Path MTU Discovery Black Hole Detection, Activation Count at min MSS");
-
-static VNET_DEFINE(int, tcp_pmtud_blackhole_failed);
-#define	V_tcp_pmtud_blackhole_failed	VNET(tcp_pmtud_blackhole_failed)
-SYSCTL_INT(_net_inet_tcp, OID_AUTO, pmtud_blackhole_failed,
-    CTLFLAG_RD|CTLFLAG_VNET,
-    &VNET_NAME(tcp_pmtud_blackhole_failed), 0,
-    "Path MTU Discovery Black Hole Detection, Failure Count");
-
 #ifdef INET
-static VNET_DEFINE(int, tcp_pmtud_blackhole_mss) = 1200;
-#define	V_tcp_pmtud_blackhole_mss	VNET(tcp_pmtud_blackhole_mss)
+VNET_DEFINE(int, tcp_pmtud_blackhole_mss) = 1200;
 SYSCTL_INT(_net_inet_tcp, OID_AUTO, pmtud_blackhole_mss,
     CTLFLAG_RW|CTLFLAG_VNET,
     &VNET_NAME(tcp_pmtud_blackhole_mss), 0,
@@ -181,8 +158,7 @@ SYSCTL_INT(_net_inet_tcp, OID_AUTO, pmtud_blackhole_mss,
 #endif
 
 #ifdef INET6
-static VNET_DEFINE(int, tcp_v6pmtud_blackhole_mss) = 1220;
-#define	V_tcp_v6pmtud_blackhole_mss	VNET(tcp_v6pmtud_blackhole_mss)
+VNET_DEFINE(int, tcp_v6pmtud_blackhole_mss) = 1220;
 SYSCTL_INT(_net_inet_tcp, OID_AUTO, v6pmtud_blackhole_mss,
     CTLFLAG_RW|CTLFLAG_VNET,
     &VNET_NAME(tcp_v6pmtud_blackhole_mss), 0,
@@ -468,6 +444,26 @@ tcp_timer_keep(void *xtp)
 	}
 	KASSERT((tp->t_timers->tt_flags & TT_STOPPED) == 0,
 		("%s: tp %p tcpcb can't be stopped here", __func__, tp));
+
+	/*
+	 * Because we don't regularly reset the keepalive callout in
+	 * the ESTABLISHED state, it may be that we don't actually need
+	 * to send a keepalive yet. If that occurs, schedule another
+	 * call for the next time the keepalive timer might expire.
+	 */
+	if (TCPS_HAVEESTABLISHED(tp->t_state)) {
+		u_int idletime;
+
+		idletime = ticks - tp->t_rcvtime;
+		if (idletime < TP_KEEPIDLE(tp)) {
+			callout_reset(&tp->t_timers->tt_keep,
+			    TP_KEEPIDLE(tp) - idletime, tcp_timer_keep, tp);
+			INP_WUNLOCK(inp);
+			CURVNET_RESTORE();
+			return;
+		}
+	}
+
 	/*
 	 * Keep-alive timer went off; send something
 	 * or drop connection if idle for too long.
@@ -475,7 +471,8 @@ tcp_timer_keep(void *xtp)
 	TCPSTAT_INC(tcps_keeptimeo);
 	if (tp->t_state < TCPS_ESTABLISHED)
 		goto dropit;
-	if ((always_keepalive || inp->inp_socket->so_options & SO_KEEPALIVE) &&
+	if ((tcp_always_keepalive ||
+	    inp->inp_socket->so_options & SO_KEEPALIVE) &&
 	    tp->t_state <= TCPS_CLOSING) {
 		if (ticks - tp->t_rcvtime >= TP_KEEPIDLE(tp) + TP_MAXIDLE(tp))
 			goto dropit;
@@ -729,18 +726,20 @@ tcp_timer_rexmt(void * xtp)
 		 */
 		if (((tp->t_flags2 & (TF2_PLPMTU_PMTUD|TF2_PLPMTU_MAXSEGSNT)) ==
 		    (TF2_PLPMTU_PMTUD|TF2_PLPMTU_MAXSEGSNT)) &&
-		    (tp->t_rxtshift >= 2 && tp->t_rxtshift % 2 == 0)) {
+		    (tp->t_rxtshift >= 2 && tp->t_rxtshift < 6 &&
+		    tp->t_rxtshift % 2 == 0)) {
 			/*
 			 * Enter Path MTU Black-hole Detection mechanism:
 			 * - Disable Path MTU Discovery (IP "DF" bit).
 			 * - Reduce MTU to lower value than what we
 			 *   negotiated with peer.
 			 */
-			/* Record that we may have found a black hole. */
-			tp->t_flags2 |= TF2_PLPMTU_BLACKHOLE;
-
-			/* Keep track of previous MSS. */
-			tp->t_pmtud_saved_maxseg = tp->t_maxseg;
+			if ((tp->t_flags2 & TF2_PLPMTU_BLACKHOLE) == 0) {
+				/* Record that we may have found a black hole. */
+				tp->t_flags2 |= TF2_PLPMTU_BLACKHOLE;
+				/* Keep track of previous MSS. */
+				tp->t_pmtud_saved_maxseg = tp->t_maxseg;
+			}
 
 			/* 
 			 * Reduce the MSS to blackhole value or to the default
@@ -752,7 +751,7 @@ tcp_timer_rexmt(void * xtp)
 			    tp->t_maxseg > V_tcp_v6pmtud_blackhole_mss) {
 				/* Use the sysctl tuneable blackhole MSS. */
 				tp->t_maxseg = V_tcp_v6pmtud_blackhole_mss;
-				V_tcp_pmtud_blackhole_activated++;
+				TCPSTAT_INC(tcps_pmtud_blackhole_activated);
 			} else if (isipv6) {
 				/* Use the default MSS. */
 				tp->t_maxseg = V_tcp_v6mssdflt;
@@ -761,7 +760,7 @@ tcp_timer_rexmt(void * xtp)
 				 * minmss.
 				 */
 				tp->t_flags2 &= ~TF2_PLPMTU_PMTUD;
-				V_tcp_pmtud_blackhole_activated_min_mss++;
+				TCPSTAT_INC(tcps_pmtud_blackhole_activated_min_mss);
 			}
 #endif
 #if defined(INET6) && defined(INET)
@@ -771,7 +770,7 @@ tcp_timer_rexmt(void * xtp)
 			if (tp->t_maxseg > V_tcp_pmtud_blackhole_mss) {
 				/* Use the sysctl tuneable blackhole MSS. */
 				tp->t_maxseg = V_tcp_pmtud_blackhole_mss;
-				V_tcp_pmtud_blackhole_activated++;
+				TCPSTAT_INC(tcps_pmtud_blackhole_activated);
 			} else {
 				/* Use the default MSS. */
 				tp->t_maxseg = V_tcp_mssdflt;
@@ -780,7 +779,7 @@ tcp_timer_rexmt(void * xtp)
 				 * minmss.
 				 */
 				tp->t_flags2 &= ~TF2_PLPMTU_PMTUD;
-				V_tcp_pmtud_blackhole_activated_min_mss++;
+				TCPSTAT_INC(tcps_pmtud_blackhole_activated_min_mss);
 			}
 #endif
 			/*
@@ -799,11 +798,11 @@ tcp_timer_rexmt(void * xtp)
 			 * stage (1448, 1188, 524) 2 chances to recover.
 			 */
 			if ((tp->t_flags2 & TF2_PLPMTU_BLACKHOLE) &&
-			    (tp->t_rxtshift > 6)) {
+			    (tp->t_rxtshift >= 6)) {
 				tp->t_flags2 |= TF2_PLPMTU_PMTUD;
 				tp->t_flags2 &= ~TF2_PLPMTU_BLACKHOLE;
 				tp->t_maxseg = tp->t_pmtud_saved_maxseg;
-				V_tcp_pmtud_blackhole_failed++;
+				TCPSTAT_INC(tcps_pmtud_blackhole_failed);
 				/*
 				 * Reset the slow-start flight size as it
 				 * may depend on the new MSS.
@@ -825,20 +824,16 @@ tcp_timer_rexmt(void * xtp)
 	    (tp->t_rxtshift == 3))
 		tp->t_flags &= ~(TF_REQ_SCALE|TF_REQ_TSTMP|TF_SACK_PERMIT);
 	/*
-	 * If we backed off this far, our srtt estimate is probably bogus.
-	 * Clobber it so we'll take the next rtt measurement as our srtt;
-	 * move the current srtt into rttvar to keep the current
-	 * retransmit times until then.
+	 * If we backed off this far, notify the L3 protocol that we're having
+	 * connection problems.
 	 */
-	if (tp->t_rxtshift > TCP_MAXRXTSHIFT / 4) {
+	if (tp->t_rxtshift > TCP_RTT_INVALIDATE) {
 #ifdef INET6
 		if ((tp->t_inpcb->inp_vflag & INP_IPV6) != 0)
 			in6_losing(tp->t_inpcb);
 		else
 #endif
 			in_losing(tp->t_inpcb);
-		tp->t_rttvar += (tp->t_srtt >> TCP_RTT_SHIFT);
-		tp->t_srtt = 0;
 	}
 	tp->snd_nxt = tp->snd_una;
 	tp->snd_recover = tp->snd_max;
@@ -989,29 +984,4 @@ tcp_timer_stop(struct tcpcb *tp, uint32_t timer_type)
 		 */
 		tp->t_timers->tt_draincnt++;
 	}
-}
-
-#define	ticks_to_msecs(t)	(1000*(t) / hz)
-
-void
-tcp_timer_to_xtimer(struct tcpcb *tp, struct tcp_timer *timer,
-    struct xtcp_timer *xtimer)
-{
-	sbintime_t now;
-
-	bzero(xtimer, sizeof(*xtimer));
-	if (timer == NULL)
-		return;
-	now = getsbinuptime();
-	if (callout_active(&timer->tt_delack))
-		xtimer->tt_delack = (timer->tt_delack.c_time - now) / SBT_1MS;
-	if (callout_active(&timer->tt_rexmt))
-		xtimer->tt_rexmt = (timer->tt_rexmt.c_time - now) / SBT_1MS;
-	if (callout_active(&timer->tt_persist))
-		xtimer->tt_persist = (timer->tt_persist.c_time - now) / SBT_1MS;
-	if (callout_active(&timer->tt_keep))
-		xtimer->tt_keep = (timer->tt_keep.c_time - now) / SBT_1MS;
-	if (callout_active(&timer->tt_2msl))
-		xtimer->tt_2msl = (timer->tt_2msl.c_time - now) / SBT_1MS;
-	xtimer->t_rcvtime = ticks_to_msecs(ticks - tp->t_rcvtime);
 }

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2001 - 2003 by Thomas Moestl <tmm@FreeBSD.org>.
  * Copyright (c) 2005 Marius Strobl <marius@FreeBSD.org>
  * All rights reserved.
@@ -46,6 +48,7 @@ __FBSDID("$FreeBSD$");
 #include "ofw_bus_if.h"
 
 #define	OFW_COMPAT_LEN	255
+#define	OFW_STATUS_LEN	16
 
 int
 ofw_bus_gen_setup_devinfo(struct ofw_bus_devinfo *obd, phandle_t node)
@@ -87,6 +90,7 @@ ofw_bus_gen_child_pnpinfo_str(device_t cbdev, device_t child, char *buf,
     size_t buflen)
 {
 
+	*buf = '\0';
 	if (ofw_bus_get_name(child) != NULL) {
 		strlcat(buf, "name=", buflen);
 		strlcat(buf, ofw_bus_get_name(child), buflen);
@@ -176,6 +180,24 @@ ofw_bus_status_okay(device_t dev)
 	    strcmp(status, "ok") == 0)
 		return (1);
 	
+	return (0);
+}
+
+int
+ofw_bus_node_status_okay(phandle_t node)
+{
+	char status[OFW_STATUS_LEN];
+	int len;
+
+	len = OF_getproplen(node, "status");
+	if (len <= 0)
+		return (1);
+
+	OF_getprop(node, "status", status, OFW_STATUS_LEN);
+	if ((len == 5 && (bcmp(status, "okay", len) == 0)) ||
+	    (len == 3 && (bcmp(status, "ok", len))))
+		return (1);
+
 	return (0);
 }
 
@@ -365,9 +387,8 @@ ofw_bus_search_intrmap(void *intr, int intrsz, void *regs, int physsz,
 	uint8_t *mptr;
 	pcell_t paddrsz;
 	pcell_t pintrsz;
-	int i, rsz, tsz;
+	int i, tsz;
 
-	rsz = -1;
 	if (imapmsk != NULL) {
 		for (i = 0; i < physsz; i++)
 			ref[i] = uiregs[i] & uiimapmsk[i];
@@ -424,7 +445,7 @@ ofw_bus_msimap(phandle_t node, uint16_t pci_rid, phandle_t *msi_parent,
 {
 	pcell_t *map, mask, msi_base, rid_base, rid_length;
 	ssize_t len;
-	uint32_t masked_rid, rid;
+	uint32_t masked_rid;
 	int err, i;
 
 	/* TODO: This should be OF_searchprop_alloc if we had it */
@@ -441,7 +462,6 @@ ofw_bus_msimap(phandle_t node, uint16_t pci_rid, phandle_t *msi_parent,
 	}
 
 	err = ENOENT;
-	rid = 0;
 	mask = 0xffffffff;
 	OF_getencprop(node, "msi-map-mask", &mask, sizeof(mask));
 
@@ -701,22 +721,14 @@ phandle_t
 ofw_bus_find_compatible(phandle_t node, const char *onecompat)
 {
 	phandle_t child, ret;
-	void *compat;
-	int len;
 
 	/*
 	 * Traverse all children of 'start' node, and find first with
 	 * matching 'compatible' property.
 	 */
 	for (child = OF_child(node); child != 0; child = OF_peer(child)) {
-		len = OF_getprop_alloc(child, "compatible", 1, &compat);
-		if (len >= 0) {
-			ret = ofw_bus_node_is_compatible_int(compat, len,
-			    onecompat);
-			free(compat, M_OFWPROP);
-			if (ret != 0)
-				return (child);
-		}
+		if (ofw_bus_node_is_compatible(child, onecompat) != 0)
+			return (child);
 
 		ret = ofw_bus_find_compatible(child, onecompat);
 		if (ret != 0)
@@ -944,7 +956,7 @@ ofw_bus_string_list_to_array(phandle_t node, const char *list_name,
 		i += len;
 		tptr += len;
 	}
-	array[cnt] = 0;
+	array[cnt] = NULL;
 	*out_array = array;
 
 	return (cnt);

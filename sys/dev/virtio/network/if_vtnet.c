@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2011, Bryan Venteicher <bryanv@FreeBSD.org>
  * All rights reserved.
  *
@@ -3473,6 +3475,7 @@ vtnet_update_vlan_filter(struct vtnet_softc *sc, int add, uint16_t tag)
 		sc->vtnet_vlan_filter[idx] &= ~(1 << bit);
 
 	if (ifp->if_capenable & IFCAP_VLAN_HWFILTER &&
+	    ifp->if_drv_flags & IFF_DRV_RUNNING &&
 	    vtnet_exec_vlan_filter(sc, add, tag) != 0) {
 		device_printf(sc->vtnet_dev,
 		    "cannot %s VLAN %d %s the host filter table\n",

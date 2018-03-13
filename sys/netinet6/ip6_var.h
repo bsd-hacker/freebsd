@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
  * All rights reserved.
  *
@@ -41,7 +43,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -362,7 +364,7 @@ void	ip6_direct_input(struct mbuf *);
 void	ip6_freepcbopts(struct ip6_pktopts *);
 
 int	ip6_unknown_opt(u_int8_t *, struct mbuf *, int);
-char *	ip6_get_prevhdr(const struct mbuf *, int);
+int	ip6_get_prevhdr(const struct mbuf *, int);
 int	ip6_nexthdr(const struct mbuf *, int, int, int *);
 int	ip6_lasthdr(const struct mbuf *, int, int, int *);
 

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1992 Terrence R. Lambert.
  * Copyright (c) 1982, 1987, 1990 The Regents of the University of California.
  * All rights reserved.
@@ -14,7 +16,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -60,6 +62,8 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_extern.h>
 #include <sys/user.h>
 #include <sys/uio.h>
+#include <machine/abi.h>
+#include <machine/cpuinfo.h>
 #include <machine/reg.h>
 #include <machine/md_var.h>
 #include <machine/sigframe.h>
@@ -129,10 +133,10 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	    SIGISMEMBER(psp->ps_sigonstack, sig)) {
 		sfp = (struct sigframe *)(((uintptr_t)td->td_sigstk.ss_sp +
 		    td->td_sigstk.ss_size - sizeof(struct sigframe))
-		    & ~(sizeof(__int64_t) - 1));
+		    & ~(STACK_ALIGN - 1));
 	} else
 		sfp = (struct sigframe *)((vm_offset_t)(regs->sp - 
-		    sizeof(struct sigframe)) & ~(sizeof(__int64_t) - 1));
+		    sizeof(struct sigframe)) & ~(STACK_ALIGN - 1));
 
 	/* Build the argument list for the signal handler. */
 	regs->a0 = sig;
@@ -292,9 +296,9 @@ void
 makectx(struct trapframe *tf, struct pcb *pcb)
 {
 
-	pcb->pcb_regs.ra = tf->ra;
-	pcb->pcb_regs.pc = tf->pc;
-	pcb->pcb_regs.sp = tf->sp;
+	pcb->pcb_context[PCB_REG_RA] = tf->ra;
+	pcb->pcb_context[PCB_REG_PC] = tf->pc;
+	pcb->pcb_context[PCB_REG_SP] = tf->sp;
 }
 
 int
@@ -378,7 +382,8 @@ fill_fpregs(struct thread *td, struct fpreg *fpregs)
 {
 	if (td == PCPU_GET(fpcurthread))
 		MipsSaveCurFPState(td);
-	memcpy(fpregs, &td->td_frame->f0, sizeof(struct fpreg)); 
+	memcpy(fpregs, &td->td_frame->f0, sizeof(struct fpreg));
+	fpregs->r_regs[FIR_NUM] = cpuinfo.fpu_id;
 	return 0;
 }
 
@@ -404,12 +409,7 @@ exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 
 	bzero((caddr_t)td->td_frame, sizeof(struct trapframe));
 
-	/*
-	 * The stack pointer has to be aligned to accommodate the largest
-	 * datatype at minimum.  This probably means it should be 16-byte
-	 * aligned, but for now we're 8-byte aligning it.
-	 */
-	td->td_frame->sp = ((register_t) stack) & ~(sizeof(__int64_t) - 1);
+	td->td_frame->sp = ((register_t)stack) & ~(STACK_ALIGN - 1);
 
 	/*
 	 * If we're running o32 or n32 programs but have 64-bit registers,
@@ -425,15 +425,12 @@ exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 	 * 0xffffffff80007f00 and the load is instead done from
 	 * 0xffffffff7ffffff0.
 	 *
-	 * To prevent this, we subtract 64K from the stack pointer here.
-	 *
-	 * For consistency, we should just always do this unless we're
-	 * running n64 programs.  For now, since we don't support
-	 * COMPAT_FREEBSD32 on n64 kernels, we just do it unless we're
-	 * running n64 kernels.
+	 * To prevent this, we subtract 64K from the stack pointer here
+	 * for processes with 32-bit pointers.
 	 */
-#if !defined(__mips_n64)
-	td->td_frame->sp -= 65536;
+#if defined(__mips_n32) || defined(__mips_n64)
+	if (!SV_PROC_FLAG(td->td_proc, SV_LP64))
+		td->td_frame->sp -= 65536;
 #endif
 
 	td->td_frame->pc = imgp->entry_addr & ~3;

@@ -1,5 +1,7 @@
 /*	$NetBSD: if_de.c,v 1.86 1999/06/01 19:17:59 thorpej Exp $	*/
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-NetBSD
+ *
  * Copyright (c) 1994-1997 Matt Thomas (matt@3am-software.com)
  * All rights reserved.
  *
@@ -3918,7 +3920,7 @@ tulip_txput(tulip_softc_t * const sc, struct mbuf *m)
      * a bit reminiscent of going on the Ark two by two
      * since each descriptor for the TULIP can describe
      * two buffers.  So we advance through packet filling
-     * each of the two entries at a time to to fill each
+     * each of the two entries at a time to fill each
      * descriptor.  Clear the first and last segment bits
      * in each descriptor (actually just clear everything
      * but the end-of-ring or chain bits) to make sure
@@ -4887,8 +4889,8 @@ tulip_pci_attach(device_t dev)
 	    rid = 0;
 	    res = bus_alloc_resource_any(dev, SYS_RES_IRQ, &rid,
 					 RF_SHAREABLE | RF_ACTIVE);
-	    if (res == 0 || bus_setup_intr(dev, res, INTR_TYPE_NET |
-		    INTR_MPSAFE, NULL, intr_rtn, sc, &ih)) {
+	    if (res == NULL || bus_setup_intr(dev, res, INTR_TYPE_NET |
+                                              INTR_MPSAFE, NULL, intr_rtn, sc, &ih)) {
 		device_printf(dev, "couldn't map interrupt\n");
 		tulip_busdma_cleanup(sc);
 		ether_ifdetach(sc->tulip_ifp);

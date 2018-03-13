@@ -31,6 +31,9 @@
  * - LZ4 homepage : http://fastcompression.blogspot.com/p/lz4.html
  * - LZ4 source repository : http://code.google.com/p/lz4/
  */
+/*
+ * Copyright (c) 2016 by Delphix. All rights reserved.
+ */
 
 #include <sys/zfs_context.h>
 
@@ -86,7 +89,7 @@ lz4_decompress(void *s_start, void *d_start, size_t s_len, size_t d_len, int n)
 
 	/*
 	 * Returns 0 on success (decompression function returned non-negative)
-	 * and non-zero on failure (decompression function returned negative.
+	 * and non-zero on failure (decompression function returned negative).
 	 */
 	return (LZ4_uncompress_unknownOutputSize(&src[sizeof (bufsiz)],
 	    d_start, bufsiz, d_len) < 0);

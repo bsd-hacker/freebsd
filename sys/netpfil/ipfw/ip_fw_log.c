@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2002-2009 Luigi Rizzo, Universita` di Pisa
  *
  * Redistribution and use in source and binary forms, with or without
@@ -165,6 +167,8 @@ ipfw_log(struct ip_fw_chain *chain, struct ip_fw *f, u_int hlen,
 		case O_REJECT:
 			if (cmd->arg1==ICMP_REJECT_RST)
 				action = "Reset";
+			else if (cmd->arg1==ICMP_REJECT_ABORT)
+				action = "Abort";
 			else if (cmd->arg1==ICMP_UNREACH_HOST)
 				action = "Reject";
 			else
@@ -175,6 +179,8 @@ ipfw_log(struct ip_fw_chain *chain, struct ip_fw *f, u_int hlen,
 		case O_UNREACH6:
 			if (cmd->arg1==ICMP6_UNREACH_RST)
 				action = "Reset";
+			else if (cmd->arg1==ICMP6_UNREACH_ABORT)
+				action = "Abort";
 			else
 				snprintf(SNPARGS(action2, 0), "Unreach %d",
 					cmd->arg1);
@@ -211,6 +217,7 @@ ipfw_log(struct ip_fw_chain *chain, struct ip_fw *f, u_int hlen,
 				TARG(cmd->arg1, pipe));
 			break;
 		case O_FORWARD_IP: {
+			char buf[INET_ADDRSTRLEN];
 			ipfw_insn_sa *sa = (ipfw_insn_sa *)cmd;
 			int len;
 			struct in_addr dummyaddr;
@@ -220,7 +227,7 @@ ipfw_log(struct ip_fw_chain *chain, struct ip_fw *f, u_int hlen,
 				dummyaddr.s_addr = sa->sa.sin_addr.s_addr;
 
 			len = snprintf(SNPARGS(action2, 0), "Forward to %s",
-				inet_ntoa(dummyaddr));
+				inet_ntoa_r(dummyaddr, buf));
 
 			if (sa->sa.sin_port)
 				snprintf(SNPARGS(action2, len), ":%d",
@@ -262,6 +269,11 @@ ipfw_log(struct ip_fw_chain *chain, struct ip_fw *f, u_int hlen,
 			else
 				snprintf(SNPARGS(action2, 0), "Call %d",
 				    cmd->arg1);
+			break;
+		case O_EXTERNAL_ACTION:
+			snprintf(SNPARGS(action2, 0), "Eaction %s",
+			    ((struct named_object *)SRV_OBJECT(chain,
+			    cmd->arg1))->name);
 			break;
 		default:
 			action = "UNKNOWN";
@@ -326,7 +338,10 @@ ipfw_log(struct ip_fw_chain *chain, struct ip_fw *f, u_int hlen,
 			break;
 
 		case IPPROTO_UDP:
-			len = snprintf(SNPARGS(proto, 0), "UDP %s", src);
+		case IPPROTO_UDPLITE:
+			len = snprintf(SNPARGS(proto, 0), "UDP%s%s",
+			    args->f_id.proto == IPPROTO_UDP ? " ": "Lite ",
+			    src);
 			if (offset == 0)
 				snprintf(SNPARGS(proto, len), ":%d %s:%d",
 				    ntohs(udp->uh_sport),

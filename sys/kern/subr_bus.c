@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1997,1998,2003 Doug Rabson
  * All rights reserved.
  *
@@ -28,9 +30,11 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_bus.h"
+#include "opt_ddb.h"
 
 #include <sys/param.h>
 #include <sys/conf.h>
+#include <sys/eventhandler.h>
 #include <sys/filio.h>
 #include <sys/lock.h>
 #include <sys/kernel.h>
@@ -64,6 +68,8 @@ __FBSDID("$FreeBSD$");
 
 #include <vm/uma.h>
 #include <vm/vm.h>
+
+#include <ddb/ddb.h>
 
 SYSCTL_NODE(_hw, OID_AUTO, bus, CTLFLAG_RW, NULL, NULL);
 SYSCTL_ROOT_NODE(OID_AUTO, dev, CTLFLAG_RW, NULL, NULL);
@@ -141,7 +147,14 @@ struct device {
 static MALLOC_DEFINE(M_BUS, "bus", "Bus data structures");
 static MALLOC_DEFINE(M_BUS_SC, "bus-sc", "Bus data structures, softc");
 
+EVENTHANDLER_LIST_DEFINE(device_attach);
+EVENTHANDLER_LIST_DEFINE(device_detach);
+EVENTHANDLER_LIST_DEFINE(dev_lookup);
+
 static void devctl2_init(void);
+
+#define DRIVERNAME(d)	((d)? d->name : "no driver")
+#define DEVCLANAME(d)	((d)? d->name : "no devclass")
 
 #ifdef BUS_DEBUG
 
@@ -151,8 +164,6 @@ SYSCTL_INT(_debug, OID_AUTO, bus_debug, CTLFLAG_RWTUN, &bus_debug, 0,
 
 #define PDEBUG(a)	if (bus_debug) {printf("%s:%d: ", __func__, __LINE__), printf a; printf("\n");}
 #define DEVICENAME(d)	((d)? device_get_name(d): "no device")
-#define DRIVERNAME(d)	((d)? d->name : "no driver")
-#define DEVCLANAME(d)	((d)? d->name : "no devclass")
 
 /**
  * Produce the indenting, indent*2 spaces plus a '.' ahead of that to
@@ -176,8 +187,6 @@ void print_devclass_list(void);
 /* Make the compiler ignore the function calls */
 #define PDEBUG(a)			/* nop */
 #define DEVICENAME(d)			/* nop */
-#define DRIVERNAME(d)			/* nop */
-#define DEVCLANAME(d)			/* nop */
 
 #define print_device_short(d,i)		/* nop */
 #define print_device(d,i)		/* nop */
@@ -286,10 +295,10 @@ device_sysctl_init(device_t dev)
 		return;
 	devclass_sysctl_init(dc);
 	sysctl_ctx_init(&dev->sysctl_ctx);
-	dev->sysctl_tree = SYSCTL_ADD_NODE(&dev->sysctl_ctx,
+	dev->sysctl_tree = SYSCTL_ADD_NODE_WITH_LABEL(&dev->sysctl_ctx,
 	    SYSCTL_CHILDREN(dc->sysctl_tree), OID_AUTO,
 	    dev->nameunit + strlen(dc->name),
-	    CTLFLAG_RD, NULL, "");
+	    CTLFLAG_RD, NULL, "", "device_index");
 	SYSCTL_ADD_PROC(&dev->sysctl_ctx, SYSCTL_CHILDREN(dev->sysctl_tree),
 	    OID_AUTO, "%desc", CTLTYPE_STRING | CTLFLAG_RD,
 	    dev, DEVICE_SYSCTL_DESC, device_sysctl_handler, "A",
@@ -1091,7 +1100,7 @@ devclass_driver_added(devclass_t dc, driver_t *driver)
 	int i;
 
 	/*
-	 * Call BUS_DRIVER_ADDED for any existing busses in this class.
+	 * Call BUS_DRIVER_ADDED for any existing buses in this class.
 	 */
 	for (i = 0; i < dc->maxunit; i++)
 		if (dc->devices[i] && device_is_attached(dc->devices[i]))
@@ -1949,15 +1958,17 @@ device_delete_child(device_t dev, device_t child)
 
 	PDEBUG(("%s from %s", DEVICENAME(child), DEVICENAME(dev)));
 
-	/* remove children first */
+	/* detach parent before deleting children, if any */
+	if ((error = device_detach(child)) != 0)
+		return (error);
+	
+	/* remove children second */
 	while ((grandchild = TAILQ_FIRST(&child->children)) != NULL) {
 		error = device_delete_child(child, grandchild);
 		if (error)
 			return (error);
 	}
 
-	if ((error = device_detach(child)) != 0)
-		return (error);
 	if (child->devclass)
 		devclass_delete_device(child->devclass, child);
 	if (child->parent)
@@ -2932,6 +2943,7 @@ device_attach(device_t dev)
 	else
 		dev->state = DS_ATTACHED;
 	dev->flags &= ~DF_DONENOMATCH;
+	EVENTHANDLER_DIRECT_INVOKE(device_attach, dev);
 	devadded(dev);
 	return (0);
 }
@@ -2965,8 +2977,15 @@ device_detach(device_t dev)
 	if (dev->state != DS_ATTACHED)
 		return (0);
 
-	if ((error = DEVICE_DETACH(dev)) != 0)
+	EVENTHANDLER_DIRECT_INVOKE(device_detach, dev, EVHDEV_DETACH_BEGIN);
+	if ((error = DEVICE_DETACH(dev)) != 0) {
+		EVENTHANDLER_DIRECT_INVOKE(device_detach, dev,
+		    EVHDEV_DETACH_FAILED);
 		return (error);
+	} else {
+		EVENTHANDLER_DIRECT_INVOKE(device_detach, dev,
+		    EVHDEV_DETACH_COMPLETE);
+	}
 	devremoved(dev);
 	if (!device_is_quiet(dev))
 		device_printf(dev, "detached\n");
@@ -3265,7 +3284,7 @@ resource_list_delete(struct resource_list *rl, int type, int rid)
 /**
  * @brief Allocate a reserved resource
  *
- * This can be used by busses to force the allocation of resources
+ * This can be used by buses to force the allocation of resources
  * that are always active in the system even if they are not allocated
  * by a driver (e.g. PCI BARs).  This function is usually called when
  * adding a new child to the bus.  The resource is allocated from the
@@ -3644,7 +3663,7 @@ bus_generic_probe(device_t dev)
 		 * only call the identify routines of eligible drivers
 		 * when this routine is called.  Drivers for later
 		 * passes should have their identify routines called
-		 * on early-pass busses during BUS_NEW_PASS().
+		 * on early-pass buses during BUS_NEW_PASS().
 		 */
 		if (dl->pass > bus_current_pass)
 			continue;
@@ -5032,7 +5051,7 @@ print_device_short(device_t dev, int indent)
 	if (!dev)
 		return;
 
-	indentprintf(("device %d: <%s> %sparent,%schildren,%s%s%s%s%s,%sivars,%ssoftc,busy=%d\n",
+	indentprintf(("device %d: <%s> %sparent,%schildren,%s%s%s%s%s%s,%sivars,%ssoftc,busy=%d\n",
 	    dev->unit, dev->desc,
 	    (dev->parent? "":"no "),
 	    (TAILQ_EMPTY(&dev->children)? "no ":""),
@@ -5041,6 +5060,7 @@ print_device_short(device_t dev, int indent)
 	    (dev->flags&DF_WILDCARD? "wildcard,":""),
 	    (dev->flags&DF_DESCMALLOCED? "descmalloced,":""),
 	    (dev->flags&DF_REBID? "rebiddable,":""),
+	    (dev->flags&DF_SUSPENDED? "suspended,":""),
 	    (dev->ivars? "":"no "),
 	    (dev->softc? "":"no "),
 	    dev->busy));
@@ -5318,7 +5338,7 @@ find_device(struct devreq *req, device_t *devp)
 
 	/* Finally, give device enumerators a chance. */
 	dev = NULL;
-	EVENTHANDLER_INVOKE(dev_lookup, req->dr_name, &dev);
+	EVENTHANDLER_DIRECT_INVOKE(dev_lookup, req->dr_name, &dev);
 	if (dev == NULL)
 		return (ENOENT);
 	*devp = dev;
@@ -5584,3 +5604,82 @@ devctl2_init(void)
 	make_dev_credf(MAKEDEV_ETERNAL, &devctl2_cdevsw, 0, NULL,
 	    UID_ROOT, GID_WHEEL, 0600, "devctl2");
 }
+
+/*
+ * APIs to manage deprecation and obsolescence.
+ */
+static int obsolete_panic = 0;
+SYSCTL_INT(_debug, OID_AUTO, obsolete_panic, CTLFLAG_RWTUN, &obsolete_panic, 0,
+    "Bus debug level");
+/* 0 - don't panic, 1 - panic if already obsolete, 2 - panic if deprecated */
+static void
+gone_panic(int major, int running, const char *msg)
+{
+
+	switch (obsolete_panic)
+	{
+	case 0:
+		return;
+	case 1:
+		if (running < major)
+			return;
+		/* FALLTHROUGH */
+	default:
+		panic("%s", msg);
+	}
+}
+
+void
+_gone_in(int major, const char *msg)
+{
+
+	gone_panic(major, P_OSREL_MAJOR(__FreeBSD_version), msg);
+	if (P_OSREL_MAJOR(__FreeBSD_version) >= major)
+		printf("Obsolete code will removed soon: %s\n", msg);
+	else if (P_OSREL_MAJOR(__FreeBSD_version) + 1 == major)
+		printf("Deprecated code (to be removed in FreeBSD %d): %s\n",
+		    major, msg);
+}
+
+void
+_gone_in_dev(device_t dev, int major, const char *msg)
+{
+
+	gone_panic(major, P_OSREL_MAJOR(__FreeBSD_version), msg);
+	if (P_OSREL_MAJOR(__FreeBSD_version) >= major)
+		device_printf(dev,
+		    "Obsolete code will removed soon: %s\n", msg);
+	else if (P_OSREL_MAJOR(__FreeBSD_version) + 1 == major)
+		device_printf(dev,
+		    "Deprecated code (to be removed in FreeBSD %d): %s\n",
+		    major, msg);
+}
+
+#ifdef DDB
+DB_SHOW_COMMAND(device, db_show_device)
+{
+	device_t dev;
+
+	if (!have_addr)
+		return;
+
+	dev = (device_t)addr;
+
+	db_printf("name:    %s\n", device_get_nameunit(dev));
+	db_printf("  driver:  %s\n", DRIVERNAME(dev->driver));
+	db_printf("  class:   %s\n", DEVCLANAME(dev->devclass));
+	db_printf("  addr:    %p\n", dev);
+	db_printf("  parent:  %p\n", dev->parent);
+	db_printf("  softc:   %p\n", dev->softc);
+	db_printf("  ivars:   %p\n", dev->ivars);
+}
+
+DB_SHOW_ALL_COMMAND(devices, db_show_all_devices)
+{
+	device_t dev;
+
+	TAILQ_FOREACH(dev, &bus_data_devices, devlink) {
+		db_show_device((db_expr_t)dev, true, count, modif);
+	}
+}
+#endif

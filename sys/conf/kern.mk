@@ -33,6 +33,9 @@ CWARNEXTRA?=	-Wno-error-tautological-compare -Wno-error-empty-body \
 .if ${COMPILER_VERSION} >= 30700
 CWARNEXTRA+=	-Wno-error-shift-negative-value
 .endif
+.if ${COMPILER_VERSION} >= 40000
+CWARNEXTRA+=	-Wno-error-address-of-packed-member
+.endif
 
 CLANG_NO_IAS= -no-integrated-as
 .if ${COMPILER_VERSION} < 30500
@@ -55,7 +58,6 @@ CWARNEXTRA?=	-Wno-error=address				\
 		-Wno-error=maybe-uninitialized			\
 		-Wno-error=overflow				\
 		-Wno-error=sequence-point			\
-		-Wno-error=strict-overflow			\
 		-Wno-error=unused-but-set-variable
 .if ${COMPILER_VERSION} >= 60100
 CWARNEXTRA+=	-Wno-error=misleading-indentation		\
@@ -66,6 +68,9 @@ CWARNEXTRA+=	-Wno-error=misleading-indentation		\
 .else
 # For gcc 4.2, eliminate the too-often-wrong warnings about uninitialized vars.
 CWARNEXTRA?=	-Wno-uninitialized
+# GCC 4.2 doesn't have -Wno-error=cast-qual, so just disable the warning for
+# the few files that are already known to generate cast-qual warnings.
+NO_WCAST_QUAL= -Wno-cast-qual
 .endif
 .endif
 
@@ -118,7 +123,7 @@ INLINE_LIMIT?=	8000
 .endif
 
 .if ${MACHINE_CPUARCH} == "riscv"
-CFLAGS.gcc+=	-mcmodel=medany
+CFLAGS.gcc+=	-mcmodel=medany -march=rv64imafdc -mabi=lp64
 INLINE_LIMIT?=	8000
 .endif
 
@@ -161,17 +166,25 @@ INLINE_LIMIT?=	8000
 # Also explicitly disable Altivec instructions inside the kernel.
 #
 .if ${MACHINE_CPUARCH} == "powerpc"
-CFLAGS+=	-mno-altivec
-CFLAGS.clang+=	-mllvm -disable-ppc-float-in-variadic=true
-CFLAGS.gcc+=	-msoft-float
+CFLAGS+=	-mno-altivec -msoft-float
 INLINE_LIMIT?=	15000
 .endif
 
+.if ${MACHINE_ARCH} == "powerpcspe"
+CFLAGS.gcc+=	-mno-spe
+.endif
+
 #
-# Use dot symbols on powerpc64 to make ddb happy
+# Use dot symbols (or, better, the V2 ELF ABI) on powerpc64 to make
+# DDB happy. ELFv2, if available, has some other efficiency benefits.
 #
 .if ${MACHINE_ARCH} == "powerpc64"
+.if ${COMPILER_VERSION} >= 40900
+CFLAGS.gcc+=	-mabi=elfv2
+.else
 CFLAGS.gcc+=	-mcall-aixdesc
+.endif
+CFLAGS.clang+=	-mabi=elfv2
 .endif
 
 #
@@ -193,7 +206,7 @@ CFLAGS+=	-ffreestanding
 # gcc and clang opimizers take advantage of this.  The kernel makes
 # use of signed integer wraparound mechanics so we need the compiler
 # to treat it as a wraparound and not take shortcuts.
-# 
+#
 CFLAGS+=	-fwrapv
 
 #
@@ -202,6 +215,14 @@ CFLAGS+=	-fwrapv
 .if ${MK_SSP} != "no" && \
     ${MACHINE_CPUARCH} != "arm" && ${MACHINE_CPUARCH} != "mips"
 CFLAGS+=	-fstack-protector
+.endif
+
+#
+# Retpoline speculative execution vulnerability mitigation (CVE-2017-5715)
+#
+.if defined(COMPILER_FEATURES) && ${COMPILER_FEATURES:Mretpoline} != "" && \
+    ${MK_KERNEL_RETPOLINE} != "no"
+CFLAGS+=	-mretpoline
 .endif
 
 #
@@ -224,7 +245,7 @@ PHONY_NOTMAIN = afterdepend afterinstall all beforedepend beforeinstall \
 		beforelinking build build-tools buildfiles buildincludes \
 		checkdpadd clean cleandepend cleandir cleanobj configure \
 		depend distclean distribute exe \
-		html includes install installfiles installincludes lint \
+		html includes install installfiles installincludes \
 		obj objlink objs objwarn \
 		realinstall regress \
 		tags whereobj
@@ -246,13 +267,13 @@ CFLAGS+=        -std=iso9899:1999
 CFLAGS+=        -std=${CSTD}
 .endif # CSTD
 
-# Set target-specific linker emulation name. Used by ld -b binary to convert
-# binary files into ELF objects.
+# Set target-specific linker emulation name.
 LD_EMULATION_aarch64=aarch64elf
 LD_EMULATION_amd64=elf_x86_64_fbsd
 LD_EMULATION_arm=armelf_fbsd
-LD_EMULATION_armeb=armelf_fbsd
+LD_EMULATION_armeb=armelfb_fbsd
 LD_EMULATION_armv6=armelf_fbsd
+LD_EMULATION_armv7=armelf_fbsd
 LD_EMULATION_i386=elf_i386_fbsd
 LD_EMULATION_mips= elf32btsmip_fbsd
 LD_EMULATION_mips64= elf64btsmip_fbsd
@@ -261,7 +282,8 @@ LD_EMULATION_mips64el= elf64ltsmip_fbsd
 LD_EMULATION_mipsn32= elf32btsmipn32_fbsd
 LD_EMULATION_mipsn32el= elf32btsmipn32_fbsd   # I don't think this is a thing that works
 LD_EMULATION_powerpc= elf32ppc_fbsd
+LD_EMULATION_powerpcspe= elf32ppc_fbsd
 LD_EMULATION_powerpc64= elf64ppc_fbsd
-LD_EMULATION_riscv= elf64riscv
+LD_EMULATION_riscv64= elf64lriscv
 LD_EMULATION_sparc64= elf64_sparc_fbsd
 LD_EMULATION=${LD_EMULATION_${MACHINE_ARCH}}

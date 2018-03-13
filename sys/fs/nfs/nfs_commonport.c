@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1989, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -13,7 +15,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -40,7 +42,10 @@ __FBSDID("$FreeBSD$");
  * to this BSD variant.
  */
 #include <fs/nfs/nfsport.h>
+#include <sys/smp.h>
 #include <sys/sysctl.h>
+#include <sys/taskqueue.h>
+#include <rpc/rpc_com.h>
 #include <vm/vm.h>
 #include <vm/vm_object.h>
 #include <vm/vm_page.h>
@@ -67,6 +72,8 @@ int nfsrv_lughashsize = 100;
 void (*nfsd_call_servertimer)(void) = NULL;
 void (*ncl_call_invalcaches)(struct vnode *) = NULL;
 
+int nfs_pnfsio(task_fn_t *, void *);
+
 static int nfs_realign_test;
 static int nfs_realign_count;
 static struct ext_nfsstats oldnfsstats;
@@ -83,6 +90,9 @@ SYSCTL_INT(_vfs_nfs, OID_AUTO, debuglevel, CTLFLAG_RW, &nfscl_debuglevel,
     0, "Debug level for NFS client");
 SYSCTL_INT(_vfs_nfs, OID_AUTO, userhashsize, CTLFLAG_RDTUN, &nfsrv_lughashsize,
     0, "Size of hash tables for uid/name mapping");
+int nfs_pnfsiothreads = 0;
+SYSCTL_INT(_vfs_nfs, OID_AUTO, pnfsiothreads, CTLFLAG_RW, &nfs_pnfsiothreads,
+    0, "Number of pNFS mirror I/O threads");
 
 /*
  * Defines for malloc
@@ -129,6 +139,7 @@ struct mtx nfs_state_mutex;
 struct mtx nfs_nameid_mutex;
 struct mtx nfs_req_mutex;
 struct mtx nfs_slock_mutex;
+struct mtx nfs_clstate_mutex;
 
 /* local functions */
 static int nfssvc_call(struct thread *, struct nfssvc_args *, struct ucred *);
@@ -305,7 +316,7 @@ nfsvno_getfs(struct nfsfsinfo *sip, int isdgram)
  * Do the pathconf vnode op.
  */
 int
-nfsvno_pathconf(struct vnode *vp, int flag, register_t *retf,
+nfsvno_pathconf(struct vnode *vp, int flag, long *retf,
     struct ucred *cred, struct thread *p)
 {
 	int error;
@@ -320,7 +331,7 @@ nfsvno_pathconf(struct vnode *vp, int flag, register_t *retf,
 		 */
 		switch (flag) {
 		case _PC_LINK_MAX:
-			*retf = LINK_MAX;
+			*retf = NFS_LINK_MAX;
 			break;
 		case _PC_NAME_MAX:
 			*retf = NAME_MAX;
@@ -347,7 +358,7 @@ nfsvno_pathconf(struct vnode *vp, int flag, register_t *retf,
 
 /* Fake nfsrv_atroot. Just return 0 */
 int
-nfsrv_atroot(struct vnode *vp, long *retp)
+nfsrv_atroot(struct vnode *vp, uint64_t *retp)
 {
 
 	return (0);
@@ -608,21 +619,6 @@ nfssvc_call(struct thread *p, struct nfssvc_args *uap, struct ucred *cred)
 				nfsstatsv1.srvcache_nonidemdonehits = 0;
 				nfsstatsv1.srvcache_misses = 0;
 				nfsstatsv1.srvcache_tcppeak = 0;
-				nfsstatsv1.srvclients = 0;
-				nfsstatsv1.srvopenowners = 0;
-				nfsstatsv1.srvopens = 0;
-				nfsstatsv1.srvlockowners = 0;
-				nfsstatsv1.srvlocks = 0;
-				nfsstatsv1.srvdelegates = 0;
-				nfsstatsv1.clopenowners = 0;
-				nfsstatsv1.clopens = 0;
-				nfsstatsv1.cllockowners = 0;
-				nfsstatsv1.cllocks = 0;
-				nfsstatsv1.cldelegates = 0;
-				nfsstatsv1.cllocalopenowners = 0;
-				nfsstatsv1.cllocalopens = 0;
-				nfsstatsv1.cllocallockowners = 0;
-				nfsstatsv1.cllocallocks = 0;
 				bzero(nfsstatsv1.srvrpccnt,
 				    sizeof(nfsstatsv1.srvrpccnt));
 				bzero(nfsstatsv1.cbrpccnt,
@@ -632,11 +628,30 @@ nfssvc_call(struct thread *p, struct nfssvc_args *uap, struct ucred *cred)
 		goto out;
 	} else if (uap->flag & NFSSVC_NFSUSERDPORT) {
 		u_short sockport;
+		struct sockaddr *sad;
+		struct sockaddr_un *sun;
 
-		error = copyin(uap->argp, (caddr_t)&sockport,
-		    sizeof (u_short));
-		if (!error)
-			error = nfsrv_nfsuserdport(sockport, p);
+		if ((uap->flag & NFSSVC_NEWSTRUCT) != 0) {
+			/* New nfsuserd using an AF_LOCAL socket. */
+			sun = malloc(sizeof(struct sockaddr_un), M_SONAME,
+			    M_WAITOK | M_ZERO);
+			error = copyinstr(uap->argp, sun->sun_path,
+			    sizeof(sun->sun_path), NULL);
+			if (error != 0) {
+				free(sun, M_SONAME);
+				return (error);
+			}
+		        sun->sun_family = AF_LOCAL;
+		        sun->sun_len = SUN_LEN(sun);
+			sockport = 0;
+			sad = (struct sockaddr *)sun;
+		} else {
+			error = copyin(uap->argp, (caddr_t)&sockport,
+			    sizeof (u_short));
+			sad = NULL;
+		}
+		if (error == 0)
+			error = nfsrv_nfsuserdport(sad, sockport, p);
 	} else if (uap->flag & NFSSVC_NFSUSERDDELPORT) {
 		nfsrv_nfsuserddelport();
 		error = 0;
@@ -662,6 +677,7 @@ newnfs_portinit(void)
 	/* Initialize SMP locks used by both client and server. */
 	mtx_init(&newnfsd_mtx, "newnfsd_mtx", NULL, MTX_DEF);
 	mtx_init(&nfs_state_mutex, "nfs_state_mutex", NULL, MTX_DEF);
+	mtx_init(&nfs_clstate_mutex, "nfs_clstate_mutex", NULL, MTX_DEF);
 }
 
 /*
@@ -672,7 +688,7 @@ int
 nfs_supportsnfsv4acls(struct vnode *vp)
 {
 	int error;
-	register_t retval;
+	long retval;
 
 	ASSERT_VOP_LOCKED(vp, "nfs supports nfsv4acls");
 
@@ -682,6 +698,50 @@ nfs_supportsnfsv4acls(struct vnode *vp)
 	if (error == 0 && retval != 0)
 		return (1);
 	return (0);
+}
+
+/*
+ * These are the first fields of all the context structures passed into
+ * nfs_pnfsio().
+ */
+struct pnfsio {
+	int		done;
+	int		inprog;
+	struct task	tsk;
+};
+
+/*
+ * Do a mirror I/O on a pNFS thread.
+ */
+int
+nfs_pnfsio(task_fn_t *func, void *context)
+{
+	struct pnfsio *pio;
+	int ret;
+	static struct taskqueue *pnfsioq = NULL;
+
+	pio = (struct pnfsio *)context;
+	if (pnfsioq == NULL) {
+		if (nfs_pnfsiothreads == 0)
+			nfs_pnfsiothreads = mp_ncpus * 4;
+		pnfsioq = taskqueue_create("pnfsioq", M_WAITOK,
+		    taskqueue_thread_enqueue, &pnfsioq);
+		if (pnfsioq == NULL)
+			return (ENOMEM);
+		ret = taskqueue_start_threads(&pnfsioq, nfs_pnfsiothreads,
+		    0, "pnfsiot");
+		if (ret != 0) {
+			taskqueue_free(pnfsioq);
+			pnfsioq = NULL;
+			return (ret);
+		}
+	}
+	pio->inprog = 1;
+	TASK_INIT(&pio->tsk, 0, func, context);
+	ret = taskqueue_enqueue(pnfsioq, &pio->tsk);
+	if (ret != 0)
+		pio->inprog = 0;
+	return (ret);
 }
 
 extern int (*nfsd_call_nfscommon)(struct thread *, struct nfssvc_args *);
@@ -727,6 +787,7 @@ nfscommon_modevent(module_t mod, int type, void *data)
 		mtx_destroy(&nfs_nameid_mutex);
 		mtx_destroy(&newnfsd_mtx);
 		mtx_destroy(&nfs_state_mutex);
+		mtx_destroy(&nfs_clstate_mutex);
 		mtx_destroy(&nfs_sockl_mutex);
 		mtx_destroy(&nfs_slock_mutex);
 		mtx_destroy(&nfs_req_mutex);

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
  * Copyright (c) 2006-2014 QLogic Corporation
  *
  * Redistribution and use in source and binary forms, with or without
@@ -2800,7 +2802,7 @@ bce_nvram_write(struct bce_softc *sc, u32 offset, u8 *data_buf,
 
 	if (align_start || align_end) {
 		buf = malloc(len32, M_DEVBUF, M_NOWAIT);
-		if (buf == 0) {
+		if (buf == NULL) {
 			rc = ENOMEM;
 			goto bce_nvram_write_exit;
 		}

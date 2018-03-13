@@ -35,13 +35,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/malloc.h>
 #include <sys/rman.h>
-#include <sys/timeet.h>
-#include <sys/timetc.h>
-#include <sys/watchdog.h>
 #include <sys/fbio.h>
 #include <sys/consio.h>
-#include <sys/eventhandler.h>
-#include <sys/gpio.h>
 
 #include <vm/vm.h>
 #include <vm/pmap.h>
@@ -58,8 +53,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/vt/colors/vt_termcolors.h>
 
 #include <powerpc/mpc85xx/mpc85xx.h>
-
-#include "gpio_if.h"
 
 #include <machine/bus.h>
 #include <machine/cpu.h>
@@ -225,11 +218,9 @@ diu_set_pxclk(device_t dev, unsigned int freq)
 	unsigned long bus_freq;
 	uint32_t pxclk_set;
 	uint32_t clkdvd;
-	int res;
 
 	node = ofw_bus_get_node(device_get_parent(dev));
-	if ((res = OF_getencprop(node, "bus-frequency",
-	    (pcell_t *)&bus_freq, sizeof(bus_freq)) <= 0)) {
+	if ((bus_freq = mpc85xx_get_platform_clock()) <= 0) {
 		device_printf(dev, "Unable to get bus frequency\n");
 		return (ENXIO);
 	}
@@ -344,7 +335,7 @@ diu_init(struct diu_softc *sc)
 static int
 diu_attach(device_t dev)
 {
-	struct edid_info *edid;
+	struct edid_info edid;
 	struct diu_softc *sc;
 	const struct videomode *videomode;
 	void *edid_cells;
@@ -384,12 +375,12 @@ diu_attach(device_t dev)
 		}
 	}
 	if (edid_cells != NULL) {
-		if (edid_parse(edid_cells, edid) != 0) {
+		if (edid_parse(edid_cells, &edid) != 0) {
 			device_printf(dev, "Error parsing EDID\n");
 			OF_prop_free(edid_cells);
 			return (ENXIO);
 		}
-		videomode = edid->edid_preferred_mode;
+		videomode = edid.edid_preferred_mode;
 	} else {
 		/* Parse video-mode kenv variable. */
 		if ((err = sscanf(vm_name, "fslfb:%dx%d@%d", &w, &h, &r)) != 3) {
@@ -423,6 +414,8 @@ diu_attach(device_t dev)
 	sc->sc_info.fb_vbase = (intptr_t)contigmalloc(sc->sc_info.fb_size,
 	    M_DEVBUF, M_ZERO, 0, BUS_SPACE_MAXADDR_32BIT, PAGE_SIZE, 0);
 	sc->sc_info.fb_pbase = (intptr_t)vtophys(sc->sc_info.fb_vbase);
+	sc->sc_info.fb_flags = FB_FLAG_MEMATTR;
+	sc->sc_info.fb_memattr = VM_MEMATTR_DEFAULT;
 	
 	/* Gamma table is 3 consecutive segments of 256 bytes. */
 	sc->sc_gamma = contigmalloc(3 * 256, M_DEVBUF, 0, 0,

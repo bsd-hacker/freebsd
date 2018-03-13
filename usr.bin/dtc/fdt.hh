@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2013 David Chisnall
  * All rights reserved.
  *
@@ -211,6 +213,10 @@ struct property_value
 	 * false otherwise.
 	 */
 	bool try_to_merge(property_value &other);
+	/**
+	 * Returns the size (in bytes) of this property value.
+	 */
+	size_t size();
 	private:
 	/**
 	 * Returns whether the value is of the specified type.  If the type of
@@ -364,7 +370,7 @@ class property
 	/**
 	 * Returns the key for this property.
 	 */
-	inline std::string get_key()
+	inline const std::string &get_key()
 	{
 		return key;
 	}
@@ -380,6 +386,10 @@ class property
 	 * applicable way that it can determine.
 	 */
 	void write_dts(FILE *file, int indent);
+	/**
+	 * Returns the byte offset of the specified property value.
+	 */
+	size_t offset_of_value(property_value &val);
 };
 
 /**
@@ -478,6 +488,10 @@ class node
 	     std::unordered_set<std::string> &&l,
 	     std::string &&a,
 	     define_map*);
+	/**
+	 * Creates a special node with the specified name and properties.
+	 */
+	node(const std::string &n, const std::vector<property_ptr> &p);
 	/**
 	 * Comparison function for properties, used when sorting the properties
 	 * vector.  Orders the properties based on their names.
@@ -579,6 +593,11 @@ class node
 	 */
 	static node_ptr parse_dtb(input_buffer &structs, input_buffer &strings);
 	/**
+	 * Construct a new special node from a name and set of properties.
+	 */
+	static node_ptr create_special_node(const std::string &name,
+			const std::vector<property_ptr> &props);
+	/**
 	 * Returns a property corresponding to the specified key, or 0 if this
 	 * node does not contain a property of that name.
 	 */
@@ -591,10 +610,17 @@ class node
 		props.push_back(p);
 	}
 	/**
+	 * Adds a new child to this node.
+	 */
+	inline void add_child(node_ptr &&n)
+	{
+		children.push_back(std::move(n));
+	}
+	/**
 	 * Merges a node into this one.  Any properties present in both are
 	 * overridden, any properties present in only one are preserved.
 	 */
-	void merge_node(node_ptr other);
+	void merge_node(node_ptr &other);
 	/**
 	 * Write this node to the specified output.  Although nodes do not
 	 * refer to a string table directly, their properties do.  The string
@@ -626,7 +652,14 @@ class device_tree
 	 * Type used for node paths.  A node path is sequence of names and unit
 	 * addresses.
 	 */
-	typedef std::vector<std::pair<std::string,std::string> > node_path;
+	class node_path : public std::vector<std::pair<std::string,std::string>>
+	{
+		public:
+		/**
+		 * Converts this to a string representation.
+		 */
+		std::string to_string() const;
+	};
 	/**
 	 * Name that we should use for phandle nodes.
 	 */
@@ -643,12 +676,12 @@ class device_tree
 	/**
 	 * The format that we should use for writing phandles.
 	 */
-	phandle_format phandle_node_name;
+	phandle_format phandle_node_name = EPAPR;
 	/**
 	 * Flag indicating that this tree is valid.  This will be set to false
 	 * on parse errors. 
 	 */
-	bool valid;
+	bool valid = true;
 	/**
 	 * Type used for memory reservations.  A reservation is two 64-bit
 	 * values indicating a base address and length in memory that the
@@ -681,11 +714,34 @@ class device_tree
 	 */
 	std::vector<property_value*> cross_references;
 	/**
+	 * The location of something requiring a fixup entry.
+	 */
+	struct fixup
+	{
+		/**
+		 * The path to the node.
+		 */
+		node_path path;
+		/**
+		 * The property containing the reference.
+		 */
+		property_ptr prop;
+		/**
+		 * The property value that contains the reference.
+		 */
+		property_value &val;
+	};
+	/**
 	 * A collection of property values that refer to phandles.  These will
 	 * be replaced by the value of the phandle property in their
 	 * destination.
 	 */
-	std::vector<property_value*> phandles;
+	std::vector<fixup> fixups;
+	/**
+	 * The locations of all of the values that are supposed to become phandle
+	 * references, but refer to things outside of this file.  
+	 */
+	std::vector<std::reference_wrapper<fixup>> unresolved_fixups;
 	/**
 	 * The names of nodes that target phandles.
 	 */
@@ -719,19 +775,23 @@ class device_tree
 	/**
 	 * The default boot CPU, specified in the device tree header.
 	 */
-	uint32_t boot_cpu;
+	uint32_t boot_cpu = 0;
 	/**
 	 * The number of empty reserve map entries to generate in the blob.
 	 */
-	uint32_t spare_reserve_map_entries;
+	uint32_t spare_reserve_map_entries = 0;
 	/**
 	 * The minimum size in bytes of the blob.
 	 */
-	uint32_t minimum_blob_size;
+	uint32_t minimum_blob_size = 0;
 	/**
 	 * The number of bytes of padding to add to the end of the blob.
 	 */
-	uint32_t blob_padding;
+	uint32_t blob_padding = 0;
+	/**
+	 * Is this tree a plugin?
+	 */
+	bool is_plugin = false;
 	/**
 	 * Visit all of the nodes recursively, and if they have labels then add
 	 * them to the node_paths and node_names vectors so that they can be
@@ -739,6 +799,12 @@ class device_tree
 	 * properties that have been explicitly added.  
 	 */
 	void collect_names_recursive(node_ptr &n, node_path &path);
+	/**
+	 * Assign a phandle property to a single node.  The next parameter
+	 * holds the phandle to be assigned, and will be incremented upon
+	 * assignment.
+	 */
+	property_ptr assign_phandle(node *n, uint32_t &next);
 	/**
 	 * Assign phandle properties to all nodes that have been referenced and
 	 * require one.  This method will recursively visit the tree starting at
@@ -752,9 +818,11 @@ class device_tree
 	/**
 	 * Resolves all cross references.  Any properties that refer to another
 	 * node must have their values replaced by either the node path or
-	 * phandle value.
+	 * phandle value.  The phandle parameter holds the next phandle to be
+	 * assigned, should the need arise.  It will be incremented upon each
+	 * assignment of a phandle.
 	 */
-	void resolve_cross_references();
+	void resolve_cross_references(uint32_t &phandle);
 	/**
 	 * Parses a dts file in the given buffer and adds the roots to the parsed
 	 * set.  The `read_header` argument indicates whether the header has
@@ -771,6 +839,11 @@ class device_tree
 	template<class writer>
 	void write(int fd);
 	public:
+	/**
+	 * Should we write the __symbols__ node (to allow overlays to be linked
+	 * against this blob)?
+	 */
+	bool write_symbols = false;
 	/**
 	 * Returns the node referenced by the property.  If this is a tree that
 	 * is in source form, then we have a string that we can use to index
@@ -794,15 +867,33 @@ class device_tree
 	/**
 	 * Default constructor.  Creates a valid, but empty FDT.
 	 */
-	device_tree() : phandle_node_name(EPAPR), valid(true),
-		boot_cpu(0), spare_reserve_map_entries(0),
-		minimum_blob_size(0), blob_padding(0) {}
+	device_tree() {}
 	/**
 	 * Constructs a device tree from the specified file name, referring to
 	 * a file that contains a device tree blob.
 	 */
 	void parse_dtb(const std::string &fn, FILE *depfile);
 	/**
+	 * Construct a fragment wrapper around node.  This will assume that node's
+	 * name may be used as the target of the fragment, and the contents are to
+	 * be wrapped in an __overlay__ node.  The fragment wrapper will be assigned
+	 * fragnumas its fragment number, and fragment number will be incremented.
+	 */
+	node_ptr create_fragment_wrapper(node_ptr &node, int &fragnum);
+	/**
+	 * Generate a root node from the node passed in.  This is sensitive to
+	 * whether we're in a plugin context or not, so that if we're in a plugin we
+	 * can circumvent any errors that might normally arise from a non-/ root.
+	 * fragnum will be assigned to any fragment wrapper generated as a result
+	 * of the call, and fragnum will be incremented.
+	 */
+	node_ptr generate_root(node_ptr &node, int &fragnum);
+	/**
+	 * Reassign any fragment numbers from this new node, based on the given
+	 * delta.
+	 */
+	void reassign_fragment_numbers(node_ptr &node, int &delta);
+	/*
 	 * Constructs a device tree from the specified file name, referring to
 	 * a file that contains device tree source.
 	 */
@@ -841,7 +932,10 @@ class device_tree
 	 */
 	void sort()
 	{
-		root->sort();
+		if (root)
+		{
+			root->sort();
+		}
 	}
 	/**
 	 * Adds a path to search for include files.  The argument must be a

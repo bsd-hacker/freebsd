@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: (BSD-2-Clause-FreeBSD AND BSD-3-Clause)
+ *
  * Copyright (c) 2002 Networks Associates Technology, Inc.
  * All rights reserved.
  *
@@ -40,7 +42,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -123,6 +125,7 @@ static ufs2_daddr_t ffs_nodealloccg(struct inode *, u_int, ufs2_daddr_t, int,
 static ufs1_daddr_t ffs_mapsearch(struct fs *, struct cg *, ufs2_daddr_t, int);
 static int	ffs_reallocblks_ufs1(struct vop_reallocblks_args *);
 static int	ffs_reallocblks_ufs2(struct vop_reallocblks_args *);
+static void	ffs_ckhash_cg(struct buf *);
 
 /*
  * Allocate a block in the filesystem.
@@ -303,7 +306,7 @@ retry:
 	}
 
 	if (bp->b_blkno == bp->b_lblkno) {
-		if (lbprev >= NDADDR)
+		if (lbprev >= UFS_NDADDR)
 			panic("ffs_realloccg: lbprev out of range");
 		bp->b_blkno = fsbtodb(fs, bprev);
 	}
@@ -524,7 +527,7 @@ ffs_reallocblks_ufs1(ap)
 	ufs_lbn_t start_lbn, end_lbn;
 	ufs1_daddr_t soff, newblk, blkno;
 	ufs2_daddr_t pref;
-	struct indir start_ap[NIADDR + 1], end_ap[NIADDR + 1], *idp;
+	struct indir start_ap[UFS_NIADDR + 1], end_ap[UFS_NIADDR + 1], *idp;
 	int i, cg, len, start_lvl, end_lvl, ssize;
 
 	vp = ap->a_vp;
@@ -567,7 +570,7 @@ ffs_reallocblks_ufs1(ap)
 	 * this for other indirect block boundaries, but it is only
 	 * important for the first one.
 	 */
-	if (start_lbn < NDADDR && end_lbn >= NDADDR)
+	if (start_lbn < UFS_NDADDR && end_lbn >= UFS_NDADDR)
 		return (ENOSPC);
 	/*
 	 * If the latest allocation is in a new cylinder group, assume that
@@ -773,7 +776,7 @@ ffs_reallocblks_ufs2(ap)
 	struct ufsmount *ump;
 	ufs_lbn_t start_lbn, end_lbn;
 	ufs2_daddr_t soff, newblk, blkno, pref;
-	struct indir start_ap[NIADDR + 1], end_ap[NIADDR + 1], *idp;
+	struct indir start_ap[UFS_NIADDR + 1], end_ap[UFS_NIADDR + 1], *idp;
 	int i, cg, len, start_lvl, end_lvl, ssize;
 
 	vp = ap->a_vp;
@@ -816,7 +819,7 @@ ffs_reallocblks_ufs2(ap)
 	 * this for other indirect block boundaries, but it is only
 	 * important for the first one.
 	 */
-	if (start_lbn < NDADDR && end_lbn >= NDADDR)
+	if (start_lbn < UFS_NDADDR && end_lbn >= UFS_NDADDR)
 		return (ENOSPC);
 	/*
 	 * If the latest allocation is in a new cylinder group, assume that
@@ -1334,9 +1337,9 @@ ffs_blkpref_ufs1(ip, lbn, indx, bap)
 		 * If we are allocating the first indirect block, try to
 		 * place it immediately following the last direct block.
 		 */
-		if (indx == -1 && lbn < NDADDR + NINDIR(fs) &&
-		    ip->i_din1->di_db[NDADDR - 1] != 0)
-			pref = ip->i_din1->di_db[NDADDR - 1] + fs->fs_frag;
+		if (indx == -1 && lbn < UFS_NDADDR + NINDIR(fs) &&
+		    ip->i_din1->di_db[UFS_NDADDR - 1] != 0)
+			pref = ip->i_din1->di_db[UFS_NDADDR - 1] + fs->fs_frag;
 		return (pref);
 	}
 	/*
@@ -1344,7 +1347,7 @@ ffs_blkpref_ufs1(ip, lbn, indx, bap)
 	 * block and the indirect has been allocated in the data block area,
 	 * try to place it immediately following the indirect block.
 	 */
-	if (lbn == NDADDR) {
+	if (lbn == UFS_NDADDR) {
 		pref = ip->i_din1->di_ib[0];
 		if (pref != 0 && pref >= cgdata(fs, inocg) &&
 		    pref < cgbase(fs, inocg + 1))
@@ -1368,7 +1371,7 @@ ffs_blkpref_ufs1(ip, lbn, indx, bap)
 		 * blocks, we try to allocate in the data area of the inode's
 		 * cylinder group.
 		 */
-		if (lbn < NDADDR + NINDIR(fs))
+		if (lbn < UFS_NDADDR + NINDIR(fs))
 			return (cgdata(fs, inocg));
 		/*
 		 * Find a cylinder with greater than average number of
@@ -1439,9 +1442,9 @@ ffs_blkpref_ufs2(ip, lbn, indx, bap)
 		 * If we are allocating the first indirect block, try to
 		 * place it immediately following the last direct block.
 		 */
-		if (indx == -1 && lbn < NDADDR + NINDIR(fs) &&
-		    ip->i_din2->di_db[NDADDR - 1] != 0)
-			pref = ip->i_din2->di_db[NDADDR - 1] + fs->fs_frag;
+		if (indx == -1 && lbn < UFS_NDADDR + NINDIR(fs) &&
+		    ip->i_din2->di_db[UFS_NDADDR - 1] != 0)
+			pref = ip->i_din2->di_db[UFS_NDADDR - 1] + fs->fs_frag;
 		return (pref);
 	}
 	/*
@@ -1449,7 +1452,7 @@ ffs_blkpref_ufs2(ip, lbn, indx, bap)
 	 * block and the indirect has been allocated in the data block area,
 	 * try to place it immediately following the indirect block.
 	 */
-	if (lbn == NDADDR) {
+	if (lbn == UFS_NDADDR) {
 		pref = ip->i_din2->di_ib[0];
 		if (pref != 0 && pref >= cgdata(fs, inocg) &&
 		    pref < cgbase(fs, inocg + 1))
@@ -1473,7 +1476,7 @@ ffs_blkpref_ufs2(ip, lbn, indx, bap)
 		 * blocks, we try to allocate in the data area of the inode's
 		 * cylinder group.
 		 */
-		if (lbn < NDADDR + NINDIR(fs))
+		if (lbn < UFS_NDADDR + NINDIR(fs))
 			return (cgdata(fs, inocg));
 		/*
 		 * Find a cylinder with greater than average number of
@@ -1602,15 +1605,8 @@ ffs_fragextend(ip, cg, bprev, osize, nsize)
 		return (0);
 	}
 	UFS_UNLOCK(ump);
-	error = bread(ump->um_devvp, fsbtodb(fs, cgtod(fs, cg)),
-	    (int)fs->fs_cgsize, NOCRED, &bp);
-	if (error)
+	if ((error = ffs_getcg(fs, ump->um_devvp, cg, &bp, &cgp)) != 0)
 		goto fail;
-	cgp = (struct cg *)bp->b_data;
-	if (!cg_chkmagic(cgp))
-		goto fail;
-	bp->b_xflags |= BX_BKGRDWRITE;
-	cgp->cg_old_time = cgp->cg_time = time_second;
 	bno = dtogd(fs, bprev);
 	blksfree = cg_blksfree(cgp);
 	for (i = numfrags(fs, osize); i < frags; i++)
@@ -1680,16 +1676,9 @@ ffs_alloccg(ip, cg, bpref, size, rsize)
 	if (fs->fs_cs(fs, cg).cs_nbfree == 0 && size == fs->fs_bsize)
 		return (0);
 	UFS_UNLOCK(ump);
-	error = bread(ump->um_devvp, fsbtodb(fs, cgtod(fs, cg)),
-	    (int)fs->fs_cgsize, NOCRED, &bp);
-	if (error)
+	if ((error = ffs_getcg(fs, ump->um_devvp, cg, &bp, &cgp)) != 0 ||
+	   (cgp->cg_cs.cs_nbfree == 0 && size == fs->fs_bsize))
 		goto fail;
-	cgp = (struct cg *)bp->b_data;
-	if (!cg_chkmagic(cgp) ||
-	    (cgp->cg_cs.cs_nbfree == 0 && size == fs->fs_bsize))
-		goto fail;
-	bp->b_xflags |= BX_BKGRDWRITE;
-	cgp->cg_old_time = cgp->cg_time = time_second;
 	if (size == fs->fs_bsize) {
 		UFS_LOCK(ump);
 		blkno = ffs_alloccgblk(ip, bp, bpref, rsize);
@@ -1857,7 +1846,7 @@ ffs_clusteralloc(ip, cg, bpref, len)
 	struct cg *cgp;
 	struct buf *bp;
 	struct ufsmount *ump;
-	int i, run, bit, map, got;
+	int i, run, bit, map, got, error;
 	ufs2_daddr_t bno;
 	u_char *mapp;
 	int32_t *lp;
@@ -1868,13 +1857,10 @@ ffs_clusteralloc(ip, cg, bpref, len)
 	if (fs->fs_maxcluster[cg] < len)
 		return (0);
 	UFS_UNLOCK(ump);
-	if (bread(ump->um_devvp, fsbtodb(fs, cgtod(fs, cg)), (int)fs->fs_cgsize,
-	    NOCRED, &bp))
-		goto fail_lock;
-	cgp = (struct cg *)bp->b_data;
-	if (!cg_chkmagic(cgp))
-		goto fail_lock;
-	bp->b_xflags |= BX_BKGRDWRITE;
+	if ((error = ffs_getcg(fs, ump->um_devvp, cg, &bp, &cgp)) != 0) {
+		UFS_LOCK(ump);
+		return (0);
+	}
 	/*
 	 * Check to see if a cluster of the needed size (or bigger) is
 	 * available in this cylinder group.
@@ -1897,7 +1883,8 @@ ffs_clusteralloc(ip, cg, bpref, len)
 				break;
 		UFS_LOCK(ump);
 		fs->fs_maxcluster[cg] = i;
-		goto fail;
+		brelse(bp);
+		return (0);
 	}
 	/*
 	 * Search the cluster map to find a big enough cluster.
@@ -1933,8 +1920,11 @@ ffs_clusteralloc(ip, cg, bpref, len)
 			bit = 1;
 		}
 	}
-	if (got >= cgp->cg_nclusterblks)
-		goto fail_lock;
+	if (got >= cgp->cg_nclusterblks) {
+		UFS_LOCK(ump);
+		brelse(bp);
+		return (0);
+	}
 	/*
 	 * Allocate the cluster that we have found.
 	 */
@@ -1954,12 +1944,6 @@ ffs_clusteralloc(ip, cg, bpref, len)
 	UFS_UNLOCK(ump);
 	bdwrite(bp);
 	return (bno);
-
-fail_lock:
-	UFS_LOCK(ump);
-fail:
-	brelse(bp);
-	return (0);
 }
 
 static inline struct buf *
@@ -1972,6 +1956,16 @@ getinobuf(struct inode *ip, u_int cg, u_int32_t cginoblk, int gbflags)
 	    cg * fs->fs_ipg + cginoblk)), (int)fs->fs_bsize, 0, 0,
 	    gbflags));
 }
+
+/*
+ * Synchronous inode initialization is needed only when barrier writes do not
+ * work as advertised, and will impose a heavy cost on file creation in a newly
+ * created filesystem.
+ */
+static int doasyncinodeinit = 1;
+SYSCTL_INT(_vfs_ffs, OID_AUTO, doasyncinodeinit, CTLFLAG_RWTUN,
+    &doasyncinodeinit, 0,
+    "Perform inode block initialization using asynchronous writes");
 
 /*
  * Determine whether an inode can be allocated.
@@ -2005,21 +1999,16 @@ check_nifree:
 	if (fs->fs_cs(fs, cg).cs_nifree == 0)
 		return (0);
 	UFS_UNLOCK(ump);
-	error = bread(ump->um_devvp, fsbtodb(fs, cgtod(fs, cg)),
-		(int)fs->fs_cgsize, NOCRED, &bp);
-	if (error) {
-		brelse(bp);
+	if ((error = ffs_getcg(fs, ump->um_devvp, cg, &bp, &cgp)) != 0) {
 		UFS_LOCK(ump);
 		return (0);
 	}
-	cgp = (struct cg *)bp->b_data;
 restart:
-	if (!cg_chkmagic(cgp) || cgp->cg_cs.cs_nifree == 0) {
+	if (cgp->cg_cs.cs_nifree == 0) {
 		brelse(bp);
 		UFS_LOCK(ump);
 		return (0);
 	}
-	bp->b_xflags |= BX_BKGRDWRITE;
 	inosused = cg_inosused(cgp);
 	if (ipref) {
 		ipref %= fs->fs_ipg;
@@ -2086,6 +2075,7 @@ gotit:
 				dp2->di_gen = arc4random();
 			dp2++;
 		}
+
 		/*
 		 * Rather than adding a soft updates dependency to ensure
 		 * that the new inode block is written before it is claimed
@@ -2095,7 +2085,10 @@ gotit:
 		 * written. The barrier write should only slow down bulk
 		 * loading of newly created filesystems.
 		 */
-		babarrierwrite(ibp);
+		if (doasyncinodeinit)
+			babarrierwrite(ibp);
+		else
+			bwrite(ibp);
 
 		/*
 		 * After the inode block is written, try to update the
@@ -2103,21 +2096,16 @@ gotit:
 		 * to it, then leave it unchanged as the other thread
 		 * has already set it correctly.
 		 */
-		error = bread(ump->um_devvp, fsbtodb(fs, cgtod(fs, cg)),
-		    (int)fs->fs_cgsize, NOCRED, &bp);
+		error = ffs_getcg(fs, ump->um_devvp, cg, &bp, &cgp);
 		UFS_LOCK(ump);
 		ACTIVECLEAR(fs, cg);
 		UFS_UNLOCK(ump);
-		if (error != 0) {
-			brelse(bp);
+		if (error != 0)
 			return (error);
-		}
-		cgp = (struct cg *)bp->b_data;
 		if (cgp->cg_initediblk == old_initediblk)
 			cgp->cg_initediblk += INOPB(fs);
 		goto restart;
 	}
-	cgp->cg_old_time = cgp->cg_time = time_second;
 	cgp->cg_irotor = ipref;
 	UFS_LOCK(ump);
 	ACTIVECLEAR(fs, cg);
@@ -2159,8 +2147,7 @@ ffs_blkfree_cg(ump, fs, devvp, bno, size, inum, dephd)
 	struct cg *cgp;
 	struct buf *bp;
 	ufs1_daddr_t fragno, cgbno;
-	ufs2_daddr_t cgblkno;
-	int i, blk, frags, bbase;
+	int i, blk, frags, bbase, error;
 	u_int cg;
 	u_int8_t *blksfree;
 	struct cdev *dev;
@@ -2170,11 +2157,9 @@ ffs_blkfree_cg(ump, fs, devvp, bno, size, inum, dephd)
 		/* devvp is a snapshot */
 		MPASS(devvp->v_mount->mnt_data == ump);
 		dev = ump->um_devvp->v_rdev;
-		cgblkno = fragstoblks(fs, cgtod(fs, cg));
 	} else if (devvp->v_type == VCHR) {
 		/* devvp is a normal disk device */
 		dev = devvp->v_rdev;
-		cgblkno = fsbtodb(fs, cgtod(fs, cg));
 		ASSERT_VOP_LOCKED(devvp, "ffs_blkfree_cg");
 	} else
 		return;
@@ -2193,17 +2178,8 @@ ffs_blkfree_cg(ump, fs, devvp, bno, size, inum, dephd)
 		ffs_fserr(fs, inum, "bad block");
 		return;
 	}
-	if (bread(devvp, cgblkno, (int)fs->fs_cgsize, NOCRED, &bp)) {
-		brelse(bp);
+	if ((error = ffs_getcg(fs, devvp, cg, &bp, &cgp)) != 0)
 		return;
-	}
-	cgp = (struct cg *)bp->b_data;
-	if (!cg_chkmagic(cgp)) {
-		brelse(bp);
-		return;
-	}
-	bp->b_xflags |= BX_BKGRDWRITE;
-	cgp->cg_old_time = cgp->cg_time = time_second;
 	cgbno = dtogd(fs, bno);
 	blksfree = cg_blksfree(cgp);
 	UFS_LOCK(ump);
@@ -2408,14 +2384,9 @@ ffs_checkblk(ip, bno, size)
 	}
 	if ((u_int)bno >= fs->fs_size)
 		panic("ffs_checkblk: bad block %jd", (intmax_t)bno);
-	error = bread(ITODEVVP(ip), fsbtodb(fs, cgtod(fs, dtog(fs, bno))),
-		(int)fs->fs_cgsize, NOCRED, &bp);
+	error = ffs_getcg(fs, ITODEVVP(ip), dtog(fs, bno), &bp, &cgp);
 	if (error)
-		panic("ffs_checkblk: cg bread failed");
-	cgp = (struct cg *)bp->b_data;
-	if (!cg_chkmagic(cgp))
-		panic("ffs_checkblk: cg magic mismatch");
-	bp->b_xflags |= BX_BKGRDWRITE;
+		panic("ffs_checkblk: cylinder group read failed");
 	blksfree = cg_blksfree(cgp);
 	cgbno = dtogd(fs, bno);
 	if (size == fs->fs_bsize) {
@@ -2443,13 +2414,11 @@ ffs_vfree(pvp, ino, mode)
 	int mode;
 {
 	struct ufsmount *ump;
-	struct inode *ip;
 
 	if (DOINGSOFTDEP(pvp)) {
 		softdep_freefile(pvp, ino, mode);
 		return (0);
 	}
-	ip = VTOI(pvp);
 	ump = VFSTOUFS(pvp->v_mount);
 	return (ffs_freefile(ump, ump->um_fs, ump->um_devvp, ino, mode, NULL));
 }
@@ -2492,17 +2461,8 @@ ffs_freefile(ump, fs, devvp, ino, mode, wkhd)
 	if (ino >= fs->fs_ipg * fs->fs_ncg)
 		panic("ffs_freefile: range: dev = %s, ino = %ju, fs = %s",
 		    devtoname(dev), (uintmax_t)ino, fs->fs_fsmnt);
-	if ((error = bread(devvp, cgbno, (int)fs->fs_cgsize, NOCRED, &bp))) {
-		brelse(bp);
+	if ((error = ffs_getcg(fs, devvp, cg, &bp, &cgp)) != 0)
 		return (error);
-	}
-	cgp = (struct cg *)bp->b_data;
-	if (!cg_chkmagic(cgp)) {
-		brelse(bp);
-		return (0);
-	}
-	bp->b_xflags |= BX_BKGRDWRITE;
-	cgp->cg_old_time = cgp->cg_time = time_second;
 	inosused = cg_inosused(cgp);
 	ino %= fs->fs_ipg;
 	if (isclr(inosused, ino)) {
@@ -2535,6 +2495,7 @@ ffs_freefile(ump, fs, devvp, ino, mode, wkhd)
 
 /*
  * Check to see if a file is free.
+ * Used to check for allocated files in snapshots.
  */
 int
 ffs_checkfreefile(fs, devvp, ino)
@@ -2545,7 +2506,7 @@ ffs_checkfreefile(fs, devvp, ino)
 	struct cg *cgp;
 	struct buf *bp;
 	ufs2_daddr_t cgbno;
-	int ret;
+	int ret, error;
 	u_int cg;
 	u_int8_t *inosused;
 
@@ -2561,15 +2522,8 @@ ffs_checkfreefile(fs, devvp, ino)
 	}
 	if (ino >= fs->fs_ipg * fs->fs_ncg)
 		return (1);
-	if (bread(devvp, cgbno, (int)fs->fs_cgsize, NOCRED, &bp)) {
-		brelse(bp);
+	if ((error = ffs_getcg(fs, devvp, cg, &bp, &cgp)) != 0)
 		return (1);
-	}
-	cgp = (struct cg *)bp->b_data;
-	if (!cg_chkmagic(cgp)) {
-		brelse(bp);
-		return (1);
-	}
 	inosused = cg_inosused(cgp);
 	ino %= fs->fs_ipg;
 	ret = isclr(inosused, ino);
@@ -2642,6 +2596,106 @@ ffs_mapsearch(fs, cgp, bpref, allocsiz)
 	printf("bno = %lu, fs = %s\n", (u_long)bno, fs->fs_fsmnt);
 	panic("ffs_alloccg: block not in map");
 	return (-1);
+}
+
+static const struct statfs *
+ffs_getmntstat(struct vnode *devvp)
+{
+
+	if (devvp->v_type == VCHR)
+		return (&devvp->v_rdev->si_mountpt->mnt_stat);
+	return (ffs_getmntstat(VFSTOUFS(devvp->v_mount)->um_devvp));
+}
+
+/*
+ * Fetch and verify a cylinder group.
+ */
+int
+ffs_getcg(fs, devvp, cg, bpp, cgpp)
+	struct fs *fs;
+	struct vnode *devvp;
+	u_int cg;
+	struct buf **bpp;
+	struct cg **cgpp;
+{
+	struct buf *bp;
+	struct cg *cgp;
+	const struct statfs *sfs;
+	int flags, error;
+
+	*bpp = NULL;
+	*cgpp = NULL;
+	flags = 0;
+	if ((fs->fs_metackhash & CK_CYLGRP) != 0)
+		flags |= GB_CKHASH;
+	error = breadn_flags(devvp, devvp->v_type == VREG ?
+	    fragstoblks(fs, cgtod(fs, cg)) : fsbtodb(fs, cgtod(fs, cg)),
+	    (int)fs->fs_cgsize, NULL, NULL, 0, NOCRED, flags,
+	    ffs_ckhash_cg, &bp);
+	if (error != 0)
+		return (error);
+	cgp = (struct cg *)bp->b_data;
+	if ((fs->fs_metackhash & CK_CYLGRP) != 0 &&
+	    (bp->b_flags & B_CKHASH) != 0 &&
+	    cgp->cg_ckhash != bp->b_ckhash) {
+		sfs = ffs_getmntstat(devvp);
+		printf("UFS %s%s (%s) cylinder checksum failed: cg %u, cgp: "
+		    "0x%x != bp: 0x%jx\n",
+		    devvp->v_type == VCHR ? "" : "snapshot of ",
+		    sfs->f_mntfromname, sfs->f_mntonname,
+		    cg, cgp->cg_ckhash, (uintmax_t)bp->b_ckhash);
+		bp->b_flags &= ~B_CKHASH;
+		bp->b_flags |= B_INVAL | B_NOCACHE;
+		brelse(bp);
+		return (EIO);
+	}
+	if (!cg_chkmagic(cgp) || cgp->cg_cgx != cg) {
+		sfs = ffs_getmntstat(devvp);
+		printf("UFS %s%s (%s)",
+		    devvp->v_type == VCHR ? "" : "snapshot of ",
+		    sfs->f_mntfromname, sfs->f_mntonname);
+		if (!cg_chkmagic(cgp))
+			printf(" cg %u: bad magic number 0x%x should be 0x%x\n",
+			    cg, cgp->cg_magic, CG_MAGIC);
+		else
+			printf(": wrong cylinder group cg %u != cgx %u\n", cg,
+			    cgp->cg_cgx);
+		bp->b_flags &= ~B_CKHASH;
+		bp->b_flags |= B_INVAL | B_NOCACHE;
+		brelse(bp);
+		return (EIO);
+	}
+	bp->b_flags &= ~B_CKHASH;
+	bp->b_xflags |= BX_BKGRDWRITE;
+	/*
+	 * If we are using check hashes on the cylinder group then we want
+	 * to limit changing the cylinder group time to when we are actually
+	 * going to write it to disk so that its check hash remains correct
+	 * in memory. If the CK_CYLGRP flag is set the time is updated in
+	 * ffs_bufwrite() as the buffer is queued for writing. Otherwise we
+	 * update the time here as we have done historically.
+	 */
+	if ((fs->fs_metackhash & CK_CYLGRP) != 0)
+		bp->b_xflags |= BX_CYLGRP;
+	else
+		cgp->cg_old_time = cgp->cg_time = time_second;
+	*bpp = bp;
+	*cgpp = cgp;
+	return (0);
+}
+
+static void
+ffs_ckhash_cg(bp)
+	struct buf *bp;
+{
+	uint32_t ckhash;
+	struct cg *cgp;
+
+	cgp = (struct cg *)bp->b_data;
+	ckhash = cgp->cg_ckhash;
+	cgp->cg_ckhash = 0;
+	bp->b_ckhash = calculate_crc32c(~0L, bp->b_data, bp->b_bcount);
+	cgp->cg_ckhash = ckhash;
 }
 
 /*
@@ -2916,7 +2970,7 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 			if (blksize > blkcnt)
 				blksize = blkcnt;
 			ffs_blkfree(ump, fs, ump->um_devvp, blkno,
-			    blksize * fs->fs_fsize, ROOTINO, VDIR, NULL);
+			    blksize * fs->fs_fsize, UFS_ROOTINO, VDIR, NULL);
 			blkno += blksize;
 			blkcnt -= blksize;
 			blksize = fs->fs_frag;

@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016 Microsoft Corp.
+ * Copyright (c) 2016-2017 Microsoft Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,6 +32,10 @@
 #define	NDIS_MEDIA_STATE_CONNECTED	0
 #define	NDIS_MEDIA_STATE_DISCONNECTED	1
 
+#define	NDIS_NETCHANGE_TYPE_POSSIBLE	1
+#define	NDIS_NETCHANGE_TYPE_DEFINITE	2
+#define	NDIS_NETCHANGE_TYPE_FROMMEDIA	3
+
 #define	NDIS_OFFLOAD_SET_NOCHG		0
 #define	NDIS_OFFLOAD_SET_ON		1
 #define	NDIS_OFFLOAD_SET_OFF		2
@@ -52,6 +56,26 @@
 #define	NDIS_HASH_IPV6_EX		0x00000800
 #define	NDIS_HASH_TCP_IPV6		0x00001000
 #define	NDIS_HASH_TCP_IPV6_EX		0x00002000
+#define	NDIS_HASH_UDP_IPV4_X		0x00004000	/* XXX non-standard */
+
+#define	NDIS_HASH_ALL			(NDIS_HASH_IPV4 |	\
+					 NDIS_HASH_TCP_IPV4 |	\
+					 NDIS_HASH_IPV6 |	\
+					 NDIS_HASH_IPV6_EX |	\
+					 NDIS_HASH_TCP_IPV6 |	\
+					 NDIS_HASH_TCP_IPV6_EX |\
+					 NDIS_HASH_UDP_IPV4_X)
+
+#define	NDIS_HASH_STD			(NDIS_HASH_IPV4 |	\
+					 NDIS_HASH_TCP_IPV4 |	\
+					 NDIS_HASH_IPV6 |	\
+					 NDIS_HASH_IPV6_EX |	\
+					 NDIS_HASH_TCP_IPV6 |	\
+					 NDIS_HASH_TCP_IPV6_EX)
+
+/* Hash description for use with printf(9) %b identifier. */
+#define	NDIS_HASH_BITS			\
+	"\20\1TOEPLITZ\11IP4\12TCP4\13IP6\14IP6EX\15TCP6\16TCP6EX\17UDP4_X"
 
 #define	NDIS_HASH_KEYSIZE_TOEPLITZ	40
 #define	NDIS_HASH_INDCNT		128
@@ -138,7 +162,7 @@ struct ndis_offload_params {
  */
 struct ndis_rss_caps {
 	struct ndis_object_hdr		ndis_hdr;
-	uint32_t			ndis_flags;	/* NDIS_RSS_CAP_ */
+	uint32_t			ndis_caps;	/* NDIS_RSS_CAP_ */
 	uint32_t			ndis_nmsi;	/* # of MSIs */
 	uint32_t			ndis_nrxr;	/* # of RX rings */
 	/* NDIS >= 6.30 */
@@ -161,7 +185,8 @@ struct ndis_rss_caps {
 #define	NDIS_RSS_CAP_IPV4		0x00000100
 #define	NDIS_RSS_CAP_IPV6		0x00000200
 #define	NDIS_RSS_CAP_IPV6_EX		0x00000400
-#define	NDIS_RSS_CAP_HASH_TOEPLITZ	0x00000001
+#define	NDIS_RSS_CAP_HASH_TOEPLITZ	NDIS_HASH_FUNCTION_TOEPLITZ
+#define	NDIS_RSS_CAP_HASHFUNC_MASK	NDIS_HASH_FUNCTION_MASK
 
 /*
  * OID_GEN_RECEIVE_SCALE_PARAMETERS
@@ -204,6 +229,9 @@ struct ndis_rssprm_toeplitz {
 	/* Indirect table */
 	uint32_t			rss_ind[NDIS_HASH_INDCNT];
 };
+
+#define	NDIS_RSSPRM_TOEPLITZ_SIZE(nind)	\
+	__offsetof(struct ndis_rssprm_toeplitz, rss_ind[nind])
 
 /*
  * OID_TCP_OFFLOAD_HARDWARE_CAPABILITIES
@@ -382,5 +410,14 @@ struct ndis_offload {
 #define	NDIS_TXCSUM_INFO_UDPCS		0x00000008
 #define	NDIS_TXCSUM_INFO_IPCS		0x00000010
 #define	NDIS_TXCSUM_INFO_THOFF		0x03ff0000
+
+#define	NDIS_TXCSUM_INFO_MKL4CS(thoff, flag)			\
+	((((uint32_t)(thoff)) << 16) | (flag))
+
+#define	NDIS_TXCSUM_INFO_MKTCPCS(thoff)				\
+	NDIS_TXCSUM_INFO_MKL4CS((thoff), NDIS_TXCSUM_INFO_TCPCS)
+
+#define	NDIS_TXCSUM_INFO_MKUDPCS(thoff)				\
+	NDIS_TXCSUM_INFO_MKL4CS((thoff), NDIS_TXCSUM_INFO_UDPCS)
 
 #endif	/* !_NET_NDIS_H_ */

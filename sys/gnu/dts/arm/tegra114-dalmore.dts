@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * This dts file supports Dalmore A04.
  * Other board revisions are not supported
@@ -897,7 +898,7 @@
 		palmas: tps65913@58 {
 			compatible = "ti,palmas";
 			reg = <0x58>;
-			interrupts = <0 86 IRQ_TYPE_LEVEL_LOW>;
+			interrupts = <0 86 IRQ_TYPE_LEVEL_HIGH>;
 
 			#interrupt-cells = <2>;
 			interrupt-controller;
@@ -1122,6 +1123,16 @@
 		non-removable;
 	};
 
+	usb@7d000000 {
+		compatible = "nvidia,tegra114-udc";
+		status = "okay";
+		dr_mode = "peripheral";
+	};
+
+	usb-phy@7d000000 {
+		status = "okay";
+	};
+
 	usb@7d008000 {
 		status = "okay";
 	};
@@ -1149,7 +1160,7 @@
 
 		clk32k_in: clock@0 {
 			compatible = "fixed-clock";
-			reg=<0>;
+			reg = <0>;
 			#clock-cells = <0>;
 			clock-frequency = <32768>;
 		};

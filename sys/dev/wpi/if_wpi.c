@@ -2784,11 +2784,10 @@ end:	DPRINTF(sc, WPI_DEBUG_TRACE, error ? TRACE_STR_END_ERR : TRACE_STR_END,
 static int
 wpi_tx_data(struct wpi_softc *sc, struct mbuf *m, struct ieee80211_node *ni)
 {
-	const struct ieee80211_txparam *tp;
+	const struct ieee80211_txparam *tp = ni->ni_txparms;
 	struct ieee80211vap *vap = ni->ni_vap;
 	struct ieee80211com *ic = ni->ni_ic;
 	struct wpi_node *wn = WPI_NODE(ni);
-	struct ieee80211_channel *chan;
 	struct ieee80211_frame *wh;
 	struct ieee80211_key *k = NULL;
 	struct wpi_buf tx_data;
@@ -2813,19 +2812,15 @@ wpi_tx_data(struct wpi_softc *sc, struct mbuf *m, struct ieee80211_node *ni)
 	}
 	ac = M_WME_GETAC(m);
 
-	chan = (ni->ni_chan != IEEE80211_CHAN_ANYC) ?
-		ni->ni_chan : ic->ic_curchan;
-	tp = &vap->iv_txparms[ieee80211_chan2mode(chan)];
-
 	/* Choose a TX rate index. */
-	if (type == IEEE80211_FC0_TYPE_MGT)
+	if (type == IEEE80211_FC0_TYPE_MGT ||
+	    type == IEEE80211_FC0_TYPE_CTL ||
+	    (m->m_flags & M_EAPOL) != 0)
 		rate = tp->mgmtrate;
 	else if (ismcast)
 		rate = tp->mcastrate;
 	else if (tp->ucastrate != IEEE80211_FIXED_RATE_NONE)
 		rate = tp->ucastrate;
-	else if (m->m_flags & M_EAPOL)
-		rate = tp->mgmtrate;
 	else {
 		/* XXX pass pktlen */
 		(void) ieee80211_ratectl_rate(ni, NULL, 0);
@@ -3526,16 +3521,18 @@ wpi_updateedca(struct ieee80211com *ic)
 {
 #define WPI_EXP2(x)	((1 << (x)) - 1)	/* CWmin = 2^ECWmin - 1 */
 	struct wpi_softc *sc = ic->ic_softc;
+	struct chanAccParams chp;
 	struct wpi_edca_params cmd;
 	int aci, error;
+
+	ieee80211_wme_ic_getparams(ic, &chp);
 
 	DPRINTF(sc, WPI_DEBUG_TRACE, TRACE_STR_BEGIN, __func__);
 
 	memset(&cmd, 0, sizeof cmd);
 	cmd.flags = htole32(WPI_EDCA_UPDATE);
 	for (aci = 0; aci < WME_NUM_AC; aci++) {
-		const struct wmeParams *ac =
-		    &ic->ic_wme.wme_chanParams.cap_wmeParams[aci];
+		const struct wmeParams *ac = &chp.cap_wmeParams[aci];
 		cmd.ac[aci].aifsn = ac->wmep_aifsn;
 		cmd.ac[aci].cwmin = htole16(WPI_EXP2(ac->wmep_logcwmin));
 		cmd.ac[aci].cwmax = htole16(WPI_EXP2(ac->wmep_logcwmax));

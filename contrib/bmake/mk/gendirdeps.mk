@@ -1,4 +1,4 @@
-# $Id: gendirdeps.mk,v 1.32 2016/04/05 15:58:37 sjg Exp $
+# $Id: gendirdeps.mk,v 1.37 2018/01/31 19:06:46 sjg Exp $
 
 # Copyright (c) 2010-2013, Juniper Networks, Inc.
 # All rights reserved.
@@ -146,6 +146,9 @@ M2D_OBJROOTS += ${OBJTOP} ${_OBJROOT} ${_objroot}
 .if defined(SB_OBJROOT)
 M2D_OBJROOTS += ${SB_OBJROOT}
 .endif
+.if defined(STAGE_ROOT)
+M2D_OBJROOTS += ${STAGE_ROOT}
+.endif
 .if ${.MAKE.DEPENDFILE_PREFERENCE:U${.MAKE.DEPENDFILE}:M*.${MACHINE}} == ""
 # meta2deps.py only groks objroot
 # so we need to give it what it expects
@@ -191,7 +194,7 @@ dpadd_dir_list += ${f:H:tA}
 .endfor
 .if !empty(ddep_list)
 ddeps != cat ${ddep_list:O:u} | ${META2DEPS_FILTER} ${_skip_gendirdeps} \
-        sed 's,//*$$,,;s,\.${HOST_TARGET}$$,.host,;s,\.${MACHINE}$$,,'
+        sed 's,//*$$,,;s,\.${HOST_TARGET:Uhost}$$,.host,;s,\.${HOST_TARGET32:Uhost32}$$,.host32,;s,\.${MACHINE}$$,,'
 
 .if ${DEBUG_GENDIRDEPS:Uno:@x@${RELDIR:M$x}@} != ""
 .info ${RELDIR}: raw_dir_list='${dir_list}'
@@ -252,7 +255,9 @@ DIRDEPS += \
 	${dirdep_list:M${RELDIR}/*:@d@${.MAKE.MAKEFILE_PREFERENCE:@m@${exists(${SRCTOP}/$d/$m):?$d:${exists(${SRCTOP}/${d:R}/$m):?$d:}}@}@} \
 	${qualdir_list:M${RELDIR}/*:@d@${.MAKE.MAKEFILE_PREFERENCE:@m@${exists(${SRCTOP}/${d:R}/$m):?$d:}@}@}
 
-DIRDEPS := ${DIRDEPS:${GENDIRDEPS_FILTER:UNno:ts:}:C,//+,/,g:O:u}
+# what modifiers do we allow in GENDIRDEPS_FILTER
+GENDIRDEPS_FILTER_MASK += @CMNS
+DIRDEPS := ${DIRDEPS:${GENDIRDEPS_FILTER:UNno:M[${GENDIRDEPS_FILTER_MASK:O:u:ts}]*:ts:}:C,//+,/,g:O:u}
 
 .if ${DEBUG_GENDIRDEPS:Uno:@x@${RELDIR:M$x}@} != ""
 .info ${RELDIR}: M2D_OBJROOTS=${M2D_OBJROOTS}

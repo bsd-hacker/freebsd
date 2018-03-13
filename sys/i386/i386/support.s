@@ -10,7 +10,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
+ * 3. Neither the name of the University nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
@@ -28,8 +28,6 @@
  *
  * $FreeBSD$
  */
-
-#include "opt_npx.h"
 
 #include <machine/asmacros.h>
 #include <machine/cputypes.h>
@@ -52,7 +50,6 @@ ENTRY(bzero)
 	movl	12(%esp),%ecx
 	xorl	%eax,%eax
 	shrl	$2,%ecx
-	cld
 	rep
 	stosl
 	movl	12(%esp),%ecx
@@ -92,7 +89,6 @@ ENTRY(i686_pagezero)
 
 	movl	12(%esp),%edi
 	movl	$1024,%ecx
-	cld
 
 	ALIGN_TEXT
 1:
@@ -143,7 +139,6 @@ ENTRY(fillw)
 	movl	8(%esp),%eax
 	movl	12(%esp),%edi
 	movl	16(%esp),%ecx
-	cld
 	rep
 	stosw
 	popl	%edi
@@ -160,7 +155,6 @@ ENTRY(bcopyb)
 	subl	%esi,%eax
 	cmpl	%ecx,%eax			/* overlapping && src < dst? */
 	jb	1f
-	cld					/* nope, copy forwards */
 	rep
 	movsb
 	popl	%edi
@@ -201,7 +195,6 @@ ENTRY(bcopy)
 	jb	1f
 
 	shrl	$2,%ecx				/* copy by 32-bit words */
-	cld					/* nope, copy forwards */
 	rep
 	movsl
 	movl	16(%ebp),%ecx
@@ -247,7 +240,6 @@ ENTRY(memcpy)
 	movl	20(%esp),%ecx
 	movl	%edi,%eax
 	shrl	$2,%ecx				/* copy by 32-bit words */
-	cld					/* nope, copy forwards */
 	rep
 	movsl
 	movl	20(%esp),%ecx
@@ -293,12 +285,11 @@ ENTRY(copyout)
 	jz	done_copyout
 
 	/*
-	 * Check explicitly for non-user addresses.  If 486 write protection
-	 * is being used, this check is essential because we are in kernel
-	 * mode so the h/w does not provide any protection against writing
-	 * kernel addresses.
+	 * Check explicitly for non-user addresses.  This check is essential
+	 * because it prevents usermode from writing into the kernel.  We do
+	 * not verify anywhere else that the user did not specify a rogue
+	 * address.
 	 */
-
 	/*
 	 * First, prevent address wrapping.
 	 */
@@ -318,7 +309,6 @@ ENTRY(copyout)
 	movl	%ebx,%ecx
 
 	shrl	$2,%ecx
-	cld
 	rep
 	movsl
 	movb	%bl,%cl
@@ -369,7 +359,6 @@ ENTRY(copyin)
 
 	movb	%cl,%al
 	shrl	$2,%ecx				/* copy longword-wise */
-	cld
 	rep
 	movsl
 	movb	%al,%cl
@@ -558,7 +547,7 @@ END(subyte)
 /*
  * copyinstr(from, to, maxlen, int *lencopied) - MP SAFE
  *
- *	copy a string from from to to, stop when a 0 character is reached.
+ *	copy a string from 'from' to 'to', stop when a 0 character is reached.
  *	return ENAMETOOLONG if string is longer than maxlen, and
  *	EFAULT on protection violations. If lencopied is non-zero,
  *	return the actual length in *lencopied.
@@ -586,7 +575,6 @@ ENTRY(copyinstr)
 	movl	%eax,20(%esp)
 1:
 	incl	%edx
-	cld
 
 2:
 	decl	%edx
@@ -639,7 +627,6 @@ ENTRY(copystr)
 	movl	16(%esp),%edi			/* %edi = to */
 	movl	20(%esp),%edx			/* %edx = maxlen */
 	incl	%edx
-	cld
 1:
 	decl	%edx
 	jz	4f
@@ -679,7 +666,6 @@ ENTRY(bcmp)
 
 	movl	%edx,%ecx
 	shrl	$2,%ecx
-	cld					/* compare forwards */
 	repe
 	cmpsl
 	jne	1f
@@ -792,7 +778,8 @@ ENTRY(longjmp)
 END(longjmp)
 
 /*
- * Support for reading MSRs in the safe manner.
+ * Support for reading MSRs in the safe manner.  (Instead of panic on #gp,
+ * return an error.)
  */
 ENTRY(rdmsr_safe)
 /* int rdmsr_safe(u_int msr, uint64_t *data) */
@@ -812,7 +799,8 @@ ENTRY(rdmsr_safe)
 	ret
 
 /*
- * Support for writing MSRs in the safe manner.
+ * Support for writing MSRs in the safe manner.  (Instead of panic on #gp,
+ * return an error.)
  */
 ENTRY(wrmsr_safe)
 /* int wrmsr_safe(u_int msr, uint64_t data) */
@@ -839,3 +827,11 @@ msr_onfault:
 	movl	$0,PCB_ONFAULT(%ecx)
 	movl	$EFAULT,%eax
 	ret
+
+ENTRY(handle_ibrs_entry)
+	ret
+END(handle_ibrs_entry)
+
+ENTRY(handle_ibrs_exit)
+	ret
+END(handle_ibrs_exit)

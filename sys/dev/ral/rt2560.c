@@ -1518,7 +1518,7 @@ rt2560_tx_mgt(struct rt2560_softc *sc, struct mbuf *m0,
 	desc = &sc->prioq.desc[sc->prioq.cur];
 	data = &sc->prioq.data[sc->prioq.cur];
 
-	rate = vap->iv_txparms[ieee80211_chan2mode(ic->ic_curchan)].mgmtrate;
+	rate = ni->ni_txparms->mgmtrate;
 
 	wh = mtod(m0, struct ieee80211_frame *);
 
@@ -1594,38 +1594,18 @@ rt2560_sendprot(struct rt2560_softc *sc,
     const struct mbuf *m, struct ieee80211_node *ni, int prot, int rate)
 {
 	struct ieee80211com *ic = ni->ni_ic;
-	const struct ieee80211_frame *wh;
 	struct rt2560_tx_desc *desc;
 	struct rt2560_tx_data *data;
 	struct mbuf *mprot;
-	int protrate, ackrate, pktlen, flags, isshort, error;
-	uint16_t dur;
+	int protrate, flags, error;
 	bus_dma_segment_t segs[RT2560_MAX_SCATTER];
 	int nsegs;
 
-	KASSERT(prot == IEEE80211_PROT_RTSCTS || prot == IEEE80211_PROT_CTSONLY,
-	    ("protection %d", prot));
-
-	wh = mtod(m, const struct ieee80211_frame *);
-	pktlen = m->m_pkthdr.len + IEEE80211_CRC_LEN;
-
-	protrate = ieee80211_ctl_rate(ic->ic_rt, rate);
-	ackrate = ieee80211_ack_rate(ic->ic_rt, rate);
-
-	isshort = (ic->ic_flags & IEEE80211_F_SHPREAMBLE) != 0;
-	dur = ieee80211_compute_duration(ic->ic_rt, pktlen, rate, isshort)
-	    + ieee80211_ack_duration(ic->ic_rt, rate, isshort);
-	flags = RT2560_TX_MORE_FRAG;
-	if (prot == IEEE80211_PROT_RTSCTS) {
-		/* NB: CTS is the same size as an ACK */
-		dur += ieee80211_ack_duration(ic->ic_rt, rate, isshort);
-		flags |= RT2560_TX_ACK;
-		mprot = ieee80211_alloc_rts(ic, wh->i_addr1, wh->i_addr2, dur);
-	} else {
-		mprot = ieee80211_alloc_cts(ic, ni->ni_vap->iv_myaddr, dur);
-	}
+	mprot = ieee80211_alloc_prot(ni, m, rate, prot);
 	if (mprot == NULL) {
-		/* XXX stat + msg */
+		if_inc_counter(ni->ni_vap->iv_ifp, IFCOUNTER_OERRORS, 1);
+		device_printf(sc->sc_dev,
+		    "could not allocate mbuf for protection mode %d\n", prot);
 		return ENOBUFS;
 	}
 
@@ -1645,6 +1625,11 @@ rt2560_sendprot(struct rt2560_softc *sc,
 	data->ni = ieee80211_ref_node(ni);
 	/* ctl frames are not taken into account for amrr */
 	data->rix = IEEE80211_FIXED_RATE_NONE;
+
+	protrate = ieee80211_ctl_rate(ic->ic_rt, rate);
+	flags = RT2560_TX_MORE_FRAG;
+	if (prot == IEEE80211_PROT_RTSCTS)
+		flags |= RT2560_TX_ACK;
 
 	rt2560_setup_tx_desc(sc, desc, flags, mprot->m_pkthdr.len, protrate, 1,
 	    segs->ds_addr);
@@ -1746,7 +1731,7 @@ rt2560_tx_data(struct rt2560_softc *sc, struct mbuf *m0,
 	struct rt2560_tx_desc *desc;
 	struct rt2560_tx_data *data;
 	struct ieee80211_frame *wh;
-	const struct ieee80211_txparam *tp;
+	const struct ieee80211_txparam *tp = ni->ni_txparms;
 	struct ieee80211_key *k;
 	struct mbuf *mnew;
 	bus_dma_segment_t segs[RT2560_MAX_SCATTER];
@@ -1756,11 +1741,10 @@ rt2560_tx_data(struct rt2560_softc *sc, struct mbuf *m0,
 
 	wh = mtod(m0, struct ieee80211_frame *);
 
-	tp = &vap->iv_txparms[ieee80211_chan2mode(ni->ni_chan)];
-	if (IEEE80211_IS_MULTICAST(wh->i_addr1)) {
-		rate = tp->mcastrate;
-	} else if (m0->m_flags & M_EAPOL) {
+	if (m0->m_flags & M_EAPOL) {
 		rate = tp->mgmtrate;
+	} else if (IEEE80211_IS_MULTICAST(wh->i_addr1)) {
+		rate = tp->mcastrate;
 	} else if (tp->ucastrate != IEEE80211_FIXED_RATE_NONE) {
 		rate = tp->ucastrate;
 	} else {

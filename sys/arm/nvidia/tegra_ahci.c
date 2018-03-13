@@ -50,7 +50,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/extres/hwreset/hwreset.h>
 #include <dev/extres/phy/phy.h>
 #include <dev/extres/regulator/regulator.h>
-#include <dev/fdt/fdt_common.h>
 #include <dev/fdt/fdt_pinctrl.h>
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
@@ -372,7 +371,7 @@ enable_fdt_resources(struct tegra_ahci_sc *sc)
 		return (rv);
 	}
 
-	rv = phy_enable(sc->dev, sc->phy);
+	rv = phy_enable(sc->phy);
 	if (rv != 0) {
 		device_printf(sc->dev, "Cannot enable SATA phy\n");
 		return (rv);
@@ -619,8 +618,7 @@ static device_method_t tegra_ahci_methods[] = {
 	DEVMETHOD_END
 };
 
-static devclass_t tegra_ahci_devclass;
 static DEFINE_CLASS_0(ahci, tegra_ahci_driver, tegra_ahci_methods,
     sizeof(struct tegra_ahci_sc));
-DRIVER_MODULE(tegra_ahci, simplebus, tegra_ahci_driver, tegra_ahci_devclass,
+DRIVER_MODULE(tegra_ahci, simplebus, tegra_ahci_driver, ahci_devclass,
     NULL, NULL);

@@ -247,6 +247,7 @@ mkfs_msdos(const char *fname, const char *dtype, const struct msdos_options *op)
 
     img = NULL;
     rv = -1;
+    fd = fd1 = -1;
 
     if (o.block_size && o.sectors_per_cluster) {
 	warnx("Cannot specify both block size and sectors per cluster");
@@ -566,9 +567,17 @@ mkfs_msdos(const char *fname, const char *dtype, const struct msdos_options *op)
     }
     print_bpb(&bpb);
     if (!o.no_create) {
-	gettimeofday(&tv, NULL);
-	now = tv.tv_sec;
-	tm = localtime(&now);
+	if (o.timestamp_set) {
+	    tv.tv_sec = now = o.timestamp;
+	    tv.tv_usec = 0;
+	    tm = gmtime(&now);
+	} else {
+	    gettimeofday(&tv, NULL);
+	    now = tv.tv_sec;
+	    tm = localtime(&now);
+	}
+
+
 	if (!(img = malloc(bpb.bpbBytesPerSec))) {
 	    warn(NULL);
 	    goto done;
@@ -708,6 +717,10 @@ mkfs_msdos(const char *fname, const char *dtype, const struct msdos_options *op)
     rv = 0;
 done:
     free(img);
+    if (fd != -1)
+	    close(fd);
+    if (fd1 != -1)
+	    close(fd1);
 
     return rv;
 }

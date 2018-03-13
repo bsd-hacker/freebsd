@@ -1,6 +1,10 @@
 /*-
  * Copyright (c) 2015-2016 Landon Fuller <landonf@FreeBSD.org>
+ * Copyright (c) 2017 The FreeBSD Foundation
  * All rights reserved.
+ *
+ * Portions of this software were developed by Landon Fuller
+ * under sponsorship from the FreeBSD Foundation.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -45,23 +49,21 @@ __FBSDID("$FreeBSD$");
 #include "sibareg.h"
 #include "sibavar.h"
 
+#include "siba_eromvar.h"
+
 struct siba_erom;
 struct siba_erom_io;
 
 
 static int			siba_eio_init(struct siba_erom_io *io,
-				    device_t parent, struct bhnd_resource *res,
-				    int rid, bus_size_t offset, u_int ncores);
-
-static int			siba_eio_init_static(struct siba_erom_io *io,
-				    bus_space_tag_t bst, bus_space_handle_t bsh,
-				    bus_size_t offset, u_int ncores);
+				    struct bhnd_erom_io *eio, u_int ncores);
 
 static uint32_t			siba_eio_read_4(struct siba_erom_io *io,
 				    u_int core_idx, bus_size_t offset);
 
-static struct siba_core_id	siba_eio_read_core_id(struct siba_erom_io *io,
-				    u_int core_idx, int unit);
+static int			siba_eio_read_core_id(struct siba_erom_io *io,
+				    u_int core_idx, int unit,
+				    struct siba_core_id *sid);
 
 static int			siba_eio_read_chipid(struct siba_erom_io *io,
 				    bus_addr_t enum_addr,
@@ -71,18 +73,9 @@ static int			siba_eio_read_chipid(struct siba_erom_io *io,
  * SIBA EROM generic I/O context
  */
 struct siba_erom_io {
+	struct bhnd_erom_io	*eio;		/**< erom I/O callbacks */
+	bhnd_addr_t		 base_addr;	/**< address of first core */
 	u_int			 ncores;	/**< core count */
-	bus_size_t	 	 offset;	/**< base read offset */
-
-	/* resource state */
-	device_t	 	 dev;		/**< parent dev to use for resource allocations,
-						     or NULL if unavailable. */
-	struct bhnd_resource	*res;		/**< memory resource, or NULL */
-	int			 rid;		/**< memory resource ID */
-
-	/* bus tag state */
-	bus_space_tag_t		 bst;		/**< bus space tag */
-	bus_space_handle_t	 bsh;		/**< bus space handle */
 };
 
 /**
@@ -93,21 +86,22 @@ struct siba_erom {
 	struct siba_erom_io	io;	/**< i/o context */
 };
 
-#define	EROM_LOG(io, fmt, ...)	do {					\
-	if (io->dev != NULL) {						\
-		device_printf(io->dev, "%s: " fmt, __FUNCTION__,	\
-		    ##__VA_ARGS__);					\
-	} else {							\
-		printf("%s: " fmt, __FUNCTION__, ##__VA_ARGS__);	\
-	}								\
+#define	EROM_LOG(io, fmt, ...)	do {				\
+	printf("%s: " fmt, __FUNCTION__, ##__VA_ARGS__);	\
 } while(0)
 
+/* SIBA implementation of BHND_EROM_PROBE() */
 static int
-siba_erom_probe_common(struct siba_erom_io *io, const struct bhnd_chipid *hint,
-    struct bhnd_chipid *cid)
+siba_erom_probe(bhnd_erom_class_t *cls, struct bhnd_erom_io *eio,
+    const struct bhnd_chipid *hint, struct bhnd_chipid *cid)
 {
+	struct siba_erom_io	io;
 	uint32_t		idreg;
 	int			error;
+
+	/* Initialize I/O context, assuming at least the first core is mapped */
+	if ((error = siba_eio_init(&io, eio, 1)))
+		return (error);
 
 	/* Try using the provided hint. */
 	if (hint != NULL) {
@@ -127,7 +121,8 @@ siba_erom_probe_common(struct siba_erom_io *io, const struct bhnd_chipid *hint,
 		 * BCM4710, it's a SDRAM core (0x803).
 		 */
 
-		sid = siba_eio_read_core_id(io, 0, 0);
+		if ((error = siba_eio_read_core_id(&io, 0, 0, &sid)))
+			return (error);
 
 		if (sid.core_info.vendor != BHND_MFGID_BCM)
 			return (ENXIO);
@@ -138,12 +133,12 @@ siba_erom_probe_common(struct siba_erom_io *io, const struct bhnd_chipid *hint,
 		*cid = *hint;
 	} else {
 		/* Validate bus type */
-		idreg = siba_eio_read_4(io, 0, CHIPC_ID);
+		idreg = siba_eio_read_4(&io, 0, CHIPC_ID);
 		if (CHIPC_GET_BITS(idreg, CHIPC_ID_BUS) != BHND_CHIPTYPE_SIBA)
 			return (ENXIO);	
 
 		/* Identify the chipset */
-		if ((error = siba_eio_read_chipid(io, SIBA_ENUM_ADDR, cid)))
+		if ((error = siba_eio_read_chipid(&io, SIBA_ENUM_ADDR, cid)))
 			return (error);
 
 		/* Verify the chip type */
@@ -164,77 +159,27 @@ siba_erom_probe_common(struct siba_erom_io *io, const struct bhnd_chipid *hint,
 	return (0);
 }
 
-/* SIBA implementation of BHND_EROM_PROBE() */
-static int
-siba_erom_probe(bhnd_erom_class_t *cls, struct bhnd_resource *res,
-    bus_size_t offset, const struct bhnd_chipid *hint,
-    struct bhnd_chipid *cid)
-{
-	struct siba_erom_io	io;
-	int			error, rid;
-
-	rid = rman_get_rid(res->res);
-
-	/* Initialize I/O context, assuming at least 1 core exists.  */
-	if ((error = siba_eio_init(&io, NULL, res, rid, offset, 1)))
-		return (error);
-
-	return (siba_erom_probe_common(&io, hint, cid));
-}
-
-/* SIBA implementation of BHND_EROM_PROBE_STATIC() */
-static int
-siba_erom_probe_static(bhnd_erom_class_t *cls, bus_space_tag_t bst,
-     bus_space_handle_t bsh, bus_addr_t paddr, const struct bhnd_chipid *hint,
-     struct bhnd_chipid *cid)
-{
-	struct siba_erom_io	io;
-	int			error;
-
-	/* Initialize I/O context, assuming at least 1 core exists.  */
-	if ((error = siba_eio_init_static(&io, bst, bsh, 0, 1)))
-		return (error);
-
-	return (siba_erom_probe_common(&io, hint, cid));
-}
-
 /* SIBA implementation of BHND_EROM_INIT() */
 static int
 siba_erom_init(bhnd_erom_t *erom, const struct bhnd_chipid *cid,
-    device_t parent, int rid)
+    struct bhnd_erom_io *eio)
 {
 	struct siba_erom	*sc;
-	struct bhnd_resource	*res;
 	int			 error;
-	
+
 	sc = (struct siba_erom *)erom;
 
-	/* Allocate backing resource */
-	res = bhnd_alloc_resource(parent, SYS_RES_MEMORY, &rid,
-	    cid->enum_addr, cid->enum_addr + SIBA_ENUM_SIZE -1, SIBA_ENUM_SIZE,
-	    RF_ACTIVE|RF_SHAREABLE);
-	if (res == NULL)
-		return (ENOMEM);
+	/* Attempt to map the full core enumeration space */
+	error = bhnd_erom_io_map(eio, cid->enum_addr,
+	    cid->ncores * SIBA_CORE_SIZE);
+	if (error) {
+		printf("%s: failed to map %u cores: %d\n", __FUNCTION__,
+		    cid->ncores, error);
+		return (error);
+	}
 
 	/* Initialize I/O context */
-	error = siba_eio_init(&sc->io, parent, res, rid, 0x0, cid->ncores);
-	if (error)
-		bhnd_release_resource(parent, SYS_RES_MEMORY, rid, res);
-
-	return (error);
-}
-
-/* SIBA implementation of BHND_EROM_INIT_STATIC() */
-static int
-siba_erom_init_static(bhnd_erom_t *erom, const struct bhnd_chipid *cid,
-    bus_space_tag_t bst, bus_space_handle_t bsh)
-{
-	struct siba_erom	*sc;
-	
-	sc = (struct siba_erom *)erom;
-
-	/* Initialize I/O context */
-	return (siba_eio_init_static(&sc->io, bst, bsh, 0x0, cid->ncores));
+	return (siba_eio_init(&sc->io, eio, cid->ncores));
 }
 
 /* SIBA implementation of BHND_EROM_FINI() */
@@ -243,41 +188,15 @@ siba_erom_fini(bhnd_erom_t *erom)
 {
 	struct siba_erom *sc = (struct siba_erom *)erom;
 
-	if (sc->io.res != NULL) {
-		bhnd_release_resource(sc->io.dev, SYS_RES_MEMORY, sc->io.rid,
-		    sc->io.res);
-
-		sc->io.res = NULL;
-		sc->io.rid = -1;
-	}
+	bhnd_erom_io_fini(sc->io.eio);
 }
 
 /* Initialize siba_erom resource I/O context */
 static int
-siba_eio_init(struct siba_erom_io *io, device_t parent,
-    struct bhnd_resource *res, int rid, bus_size_t offset, u_int ncores)
+siba_eio_init(struct siba_erom_io *io, struct bhnd_erom_io *eio, u_int ncores)
 {
-	io->dev = parent;
-	io->res = res;
-	io->rid = rid;
-	io->offset = offset;
+	io->eio = eio;
 	io->ncores = ncores;
-
-	return (0);
-}
-
-/* Initialize siba_erom bus space I/O context */
-static int
-siba_eio_init_static(struct siba_erom_io *io, bus_space_tag_t bst,
-    bus_space_handle_t bsh, bus_size_t offset, u_int ncores)
-{
-	io->res = NULL;
-	io->rid = -1;
-	io->bst = bst;
-	io->bsh = bsh;
-	io->offset = offset;
-	io->ncores = ncores;
-
 	return (0);
 }
 
@@ -292,8 +211,6 @@ siba_eio_init_static(struct siba_erom_io *io, bus_space_tag_t bst,
 static uint32_t
 siba_eio_read_4(struct siba_erom_io *io, u_int core_idx, bus_size_t offset)
 {
-	bus_size_t core_offset;
-
 	/* Sanity check core index and offset */
 	if (core_idx >= io->ncores)
 		panic("core index %u out of range (ncores=%u)", core_idx,
@@ -303,11 +220,8 @@ siba_eio_read_4(struct siba_erom_io *io, u_int core_idx, bus_size_t offset)
 		panic("invalid core offset %#jx", (uintmax_t)offset);
 
 	/* Perform read */
-	core_offset = io->offset + SIBA_CORE_OFFSET(core_idx) + offset;
-	if (io->res != NULL)
-		return (bhnd_bus_read_4(io->res, core_offset));
-	else
-		return (bus_space_read_4(io->bst, io->bsh, core_offset));
+	return (bhnd_erom_io_read(io->eio, SIBA_CORE_OFFSET(core_idx) + offset,
+	    4));
 }
 
 /**
@@ -317,16 +231,151 @@ siba_eio_read_4(struct siba_erom_io *io, u_int core_idx, bus_size_t offset)
  * @param core_idx The core index.
  * @param unit The caller-specified unit number to be included in the return
  * value.
+ * @param[out] sid On success, the parsed siba core id.
+ * 
+ * @retval 0		success
+ * @retval non-zero     if reading or parsing the identification registers
+ *			otherwise fails, a regular unix error code will be
+ *			returned.
  */
-static struct siba_core_id
-siba_eio_read_core_id(struct siba_erom_io *io, u_int core_idx, int unit)
+static int
+siba_eio_read_core_id(struct siba_erom_io *io, u_int core_idx, int unit,
+    struct siba_core_id *sid)
 {
-	uint32_t idhigh, idlow;
+	struct siba_admatch	admatch[SIBA_MAX_ADDRSPACE];
+	uint32_t		idhigh, idlow;
+	uint32_t		tpsflag;
+	uint16_t		ocp_vendor;
+	uint8_t			sonics_rev;
+	uint8_t			num_admatch;
+	uint8_t			num_admatch_en;
+	uint8_t			num_cfg;
+	bool			intr_en;
+	u_int			intr_flag;
+	int			error;
 
 	idhigh = siba_eio_read_4(io, core_idx, SB0_REG_ABS(SIBA_CFG0_IDHIGH));
 	idlow = siba_eio_read_4(io, core_idx, SB0_REG_ABS(SIBA_CFG0_IDLOW));
+	tpsflag = siba_eio_read_4(io, core_idx, SB0_REG_ABS(SIBA_CFG0_TPSFLAG));
 
-	return (siba_parse_core_id(idhigh, idlow, core_idx, unit));
+	ocp_vendor = SIBA_REG_GET(idhigh, IDH_VENDOR);
+	sonics_rev = SIBA_REG_GET(idlow, IDL_SBREV);
+	num_admatch = SIBA_REG_GET(idlow, IDL_NRADDR) + 1 /* + enum block */;
+	if (num_admatch > nitems(admatch)) {
+		printf("core%u: invalid admatch count %hhu\n", core_idx,
+		    num_admatch);
+		return (EINVAL);
+	}
+
+	/* Determine backplane interrupt distribution configuration */
+	intr_en = ((tpsflag & SIBA_TPS_F0EN0) != 0);
+	intr_flag = SIBA_REG_GET(tpsflag, TPS_NUM0);
+
+	/* Determine the number of sonics config register blocks */
+	num_cfg = SIBA_CFG_NUM_2_2;
+	if (sonics_rev >= SIBA_IDL_SBREV_2_3)
+		num_cfg = SIBA_CFG_NUM_2_3;
+
+	/* Parse all admatch descriptors */
+	num_admatch_en = 0;
+	for (uint8_t i = 0; i < num_admatch; i++) {
+		uint32_t	am_value;
+		u_int		am_offset;
+
+		KASSERT(i < nitems(admatch), ("invalid admatch index"));
+
+		/* Determine the register offset */
+		am_offset = siba_admatch_offset(i);
+		if (am_offset == 0) {
+			printf("core%u: addrspace %hhu is unsupported",
+			    core_idx, i);
+			return (ENODEV);
+		}
+
+		/* Read and parse the address match register */
+		am_value = siba_eio_read_4(io, core_idx, am_offset);
+		error = siba_parse_admatch(am_value, &admatch[num_admatch_en]);
+		if (error) {
+			printf("core%u: failed to decode admatch[%hhu] "
+			    "register value 0x%x\n", core_idx, i, am_value);
+			return (error);
+		}
+
+		/* Skip disabled entries */
+		if (!admatch[num_admatch_en].am_enabled)
+			continue;
+
+		/* Reject unsupported negative matches. These are not used on
+		 * any known devices */
+		if (admatch[num_admatch_en].am_negative) {
+			printf("core%u: unsupported negative admatch[%hhu] "
+			    "value 0x%x\n", core_idx, i, am_value);
+			return (ENXIO);
+		}
+
+		num_admatch_en++;
+	}
+
+	/* Populate the result */
+	*sid = (struct siba_core_id) {
+		.core_info	= {
+			.vendor	= siba_get_bhnd_mfgid(ocp_vendor),
+			.device	= SIBA_REG_GET(idhigh, IDH_DEVICE),
+			.hwrev	= SIBA_IDH_CORE_REV(idhigh),
+			.core_idx = core_idx,
+			.unit	= unit
+		},
+		.sonics_vendor	= ocp_vendor,
+		.sonics_rev	= sonics_rev,
+		.intr_en	= intr_en,
+		.intr_flag	= intr_flag,
+		.num_admatch	= num_admatch_en,
+		.num_cfg_blocks	= num_cfg
+	};
+	memcpy(sid->admatch, admatch, num_admatch_en * sizeof(admatch[0]));
+
+	return (0);
+}
+
+/**
+ * Read and parse the SSB identification registers for the given @p core_index,
+ * returning the siba(4) core identification in @p sid.
+ * 
+ * @param sc A siba EROM instance.
+ * @param core_idx The index of the core to be identified.
+ * @param[out] result On success, the parsed siba core id.
+ * 
+ * @retval 0		success
+ * @retval non-zero     if reading or parsing the identification registers
+ *			otherwise fails, a regular unix error code will be
+ *			returned.
+ */
+int
+siba_erom_get_core_id(struct siba_erom *sc, u_int core_idx,
+    struct siba_core_id *result)
+{
+	struct siba_core_id	sid;
+	int			error;
+
+	/* Fetch the core info, assuming a unit number of 0 */
+	if ((error = siba_eio_read_core_id(&sc->io, core_idx, 0, &sid)))
+		return (error);
+
+	/* Scan preceding cores to determine the real unit number. */
+	for (u_int i = 0; i < core_idx; i++) {
+		struct siba_core_id prev;
+
+		if ((error = siba_eio_read_core_id(&sc->io, i, 0, &prev)))
+			return (error);
+
+		/* Bump the unit number? */
+		if (sid.core_info.vendor == prev.core_info.vendor &&
+		    sid.core_info.device == prev.core_info.device)
+			sid.core_info.unit++;
+	}
+
+	*result = sid;
+	return (0);
 }
 
 /**
@@ -342,9 +391,12 @@ siba_eio_read_chipid(struct siba_erom_io *io, bus_addr_t enum_addr,
 {
 	struct siba_core_id	ccid;
 	uint32_t		idreg;
+	int			error;
 
 	/* Identify the chipcommon core */
-	ccid = siba_eio_read_core_id(io, 0, 0);
+	if ((error = siba_eio_read_core_id(io, 0, 0, &ccid)))
+		return (error);
+
 	if (ccid.core_info.vendor != BHND_MFGID_BCM ||
 	    ccid.core_info.device != BHND_COREID_CC)
 	{
@@ -371,6 +423,7 @@ siba_erom_lookup_core(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
 {
 	struct siba_erom	*sc;
 	struct bhnd_core_match	 imatch;
+	int			 error;
 
 	sc = (struct siba_erom *)erom;
 
@@ -384,7 +437,9 @@ siba_erom_lookup_core(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
 		struct bhnd_core_info	ci;
 
 		/* Read the core info */
-		sid = siba_eio_read_core_id(&sc->io, i, 0);
+		if ((error = siba_eio_read_core_id(&sc->io, i, 0, &sid)))
+			return (error);
+
 		ci = sid.core_info;
 
 		/* Check for initial match */
@@ -393,7 +448,9 @@ siba_erom_lookup_core(bhnd_erom_t *erom, const struct bhnd_core_match *desc,
 
 		/* Re-scan preceding cores to determine the unit number. */
 		for (u_int j = 0; j < i; j++) {
-			sid = siba_eio_read_core_id(&sc->io, i, 0);
+			error = siba_eio_read_core_id(&sc->io, j, 0, &sid);
+			if (error)
+				return (error);
 
 			/* Bump the unit number? */
 			if (sid.core_info.vendor == ci.vendor &&
@@ -422,9 +479,11 @@ siba_erom_lookup_core_addr(bhnd_erom_t *erom, const struct bhnd_core_match *desc
 	struct siba_erom	*sc;
 	struct bhnd_core_info	 core;
 	struct siba_core_id	 sid;
-	uint32_t		 am, am_addr, am_size;
+	struct siba_admatch	 admatch;
+	uint32_t		 am;
 	u_int			 am_offset;
-	u_int			 addrspace;
+	u_int			 addrspace, cfg;
+	
 	int			 error;
 
 	sc = (struct siba_erom *)erom;
@@ -434,19 +493,69 @@ siba_erom_lookup_core_addr(bhnd_erom_t *erom, const struct bhnd_core_match *desc
 		return (error);
 
 	/* Fetch full siba core ident */
-	sid = siba_eio_read_core_id(&sc->io, core.core_idx, core.unit);
+	error = siba_eio_read_core_id(&sc->io, core.core_idx, core.unit, &sid);
+	if (error)
+		return (error);
 
 	/* Is port valid? */
-	if (!siba_is_port_valid(sid.num_addrspace, type, port))
+	if (!siba_is_port_valid(&sid, type, port))
 		return (ENOENT);
 
 	/* Is region valid? */
-	if (region >= siba_addrspace_region_count(sid.num_addrspace, port))
+	if (region >= siba_port_region_count(&sid, type, port))
 		return (ENOENT);
 
-	/* Map the bhnd port values to a siba addrspace index */
-	error = siba_addrspace_index(sid.num_addrspace, type, port, region,
-	   &addrspace);
+	/* Is this a siba configuration region? If so, this is mapped to an
+	 * offset within the device0.0 port */
+	error = siba_cfg_index(&sid, type, port, region, &cfg);
+	if (!error) {
+		bhnd_addr_t	region_addr;
+		bhnd_addr_t	region_size;
+		bhnd_size_t	cfg_offset, cfg_size;
+
+		cfg_offset = SIBA_CFG_OFFSET(cfg);
+		cfg_size = SIBA_CFG_SIZE;
+
+		/* Fetch the device0.0 addr/size */
+		error = siba_erom_lookup_core_addr(erom, desc, BHND_PORT_DEVICE,
+		    0, 0, NULL, &region_addr, &region_size);
+		if (error)
+			return (error);
+
+		/* Verify that our offset fits within the region */
+		if (region_size < cfg_size) {
+			printf("%s%u.%u offset %ju exceeds %s0.0 size %ju\n",
+			    bhnd_port_type_name(type), port, region, cfg_offset,
+			    bhnd_port_type_name(BHND_PORT_DEVICE), region_size);
+
+			return (ENXIO);
+		}
+
+		if (BHND_ADDR_MAX - region_addr < cfg_offset) {
+			printf("%s%u.%u offset %ju would overflow %s0.0 addr "
+			    "%ju\n", bhnd_port_type_name(type), port, region,
+			    cfg_offset, bhnd_port_type_name(BHND_PORT_DEVICE),
+			    region_addr);
+
+			return (ENXIO);
+		}
+
+		if (info != NULL)
+			*info = core;
+
+		*addr = region_addr + cfg_offset;
+		*size = cfg_size;
+		return (0);
+	}
+
+	/* 
+	 * Otherwise, must be a device port.
+	 * 
+	 * Map the bhnd device port to a siba addrspace index. Unlike siba(4)
+	 * bus drivers, we do not exclude the siba(4) configuration blocks from
+	 * the first device port.
+	 */
+	error = siba_addrspace_index(&sid, type, port, region, &addrspace);
 	if (error)
 		return (error);
 
@@ -460,7 +569,7 @@ siba_erom_lookup_core_addr(bhnd_erom_t *erom, const struct bhnd_core_match *desc
 	/* Read and parse the address match register */
 	am = siba_eio_read_4(&sc->io, core.core_idx, am_offset);
 
-	if ((error = siba_parse_admatch(am, &am_addr, &am_size))) {
+	if ((error = siba_parse_admatch(am, &admatch))) {
 		printf("failed to decode address match register value 0x%x\n",
 		    am);
 		return (error);
@@ -469,8 +578,8 @@ siba_erom_lookup_core_addr(bhnd_erom_t *erom, const struct bhnd_core_match *desc
 	if (info != NULL)
 		*info = core;
 
-	*addr = am_addr;
-	*size = am_size;
+	*addr = admatch.am_base;
+	*size = admatch.am_size;
 
 	return (0);
 }
@@ -482,11 +591,12 @@ siba_erom_get_core_table(bhnd_erom_t *erom, struct bhnd_core_info **cores,
 {
 	struct siba_erom	*sc;
 	struct bhnd_core_info	*out;
+	int			 error;
 
 	sc = (struct siba_erom *)erom;
 
 	/* Allocate our core array */
-	out = malloc(sizeof(*out) * sc->io.ncores, M_BHND, M_NOWAIT);
+	out = mallocarray(sc->io.ncores, sizeof(*out), M_BHND, M_NOWAIT);
 	if (out == NULL)
 		return (ENOMEM);
 
@@ -498,7 +608,9 @@ siba_erom_get_core_table(bhnd_erom_t *erom, struct bhnd_core_info **cores,
 		struct siba_core_id sid;
 
 		/* Read the core info */
-		sid = siba_eio_read_core_id(&sc->io, i, 0);
+		if ((error = siba_eio_read_core_id(&sc->io, i, 0, &sid)))
+			return (error);
+
 		out[i] = sid.core_info;
 
 		/* Determine unit number */
@@ -519,16 +631,74 @@ siba_erom_free_core_table(bhnd_erom_t *erom, struct bhnd_core_info *cores)
 	free(cores, M_BHND);
 }
 
+/* BHND_EROM_DUMP() */
+static int
+siba_erom_dump(bhnd_erom_t *erom)
+{
+	struct siba_erom	*sc;
+	int			 error;
+
+	sc = (struct siba_erom *)erom;
+
+	/* Enumerate all cores. */
+	for (u_int i = 0; i < sc->io.ncores; i++) {
+		uint32_t idhigh, idlow;
+		uint32_t nraddr;
+
+		idhigh = siba_eio_read_4(&sc->io, i,
+		    SB0_REG_ABS(SIBA_CFG0_IDHIGH));
+		idlow = siba_eio_read_4(&sc->io, i,
+		    SB0_REG_ABS(SIBA_CFG0_IDLOW));
+
+		printf("siba core %u:\n", i);
+		printf("\tvendor:\t0x%04x\n", SIBA_REG_GET(idhigh, IDH_VENDOR));
+		printf("\tdevice:\t0x%04x\n", SIBA_REG_GET(idhigh, IDH_DEVICE));
+		printf("\trev:\t0x%04x\n", SIBA_IDH_CORE_REV(idhigh));
+		printf("\tsbrev:\t0x%02x\n", SIBA_REG_GET(idlow, IDL_SBREV));
+
+		/* Enumerate the address match registers */
+		nraddr = SIBA_REG_GET(idlow, IDL_NRADDR);
+		printf("\tnraddr\t0x%04x\n", nraddr);
+
+		for (size_t addrspace = 0; addrspace < nraddr; addrspace++) {
+			struct siba_admatch	admatch;
+			uint32_t		am;
+			u_int			am_offset;
+
+			/* Determine the register offset */
+			am_offset = siba_admatch_offset(addrspace);
+			if (am_offset == 0) {
+				printf("addrspace %zu unsupported",
+				    addrspace);
+				break;
+			}
+			
+			/* Read and parse the address match register */
+			am = siba_eio_read_4(&sc->io, i, am_offset);
+			if ((error = siba_parse_admatch(am, &admatch))) {
+				printf("failed to decode address match "
+				    "register value 0x%x\n", am);
+				continue;
+			}
+
+			printf("\taddrspace %zu\n", addrspace);
+			printf("\t\taddr: 0x%08x\n", admatch.am_base);
+			printf("\t\tsize: 0x%08x\n", admatch.am_size);
+		}
+	}
+
+	return (0);
+}
+
 static kobj_method_t siba_erom_methods[] = {
 	KOBJMETHOD(bhnd_erom_probe,		siba_erom_probe),
-	KOBJMETHOD(bhnd_erom_probe_static,	siba_erom_probe_static),
 	KOBJMETHOD(bhnd_erom_init,		siba_erom_init),
-	KOBJMETHOD(bhnd_erom_init_static,	siba_erom_init_static),
 	KOBJMETHOD(bhnd_erom_fini,		siba_erom_fini),
 	KOBJMETHOD(bhnd_erom_get_core_table,	siba_erom_get_core_table),
 	KOBJMETHOD(bhnd_erom_free_core_table,	siba_erom_free_core_table),
 	KOBJMETHOD(bhnd_erom_lookup_core,	siba_erom_lookup_core),
 	KOBJMETHOD(bhnd_erom_lookup_core_addr,	siba_erom_lookup_core_addr),
+	KOBJMETHOD(bhnd_erom_dump,		siba_erom_dump),
 
 	KOBJMETHOD_END
 };

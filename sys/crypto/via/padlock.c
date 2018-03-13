@@ -35,7 +35,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/rwlock.h>
 #include <sys/malloc.h>
 #include <sys/libkern.h>
-#if defined(__amd64__) || (defined(__i386__) && !defined(PC98))
+#if defined(__amd64__) || defined(__i386__)
 #include <machine/cpufunc.h>
 #include <machine/cputypes.h>
 #include <machine/md_var.h>
@@ -85,7 +85,7 @@ padlock_probe(device_t dev)
 {
 	char capp[256];
 
-#if defined(__amd64__) || (defined(__i386__) && !defined(PC98))
+#if defined(__amd64__) || defined(__i386__)
 	/* If there is no AES support, we has nothing to do here. */
 	if (!(via_feature_xcrypt & VIA_HAS_AES)) {
 		device_printf(dev, "No ACE support.\n");
@@ -246,12 +246,10 @@ padlock_newsession(device_t dev, uint32_t *sidp, struct cryptoini *cri)
 
 	if (macini != NULL) {
 		td = curthread;
-		error = fpu_kern_enter(td, ses->ses_fpu_ctx, FPU_KERN_NORMAL |
+		fpu_kern_enter(td, ses->ses_fpu_ctx, FPU_KERN_NORMAL |
 		    FPU_KERN_KTHR);
-		if (error == 0) {
-			error = padlock_hash_setup(ses, macini);
-			fpu_kern_leave(td, ses->ses_fpu_ctx);
-		}
+		error = padlock_hash_setup(ses, macini);
+		fpu_kern_leave(td, ses->ses_fpu_ctx);
 		if (error != 0) {
 			padlock_freesession_one(sc, ses, 0);
 			return (error);

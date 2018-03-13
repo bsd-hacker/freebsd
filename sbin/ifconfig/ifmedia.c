@@ -1,7 +1,9 @@
 /*	$NetBSD: ifconfig.c,v 1.34 1997/04/21 01:17:58 lukem Exp $	*/
 /* $FreeBSD$ */
 
-/*
+/*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 1997 Jason R. Thorpe.
  * All rights reserved.
  *
@@ -371,7 +373,7 @@ setmediamode(const char *val, int d, int s, const struct afswtch *afp)
 }
 
 /**********************************************************************
- * A good chunk of this is duplicated from sys/net/ifmedia.c
+ * A good chunk of this is duplicated from sys/net/if_media.c
  **********************************************************************/
 
 static struct ifmedia_description ifm_type_descriptions[] =

@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-4-Clause
+ *
  * Copyright (c) 1985 Sun Microsystems, Inc.
  * Copyright (c) 1976 Board of Trustees of the University of Illinois.
  * Copyright (c) 1980, 1993
@@ -71,6 +73,8 @@ const char *in_name = "Standard Input";	/* will always point to name of input
 					 * file */
 const char *out_name = "Standard Output";	/* will always point to name
 						 * of output file */
+const char *simple_backup_suffix = ".BAK";	/* Suffix to use for backup
+						 * files */
 char        bakfile[MAXPATHLEN] = "";
 
 int
@@ -98,7 +102,8 @@ main(int argc, char **argv)
     int         type_code;	/* the type of token, returned by lexi */
 
     int         last_else = 0;	/* true iff last keyword was an else */
-
+    const char *profile_name = NULL;
+    const char *envval = NULL;
 
     /*-----------------------------------------------*\
     |		      INITIALIZATION		      |
@@ -159,6 +164,10 @@ main(int argc, char **argv)
     output = NULL;
     tabs_to_var = 0;
 
+    envval = getenv("SIMPLE_BACKUP_SUFFIX");
+    if (envval)
+        simple_backup_suffix = envval;
+
     /*--------------------------------------------------*\
     |   		COMMAND LINE SCAN		 |
     \*--------------------------------------------------*/
@@ -194,9 +203,11 @@ main(int argc, char **argv)
     for (i = 1; i < argc; ++i)
 	if (strcmp(argv[i], "-npro") == 0)
 	    break;
+	else if (argv[i][0] == '-' && argv[i][1] == 'P' && argv[i][2] != '\0')
+	    profile_name = argv[i];	/* non-empty -P (set profile) */
     set_defaults();
     if (i >= argc)
-	set_profile();
+	set_profile(profile_name);
 
     for (i = 1; i < argc; ++i) {
 
@@ -289,7 +300,7 @@ main(int argc, char **argv)
 	    if (*p == ' ')
 		col++;
 	    else if (*p == '\t')
-		col = ((col - 1) & ~7) + 9;
+		col = tabsize * (1 + (col - 1) / tabsize) + 1;
 	    else
 		break;
 	    p++;
@@ -335,8 +346,10 @@ main(int argc, char **argv)
 	    switch (type_code) {
 	    case newline:
 		++line_no;
-		if (sc_end != NULL)
-		    goto sw_buffer;	/* dump comment, if any */
+		if (sc_end != NULL) {	/* dump comment, if any */
+		    *sc_end++ = '\n';	/* newlines are needed in this case */
+		    goto sw_buffer;
+		}
 		flushed_nl = true;
 	    case form_feed:
 		break;		/* form feeds and newlines found here will be
@@ -523,13 +536,19 @@ check_type:
 	    break;
 
 	case lparen:		/* got a '(' or '[' */
-	    ++ps.p_l_follow;	/* count parens to make Healy happy */
+	    /* count parens to make Healy happy */
+	    if (++ps.p_l_follow == nitems(ps.paren_indents)) {
+		diag3(0, "Reached internal limit of %d unclosed parens",
+		    nitems(ps.paren_indents));
+		ps.p_l_follow--;
+	    }
 	    if (ps.want_blank && *token != '[' &&
-		    (ps.last_token != ident || proc_calls_space ||
+		    ((ps.last_token != ident && ps.last_token != funcname) ||
+		    proc_calls_space ||
 		    /* offsetof (1) is never allowed a space; sizeof (2) gets
 		     * one iff -bs; all other keywords (>2) always get a space
 		     * before lparen */
-			(ps.keyword + Bill_Shannon > 2)))
+		    ps.keyword + Bill_Shannon > 2))
 		*e_code++ = ' ';
 	    ps.want_blank = false;
 	    if (ps.in_decl && !ps.block_init && !ps.dumped_decl_indent &&
@@ -566,7 +585,6 @@ check_type:
 	    break;
 
 	case rparen:		/* got a ')' or ']' */
-	    rparen_count--;
 	    if (ps.cast_mask & (1 << ps.p_l_follow) & ~ps.not_cast_mask) {
 		ps.last_u_d = true;
 		ps.cast_mask &= (1 << ps.p_l_follow) - 1;
@@ -728,7 +746,7 @@ check_type:
 				     * structure declaration */
 	    scase = false;	/* these will only need resetting in an error */
 	    squest = 0;
-	    if (ps.last_token == rparen && rparen_count == 0)
+	    if (ps.last_token == rparen)
 		ps.in_parameter_declaration = 0;
 	    ps.cast_mask = 0;
 	    ps.not_cast_mask = 0;
@@ -828,6 +846,7 @@ check_type:
 			&& ps.in_parameter_declaration)
 		    postfix_blankline_requested = 1;
 		ps.in_parameter_declaration = 0;
+		ps.in_decl = false;
 	    }
 	    dec_ind = 0;
 	    parse(lbrace);	/* let parser know about this */
@@ -918,11 +937,13 @@ check_type:
 	    }
 	    goto copy_id;	/* move the token into line */
 
-	case decl:		/* we have a declaration type (int, register,
-				 * etc.) */
+	case storage:
+	    prefix_blankline_requested = 0;
+	    goto copy_id;
+
+	case decl:		/* we have a declaration type (int, etc.) */
 	    parse(decl);	/* let parser worry about indentation */
 	    if (ps.last_token == rparen && ps.tos <= 1) {
-		ps.in_parameter_declaration = 1;
 		if (s_code != e_code) {
 		    dump_line();
 		    ps.want_blank = 0;
@@ -951,10 +972,11 @@ check_type:
 	    }
 	    goto copy_id;
 
+	case funcname:
 	case ident:		/* got an identifier or constant */
 	    if (ps.in_decl) {	/* if we are in a declaration, we must indent
 				 * identifier */
-		if (is_procname == 0 || !procnames_start_line) {
+		if (type_code != funcname || !procnames_start_line) {
 		    if (!ps.block_init && !ps.dumped_decl_indent) {
 			if (troff) {
 			    if (ps.want_blank)
@@ -967,7 +989,8 @@ check_type:
 			ps.want_blank = false;
 		    }
 		} else {
-		    if (ps.want_blank)
+		    if (ps.want_blank && !(procnames_start_line &&
+			type_code == funcname))
 			*e_code++ = ' ';
 		    ps.want_blank = false;
 		    if (dec_ind && s_code != e_code) {
@@ -1001,7 +1024,18 @@ check_type:
 		    CHECK_SIZE_CODE;
 		    *e_code++ = *t_ptr;
 		}
-	    ps.want_blank = true;
+	    if (type_code != funcname)
+		ps.want_blank = true;
+	    break;
+
+	case strpfx:
+	    if (ps.want_blank)
+		*e_code++ = ' ';
+	    for (t_ptr = token; *t_ptr; ++t_ptr) {
+		CHECK_SIZE_CODE;
+		*e_code++ = *t_ptr;
+	    }
+	    ps.want_blank = false;
 	    break;
 
 	case period:		/* treat a period kind of like a binary
@@ -1024,7 +1058,7 @@ check_type:
 	    if (ps.p_l_follow == 0) {
 		if (ps.block_init_level <= 0)
 		    ps.block_init = 0;
-		if (break_comma && (!ps.leave_comma || compute_code_target() + (e_code - s_code) > max_col - 8))
+		if (break_comma && (!ps.leave_comma || compute_code_target() + (e_code - s_code) > max_col - tabsize))
 		    force_nl = true;
 	    }
 	    break;
@@ -1208,7 +1242,7 @@ bakcopy(void)
 	p--;
     if (*p == '/')
 	p++;
-    sprintf(bakfile, "%s.BAK", p);
+    sprintf(bakfile, "%s%s", p, simple_backup_suffix);
 
     /* copy in_name to backup file */
     bakchn = creat(bakfile, 0600);
@@ -1241,18 +1275,21 @@ indent_declaration(int cur_dec_ind, int tabs_to_var)
     char *startpos = e_code;
 
     /*
-     * get the tab math right for indentations that are not multiples of 8
+     * get the tab math right for indentations that are not multiples of tabsize
      */
-    if ((ps.ind_level * ps.ind_size) % 8 != 0) {
-	pos += (ps.ind_level * ps.ind_size) % 8;
-	cur_dec_ind += (ps.ind_level * ps.ind_size) % 8;
+    if ((ps.ind_level * ps.ind_size) % tabsize != 0) {
+	pos += (ps.ind_level * ps.ind_size) % tabsize;
+	cur_dec_ind += (ps.ind_level * ps.ind_size) % tabsize;
     }
-    if (tabs_to_var)
-	while ((pos & ~7) + 8 <= cur_dec_ind) {
+    if (tabs_to_var) {
+	int tpos;
+
+	while ((tpos = tabsize * (1 + pos / tabsize)) <= cur_dec_ind) {
 	    CHECK_SIZE_CODE;
 	    *e_code++ = '\t';
-	    pos = (pos & ~7) + 8;
+	    pos = tpos;
 	}
+    }
     while (pos < cur_dec_ind) {
 	CHECK_SIZE_CODE;
 	*e_code++ = ' ';

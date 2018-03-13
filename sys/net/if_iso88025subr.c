@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 1998, Larry Lile
  * All rights reserved.
  *
@@ -487,7 +489,7 @@ iso88025_input(ifp, m)
 	m_adj(m, mac_hdr_len);
 
 	m = m_pullup(m, LLC_SNAPFRAMELEN);
-	if (m == 0) {
+	if (m == NULL) {
 		if_inc_counter(ifp, IFCOUNTER_IERRORS, 1);
 		goto dropanyway;
 	}

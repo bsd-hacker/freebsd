@@ -136,7 +136,6 @@ XFILES=	BSD_daemon/FreeBSD.pfa \
 	ppp/ppp.secret.sample \
 	ppp/ppp.secret.span-isp \
 	ppp/ppp.secret.span-isp.working \
-	printing/README \
 	printing/diablo-if-net \
 	printing/hpdf \
 	printing/hpif \
@@ -240,8 +239,6 @@ copies:
 		rm -f ${DESTDIR}${BINDIR}/$i; \
 	fi
 .endfor
-	mtree -deU ${MTREE_FOLLOWS_SYMLINKS} \
-	    -f ${.CURDIR}/../../etc/mtree/BSD.usr.dist -p ${DESTDIR}/usr
 .for file in ${XFILES}
 	${INSTALL} -T package=${PACKAGE_${file}:Uexamples} -o ${SHAREOWN} -g ${SHAREGRP} -m ${SHAREMODE} \
 		${.CURDIR}/${file} ${DESTDIR}${BINDIR}/${file}
@@ -250,12 +247,12 @@ copies:
 symlinks:
 .for i in ${LDIRS}
 	rm -rf ${DESTDIR}${BINDIR}/$i
-	ln -s ${.CURDIR}/$i ${DESTDIR}${BINDIR}/$i
+	${INSTALL} ${TAG_ARGS} -l s ${.CURDIR}/$i ${DESTDIR}${BINDIR}/$i
 .endfor
 
 etc-examples:
 .if ${SHARED} != "symlinks"
-	${_+_}(cd ${.CURDIR}/../../etc; ${MAKE} etc-examples)
+	${_+_}(cd ${SRCTOP}/etc; ${MAKE} etc-examples)
 .endif
 
 .if ${SHARED} != "symlinks"
@@ -268,9 +265,8 @@ SUBDIR+=pf
 .endif
 .endif
 
-.if ${MK_TESTS} != "no"
-SUBDIR+=tests
-.endif
+HAS_TESTS=
+SUBDIR.${MK_TESTS}+= tests
 
 SUBDIR_PARALLEL=
 

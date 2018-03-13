@@ -84,7 +84,7 @@ TAILQ_HEAD(superblocks, superblock);
  * Description of the PF rule structure.
  */
 enum {
-    BARRIER,	/* the presence of the field puts the rule in it's own block */
+    BARRIER,	/* the presence of the field puts the rule in its own block */
     BREAK,	/* the field may not differ between rules in a superblock */
     NOMERGE,	/* the field may not differ between rules when combined */
     COMBINED,	/* the field may itself be combined with other rules */
@@ -104,7 +104,7 @@ static struct pf_rule_field {
 
 
     /*
-     * The presence of these fields in a rule put the rule in it's own
+     * The presence of these fields in a rule put the rule in its own
      * superblock.  Thus it will not be optimized.  It also prevents the
      * rule from being re-ordered at all.
      */
@@ -1092,7 +1092,7 @@ skip_cmp_dst_addr(struct pf_rule *a, struct pf_rule *b)
 		return (0);
 	case PF_ADDR_DYNIFTL:
 		if (strcmp(a->dst.addr.v.ifname, b->dst.addr.v.ifname) != 0 ||
-		    a->dst.addr.iflags != a->dst.addr.iflags ||
+		    a->dst.addr.iflags != b->dst.addr.iflags ||
 		    memcmp(&a->dst.addr.v.a.mask, &b->dst.addr.v.a.mask,
 		    sizeof(a->dst.addr.v.a.mask)))
 			return (1);
@@ -1164,7 +1164,7 @@ skip_cmp_src_addr(struct pf_rule *a, struct pf_rule *b)
 		return (0);
 	case PF_ADDR_DYNIFTL:
 		if (strcmp(a->src.addr.v.ifname, b->src.addr.v.ifname) != 0 ||
-		    a->src.addr.iflags != a->src.addr.iflags ||
+		    a->src.addr.iflags != b->src.addr.iflags ||
 		    memcmp(&a->src.addr.v.a.mask, &b->src.addr.v.a.mask,
 		    sizeof(a->src.addr.v.a.mask)))
 			return (1);

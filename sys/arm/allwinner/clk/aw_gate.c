@@ -44,7 +44,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
 #include <dev/ofw/ofw_subr.h>
-#include <dev/fdt/fdt_common.h>
 
 #include <dev/extres/clk/clk_gate.h>
 
@@ -84,6 +83,11 @@ static struct ofw_compat_data compat_data[] = {
 	{ "allwinner,sun6i-a31-apb2-gates-clk",
 	  (uintptr_t)"Allwinner APB2 Clock Gates" },
 
+	{ "allwinner,sun8i-a23-apb1-gates-clk",
+	  (uintptr_t)"Allwinner APB1 Clock Gates" },
+	{ "allwinner,sun8i-a23-apb2-gates-clk",
+	  (uintptr_t)"Allwinner APB2 Clock Gates" },
+
 	{ "allwinner,sun8i-a83t-bus-gates-clk",
 	  (uintptr_t)"Allwinner Bus Clock Gates" },
 	{ "allwinner,sun8i-a83t-apb0-gates-clk",
@@ -91,6 +95,8 @@ static struct ofw_compat_data compat_data[] = {
 
 	{ "allwinner,sun8i-h3-bus-gates-clk",
 	  (uintptr_t)"Allwinner Bus Clock Gates" },
+	{ "allwinner,sun8i-h3-apb0-gates-clk",
+	  (uintptr_t)"Allwinner APB0 Clock Gates" },
 
 	{ "allwinner,sun9i-a80-apbs-gates-clk",
 	  (uintptr_t)"Allwinner APBS Clock Gates" },

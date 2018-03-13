@@ -230,8 +230,10 @@ static	RETSIGTYPE	no_debug	(int);
 # endif	/* !DEBUG */
 #endif	/* !SIM && !SYS_WINNT */
 
+#ifndef WORK_FORK
 int	saved_argc;
 char **	saved_argv;
+#endif
 
 #ifndef SIM
 int		ntpdmain		(int, char **);
@@ -311,11 +313,16 @@ my_pthread_warmup(void)
 #if defined(HAVE_PTHREAD_ATTR_GETSTACKSIZE) && \
     defined(HAVE_PTHREAD_ATTR_SETSTACKSIZE) && \
     defined(PTHREAD_STACK_MIN)
-	rc = pthread_attr_setstacksize(&thr_attr, PTHREAD_STACK_MIN);
-	if (0 != rc)
-		msyslog(LOG_ERR,
-			"my_pthread_warmup: pthread_attr_setstacksize() -> %s",
-			strerror(rc));
+	{
+		size_t ssmin = 32*1024;	/* 32kB should be minimum */
+		if (ssmin < PTHREAD_STACK_MIN)
+			ssmin = PTHREAD_STACK_MIN;
+		rc = pthread_attr_setstacksize(&thr_attr, ssmin);
+		if (0 != rc)
+			msyslog(LOG_ERR,
+				"my_pthread_warmup: pthread_attr_setstacksize() -> %s",
+				strerror(rc));
+	}
 #endif
 	rc = pthread_create(
 		&thread, &thr_attr, my_pthread_warmup_worker, NULL);

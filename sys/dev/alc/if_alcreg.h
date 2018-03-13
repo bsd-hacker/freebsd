@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2009, Pyun YongHyeon <yongari@FreeBSD.org>
  * All rights reserved.
  *
@@ -50,6 +52,7 @@
 #define	DEVICEID_ATHEROS_AR8172		0x10A0
 #define	DEVICEID_ATHEROS_E2200		0xE091
 #define	DEVICEID_ATHEROS_E2400		0xE0A1
+#define	DEVICEID_ATHEROS_E2500		0xE0B1
 
 #define	ATHEROS_AR8152_B_V10		0xC0
 #define	ATHEROS_AR8152_B_V11		0xC1

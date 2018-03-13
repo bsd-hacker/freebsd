@@ -1,6 +1,8 @@
 /*	$NetBSD: lance.c,v 1.34 2005/12/24 20:27:30 perry Exp $	*/
 
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-NetBSD
+ *
  * Copyright (c) 1997, 1998 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
@@ -418,7 +420,7 @@ lance_get(struct lance_softc *sc, int boff, int totlen)
 		totlen -= len;
 		if (totlen > 0) {
 			MGET(newm, M_NOWAIT, MT_DATA);
-			if (newm == 0)
+			if (newm == NULL)
 				goto bad;
 			len = MLEN;
 			m = m->m_next = newm;

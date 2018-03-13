@@ -2,7 +2,9 @@
 
 /* Parser for dhclient config and lease files... */
 
-/*
+/*-
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
  * Copyright (c) 1997 The Internet Software Consortium.
  * All rights reserved.
  *
@@ -294,12 +296,12 @@ parse_client_statement(FILE *cfile, struct interface_info *ip,
 	}
 }
 
-int
-parse_X(FILE *cfile, u_int8_t *buf, int max)
+unsigned
+parse_X(FILE *cfile, u_int8_t *buf, unsigned max)
 {
 	int	 token;
 	char	*val;
-	int	 len;
+	unsigned len;
 
 	token = peek_token(&val, cfile);
 	if (token == NUMBER_OR_NAME || token == NUMBER) {
@@ -512,6 +514,7 @@ parse_client_lease_statement(FILE *cfile, int is_static)
 		token = peek_token(&val, cfile);
 		if (token == EOF) {
 			parse_warn("unterminated lease declaration.");
+			free_client_lease(lease);
 			return;
 		}
 		if (token == RBRACE)
@@ -682,14 +685,14 @@ parse_option_decl(FILE *cfile, struct option_data *options)
 	int		 token;
 	u_int8_t	 buf[4];
 	u_int8_t	 hunkbuf[1024];
-	int		 hunkix = 0;
+	unsigned	 hunkix = 0;
 	char		*vendor;
-	char		*fmt;
+	const char	*fmt;
 	struct universe	*universe;
 	struct option	*option;
 	struct iaddr	 ip_addr;
 	u_int8_t	*dp;
-	int		 len;
+	unsigned	 len;
 	int		 nul_term = 0;
 
 	token = next_token(&val, cfile);
@@ -713,6 +716,7 @@ parse_option_decl(FILE *cfile, struct option_data *options)
 			parse_warn("expecting identifier after '.'");
 			if (token != SEMI)
 				skip_to_semi(cfile);
+			free(vendor);
 			return (NULL);
 		}
 
@@ -725,6 +729,7 @@ parse_option_decl(FILE *cfile, struct option_data *options)
 		if (!universe) {
 			parse_warn("no vendor named %s.", vendor);
 			skip_to_semi(cfile);
+			free(vendor);
 			return (NULL);
 		}
 	} else {
@@ -746,6 +751,7 @@ parse_option_decl(FILE *cfile, struct option_data *options)
 			parse_warn("no option named %s for vendor %s",
 				    val, vendor);
 		skip_to_semi(cfile);
+		free(vendor);
 		return (NULL);
 	}
 

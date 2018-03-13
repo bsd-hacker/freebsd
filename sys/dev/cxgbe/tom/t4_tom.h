@@ -1,4 +1,6 @@
 /*-
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
  * Copyright (c) 2012, 2015 Chelsio Communications, Inc.
  * All rights reserved.
  * Written by: Navdeep Parhar <np@FreeBSD.org>
@@ -112,6 +114,7 @@ struct pageset {
 	int len;
 	struct ppod_reservation prsv;
 	struct vmspace *vm;
+	vm_offset_t start;
 	u_int vm_timestamp;
 };
 
@@ -129,6 +132,20 @@ struct ddp_buffer {
 	int cancel_pending;
 };
 
+struct ddp_pcb {
+	u_int flags;
+	struct ddp_buffer db[2];
+	TAILQ_HEAD(, pageset) cached_pagesets;
+	TAILQ_HEAD(, kaiocb) aiojobq;
+	u_int waiting_count;
+	u_int active_count;
+	u_int cached_count;
+	int active_id;	/* the currently active DDP buffer */
+	struct task requeue_task;
+	struct kaiocb *queueing;
+	struct mtx lock;
+};
+
 struct aiotx_buffer {
 	struct pageset ps;
 	struct kaiocb *job;
@@ -141,6 +158,7 @@ struct toepcb {
 	int refcount;
 	struct tom_data *td;
 	struct inpcb *inp;	/* backpointer to host stack's PCB */
+	struct vnet *vnet;
 	struct vi_info *vi;	/* virtual interface */
 	struct sge_wrq *ofld_txq;
 	struct sge_ofld_rxq *ofld_rxq;
@@ -148,6 +166,7 @@ struct toepcb {
 	struct l2t_entry *l2te;	/* L2 table entry used by this connection */
 	struct clip_entry *ce;	/* CLIP table entry used by this tid */
 	int tid;		/* Connection identifier */
+	int tc_idx;		/* traffic class that this tid is bound to */
 
 	/* tx credit handling */
 	u_int tx_total;		/* total tx WR credits (in 16B units) */
@@ -165,17 +184,7 @@ struct toepcb {
 	struct mbufq ulp_pduq;	/* PDUs waiting to be sent out. */
 	struct mbufq ulp_pdu_reclaimq;
 
-	u_int ddp_flags;
-	struct ddp_buffer db[2];
-	TAILQ_HEAD(, pageset) ddp_cached_pagesets;
-	TAILQ_HEAD(, kaiocb) ddp_aiojobq;
-	u_int ddp_waiting_count;
-	u_int ddp_active_count;
-	u_int ddp_cached_count;
-	int ddp_active_id;	/* the currently active DDP buffer */
-	struct task ddp_requeue_task;
-	struct kaiocb *ddp_queueing;
-	struct mtx ddp_lock;
+	struct ddp_pcb ddp;
 
 	TAILQ_HEAD(, kaiocb) aiotx_jobq;
 	struct task aiotx_task;
@@ -189,9 +198,9 @@ struct toepcb {
 	struct ofld_tx_sdesc txsd[];
 };
 
-#define	DDP_LOCK(toep)		mtx_lock(&(toep)->ddp_lock)
-#define	DDP_UNLOCK(toep)	mtx_unlock(&(toep)->ddp_lock)
-#define	DDP_ASSERT_LOCKED(toep)	mtx_assert(&(toep)->ddp_lock, MA_OWNED)
+#define	DDP_LOCK(toep)		mtx_lock(&(toep)->ddp.lock)
+#define	DDP_UNLOCK(toep)	mtx_unlock(&(toep)->ddp.lock)
+#define	DDP_ASSERT_LOCKED(toep)	mtx_assert(&(toep)->ddp.lock, MA_OWNED)
 
 struct flowc_tx_params {
 	uint32_t snd_nxt;
@@ -232,6 +241,7 @@ struct listen_ctx {
 	struct stid_region stid_region;
 	int flags;
 	struct inpcb *inp;		/* listening socket's inp */
+	struct vnet *vnet;
 	struct sge_wrq *ctrlq;
 	struct sge_ofld_rxq *ofld_rxq;
 	struct clip_entry *ce;
@@ -306,10 +316,10 @@ void free_toepcb(struct toepcb *);
 void offload_socket(struct socket *, struct toepcb *);
 void undo_offload_socket(struct socket *);
 void final_cpl_received(struct toepcb *);
-void insert_tid(struct adapter *, int, void *);
+void insert_tid(struct adapter *, int, void *, int);
 void *lookup_tid(struct adapter *, int);
 void update_tid(struct adapter *, int, void *);
-void remove_tid(struct adapter *, int);
+void remove_tid(struct adapter *, int, int);
 void release_tid(struct adapter *, int, struct sge_wrq *);
 int find_best_mtu_idx(struct adapter *, struct in_conninfo *, int);
 u_long select_rcv_wnd(struct socket *);
@@ -319,17 +329,20 @@ uint64_t calc_opt0(struct socket *, struct vi_info *, struct l2t_entry *,
 uint64_t select_ntuple(struct vi_info *, struct l2t_entry *);
 void set_tcpddp_ulp_mode(struct toepcb *);
 int negative_advice(int);
-struct clip_entry *hold_lip(struct tom_data *, struct in6_addr *);
+struct clip_entry *hold_lip(struct tom_data *, struct in6_addr *,
+    struct clip_entry *);
 void release_lip(struct tom_data *, struct clip_entry *);
 
 /* t4_connect.c */
 void t4_init_connect_cpl_handlers(void);
+void t4_uninit_connect_cpl_handlers(void);
 int t4_connect(struct toedev *, struct socket *, struct rtentry *,
     struct sockaddr *);
 void act_open_failure_cleanup(struct adapter *, u_int, u_int);
 
 /* t4_listen.c */
 void t4_init_listen_cpl_handlers(void);
+void t4_uninit_listen_cpl_handlers(void);
 int t4_listen_start(struct toedev *, struct tcpcb *);
 int t4_listen_stop(struct toedev *, struct tcpcb *);
 void t4_syncache_added(struct toedev *, void *);
