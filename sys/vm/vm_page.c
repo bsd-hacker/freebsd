@@ -138,8 +138,8 @@ static DPCPU_DEFINE(struct vm_batchqueue, freeqbatch[MAXMEMDOM]);
 
 struct mtx_padalign __exclusive_cache_line pa_lock[PA_LOCK_COUNT];
 
-/* The following fields are protected by the domainset lock. */
 struct mtx_padalign __exclusive_cache_line vm_domainset_lock;
+/* The following fields are protected by the domainset lock. */
 domainset_t __exclusive_cache_line vm_min_domains;
 domainset_t __exclusive_cache_line vm_severe_domains;
 static int vm_min_waiters;
@@ -175,7 +175,7 @@ static uma_zone_t fakepg_zone;
 static void vm_page_alloc_check(vm_page_t m);
 static void vm_page_clear_dirty_mask(vm_page_t m, vm_page_bits_t pagebits);
 static void vm_page_enqueue_lazy(vm_page_t m, uint8_t queue);
-static void vm_page_free_phys(struct vm_domain *vmd, vm_page_t m);
+static int vm_page_free_phys(struct vm_domain *vmd, vm_page_t m);
 static void vm_page_init(void *dummy);
 static int vm_page_insert_after(vm_page_t m, vm_object_t object,
     vm_pindex_t pindex, vm_page_t mpred);
@@ -761,7 +761,7 @@ vm_page_startup(vm_offset_t vaddr)
 			vm_domain_free_lock(vmd);
 			vm_phys_free_contig(m, pagecount);
 			vm_domain_free_unlock(vmd);
-			vm_domain_freecnt_inc(vmd, (int)pagecount);
+			vm_domain_freecnt_inc(vmd, pagecount);
 			vm_cnt.v_page_count += (u_int)pagecount;
 
 			vmd = VM_DOMAIN(seg->domain);;
@@ -1717,9 +1717,10 @@ vm_domain_allocate(struct vm_domain *vmd, int req, int npages, bool partial)
 	/*
 	 * Attempt to reserve the pages.  Fail if we're below the limit.
 	 */
+	limit += npages;
 	do {
 		old = vmd->vmd_free_count;
-		if (old <= limit)
+		if (old < limit)
 			return (0);
 		avail = min(old - limit, (u_int)npages);
 		if (avail != npages && !partial)
@@ -2413,7 +2414,7 @@ vm_page_release(void *arg, void **store, int cnt)
 		vm_phys_free_pages(m, 0);
 	}
 	vm_domain_free_unlock(vmd);
-	vm_domain_freecnt_inc(vmd, i);
+	vm_domain_freecnt_inc(vmd, cnt);
 }
 
 #define	VPSC_ANY	0	/* No restrictions. */
@@ -2766,7 +2767,12 @@ retry:
 					    m->pindex, m);
 					m->valid = 0;
 					vm_page_undirty(m);
-
+					m->oflags = VPO_UNMANAGED;
+#if VM_NRESERVLEVEL > 0
+					if (!vm_reserv_free_page(m))
+#endif
+						SLIST_INSERT_HEAD(&free, m,
+						    plinks.s.ss);
 					/*
 					 * The new page must be deactivated
 					 * before the object is unlocked.
@@ -2779,19 +2785,20 @@ retry:
 					vm_page_remove(m);
 					KASSERT(m->dirty == 0,
 					    ("page %p is dirty", m));
-				}
+					m->oflags = VPO_UNMANAGED;
 #if VM_NRESERVLEVEL > 0
-				if (!vm_reserv_free_page(m))
+					if (!vm_reserv_free_page(m))
 #endif
-					SLIST_INSERT_HEAD(&free, m,
-					    plinks.s.ss);
+						SLIST_INSERT_HEAD(&free, m,
+						    plinks.s.ss);
+				}
 			} else
 				error = EBUSY;
 unlock:
 			VM_OBJECT_WUNLOCK(object);
 		} else {
 			MPASS(vm_phys_domain(m) == domain);
-			vm_page_lock(m);
+			/* XXX order unsynchronized? */
 			order = m->order;
 			if (order < VM_NFREEORDER) {
 				/*
@@ -2808,7 +2815,6 @@ unlock:
 			else if (vm_reserv_is_page_free(m))
 				order = 0;
 #endif
-			vm_page_unlock(m);
 			if (order == VM_NFREEORDER)
 				error = EINVAL;
 		}
@@ -2998,8 +3004,9 @@ vm_domain_clear(struct vm_domain *vmd)
 			wakeup(&vm_severe_domains);
 		}
 	}
+
 	/*
-	 * if pageout daemon needs pages, then tell it that there are
+	 * If pageout daemon needs pages, then tell it that there are
 	 * some free.
 	 */
 	if (vmd->vmd_pageout_pages_needed &&
@@ -3008,7 +3015,7 @@ vm_domain_clear(struct vm_domain *vmd)
 		vmd->vmd_pageout_pages_needed = 0;
 	}
 
-	/* See comments in vm_wait(); */
+	/* See comments in vm_wait_doms(). */
 	if (vm_pageproc_waiters) {
 		vm_pageproc_waiters = 0;
 		wakeup(&vm_pageproc_waiters);
@@ -3608,7 +3615,7 @@ vm_page_free_prep(vm_page_t m)
  * queues.  This is the last step to free a page.  The caller is
  * responsible for adjusting the free page count.
  */
-static void
+static int
 vm_page_free_phys(struct vm_domain *vmd, vm_page_t m)
 {
 
@@ -3621,9 +3628,11 @@ vm_page_free_phys(struct vm_domain *vmd, vm_page_t m)
 	vm_domain_free_assert_locked(vmd);
 
 #if VM_NRESERVLEVEL > 0
-	if (!vm_reserv_free_page(m))
+	if (vm_reserv_free_page(m))
+		return (0);
 #endif
-		vm_phys_free_pages(m, 0);
+	vm_phys_free_pages(m, 0);
+	return (1);
 }
 
 /*
@@ -3640,7 +3649,7 @@ vm_page_free_toq(vm_page_t m)
 {
 	struct vm_batchqueue *cpubq, bq;
 	struct vm_domain *vmd;
-	int domain;
+	int domain, freed;
 
 	if (!vm_page_free_prep(m))
 		return;
@@ -3659,11 +3668,12 @@ vm_page_free_toq(vm_page_t m)
 	critical_exit();
 
 	vm_domain_free_lock(vmd);
-	vm_page_free_phys(vmd, m);
+	freed = vm_page_free_phys(vmd, m);
 	VM_BATCHQ_FOREACH(&bq, m)
-		vm_page_free_phys(vmd, m);
+		freed += vm_page_free_phys(vmd, m);
 	vm_domain_free_unlock(vmd);
-	vm_domain_freecnt_inc(vmd, bq.bq_cnt + 1);
+	if (freed)
+		vm_domain_freecnt_inc(vmd, 1);
 }
 
 /*
