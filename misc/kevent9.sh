@@ -57,7 +57,7 @@ void *procmaker(void *arg __unused)
         }
     }
     printf("done forking\n");
-    return NULL; 
+    return NULL;
 }
 
 void *reaper(void *arg __unused)

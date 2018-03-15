@@ -114,7 +114,7 @@ main(void)
 			}
 		}
 
-	} 	/* parent */
+	}	/* parent */
 
 	for (j = 0; time(NULL) - start < RUNTIME; j++) {
 		token = j;

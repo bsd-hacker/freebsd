@@ -66,7 +66,7 @@ set +e
 
 while true; do
 	gmirror label markj-mirror md${u1}p1
-       	gmirror destroy markj-mirror
+	gmirror destroy markj-mirror
 done 2>/dev/null &
 pid1=$!
 while true; do

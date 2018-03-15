@@ -78,5 +78,5 @@ sleep $((16 * 60))
 wait
 ./cleanup.sh
 
-[ $restart ] && service watchdogd start > /dev/null 
+[ $restart ] && service watchdogd start > /dev/null
 exit 0

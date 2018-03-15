@@ -125,7 +125,7 @@ static void *
 t2(void *arg __unused)
 {
 	key_t shmkey;
-	size_t i; 
+	size_t i;
 	time_t start;
 	char *cp;
 
