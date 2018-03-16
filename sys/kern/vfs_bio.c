@@ -2915,24 +2915,14 @@ vfs_vmio_unwire(struct buf *bp, vm_page_t m)
 
 	vm_page_lock(m);
 	if (vm_page_unwire_noq(m)) {
-		/*
-		 * Determine if the page should be freed before adding
-		 * it to the inactive queue.
-		 */
-		if (m->valid == 0) {
-			freed = !vm_page_busied(m);
-			if (freed)
-				vm_page_free(m);
-		} else if ((bp->b_flags & B_DIRECT) != 0)
-			freed = vm_page_try_to_free(m);
-		else
-			freed = false;
-		if (!freed) {
+		if ((bp->b_flags & B_DIRECT) == 0 || !vm_page_try_to_free(m)) {
 			/*
-			 * If the page is unlikely to be reused, let the
-			 * VM know.  Otherwise, maintain LRU.
+			 * Use a racy check of the valid bits to determine
+			 * whether we can accelerate reclamation of the page.
+			 * This allows elision of the object write lock in the
+			 * common case.
 			 */
-			if ((bp->b_flags & B_NOREUSE) != 0)
+			if (m->valid == 0 || (bp->b_flags & B_NOREUSE) != 0)
 				vm_page_deactivate_noreuse(m);
 			else if (m->queue == PQ_ACTIVE)
 				vm_page_reference(m);
@@ -3021,7 +3011,12 @@ vfs_vmio_truncate(struct buf *bp, int desiredpages)
 		    (desiredpages << PAGE_SHIFT), bp->b_npages - desiredpages);
 	} else
 		BUF_CHECK_UNMAPPED(bp);
-	obj = bp->b_bufobj->bo_object;
+
+	/*
+	 * The object lock is needed only if we attempt to free the buffer's
+	 * pages.
+	 */
+	obj = (bp->b_flags & B_DIRECT) != 0 ? bp->b_bufobj->bo_object : NULL;
 	if (obj != NULL)
 		VM_OBJECT_WLOCK(obj);
 	for (i = desiredpages; i < bp->b_npages; i++) {
