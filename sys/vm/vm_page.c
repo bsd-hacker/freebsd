@@ -3682,7 +3682,7 @@ vm_page_free_toq(vm_page_t m)
 		freed += vm_page_free_phys(vmd, m);
 	vm_domain_free_unlock(vmd);
 	if (freed)
-		vm_domain_freecnt_inc(vmd, 1);
+		vm_domain_freecnt_inc(vmd, freed);
 }
 
 /*
