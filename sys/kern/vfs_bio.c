@@ -2911,7 +2911,6 @@ vfs_vmio_iodone(struct buf *bp)
 static void
 vfs_vmio_unwire(struct buf *bp, vm_page_t m)
 {
-	bool freed;
 
 	vm_page_lock(m);
 	if (vm_page_unwire_noq(m)) {
