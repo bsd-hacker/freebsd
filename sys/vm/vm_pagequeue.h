@@ -190,9 +190,7 @@ static __inline void
 vm_pagequeue_cnt_add(struct vm_pagequeue *pq, int addend)
 {
 
-#ifdef notyet
 	vm_pagequeue_assert_locked(pq);
-#endif
 	pq->pq_cnt += addend;
 }
 #define	vm_pagequeue_cnt_inc(pq)	vm_pagequeue_cnt_add((pq), 1)
