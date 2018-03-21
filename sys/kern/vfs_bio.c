@@ -435,7 +435,7 @@ sysctl_bufdomain_int(SYSCTL_HANDLER_ARGS)
 		return (error);
 	*(int *)arg1 = value;
 	for (i = 0; i < buf_domains; i++)
-		*(int *)(((uintptr_t)&bdomain[i]) + arg2) =
+		*(int *)(uintptr_t)(((uintptr_t)&bdomain[i]) + arg2) =
 		    value / buf_domains;
 
 	return (error);
@@ -454,7 +454,7 @@ sysctl_bufdomain_long(SYSCTL_HANDLER_ARGS)
 		return (error);
 	*(long *)arg1 = value;
 	for (i = 0; i < buf_domains; i++)
-		*(long *)(((uintptr_t)&bdomain[i]) + arg2) =
+		*(long *)(uintptr_t)(((uintptr_t)&bdomain[i]) + arg2) =
 		    value / buf_domains;
 
 	return (error);
@@ -1376,25 +1376,20 @@ bufshutdown(int show_busybufs)
 
 #ifdef PREEMPTION
 		/*
-		 * Drop Giant and spin for a while to allow
-		 * interrupt threads to run.
+		 * Spin for a while to allow interrupt threads to run.
 		 */
-		DROP_GIANT();
 		DELAY(50000 * iter);
-		PICKUP_GIANT();
 #else
 		/*
-		 * Drop Giant and context switch several times to
-		 * allow interrupt threads to run.
+		 * Context switch several times to allow interrupt
+		 * threads to run.
 		 */
-		DROP_GIANT();
 		for (subiter = 0; subiter < 50 * iter; subiter++) {
 			thread_lock(curthread);
 			mi_switch(SW_VOL, NULL);
 			thread_unlock(curthread);
 			DELAY(1000);
 		}
-		PICKUP_GIANT();
 #endif
 	}
 	printf("\n");
