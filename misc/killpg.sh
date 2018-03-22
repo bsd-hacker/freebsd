@@ -38,7 +38,7 @@
 here=`pwd`
 cd /tmp
 sed '1,/^EOF/d' < $here/$0 > killpg.c
-mycc -o killpg -Wall -Wextra killpg.c
+mycc -o killpg -Wall -Wextra killpg.c || exit 1
 rm -f killpg.c
 
 /tmp/killpg
@@ -47,6 +47,8 @@ rm -f /tmp/killpg
 exit 0
 EOF
 #include <sys/types.h>
+#include <sys/wait.h>
+
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -54,10 +56,9 @@ EOF
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
-pid_t gid, pid;
+static pid_t gid, pid;
 
 #define LOOPS 100
 
@@ -66,7 +67,7 @@ hand(int i __unused) {	/* handler */
 	_exit(0);
 }
 
-void
+static void
 nlooper(void)
 {
 	int i;
@@ -85,7 +86,7 @@ nlooper(void)
 	_exit(0);
 }
 
-void
+static void
 looper(void)
 {
 	int i;
@@ -105,11 +106,10 @@ looper(void)
 	_exit(0);
 }
 
-void
+static void
 killer(void)
 {
 	struct passwd *pw;
-	int i;
 
 	setproctitle("killer");
 	if ((pw = getpwnam("nobody")) == NULL)
@@ -124,14 +124,8 @@ killer(void)
 	if ((gid = fork()) == 0)
 		nlooper();	/* nobody looper */
 
-	usleep(200);
-	i = 0;
-	for (;;) {
-		if (i++ > 1000) {
-			if (access("cont", R_OK) == -1)
-				break;
-			i = 0;
-		}
+	sleep(1);
+	while (access("cont", R_OK) == 0) {
 		if (killpg(gid, SIGINFO) == -1) {
 			if (errno == EPERM)
 				continue;
