@@ -261,31 +261,31 @@ SYSCTL_PROC(_vfs, OID_AUTO, numdirtybuffers,
     "Number of buffers that are dirty (has unwritten changes) at the moment");
 static int lodirtybuffers;
 SYSCTL_PROC(_vfs, OID_AUTO, lodirtybuffers,
-    CTLTYPE_LONG|CTLFLAG_MPSAFE|CTLFLAG_RW, &lodirtybuffers,
-    __offsetof(struct bufdomain, bd_lodirtybuffers), sysctl_bufdomain_int, "L",
+    CTLTYPE_INT|CTLFLAG_MPSAFE|CTLFLAG_RW, &lodirtybuffers,
+    __offsetof(struct bufdomain, bd_lodirtybuffers), sysctl_bufdomain_int, "I",
     "How many buffers we want to have free before bufdaemon can sleep");
 static int hidirtybuffers;
 SYSCTL_PROC(_vfs, OID_AUTO, hidirtybuffers,
-    CTLTYPE_LONG|CTLFLAG_MPSAFE|CTLFLAG_RW, &hidirtybuffers,
-    __offsetof(struct bufdomain, bd_hidirtybuffers), sysctl_bufdomain_int, "L",
+    CTLTYPE_INT|CTLFLAG_MPSAFE|CTLFLAG_RW, &hidirtybuffers,
+    __offsetof(struct bufdomain, bd_hidirtybuffers), sysctl_bufdomain_int, "I",
     "When the number of dirty buffers is considered severe");
 int dirtybufthresh;
 SYSCTL_PROC(_vfs, OID_AUTO, dirtybufthresh,
-    CTLTYPE_LONG|CTLFLAG_MPSAFE|CTLFLAG_RW, &dirtybufthresh,
-    __offsetof(struct bufdomain, bd_dirtybufthresh), sysctl_bufdomain_int, "L",
+    CTLTYPE_INT|CTLFLAG_MPSAFE|CTLFLAG_RW, &dirtybufthresh,
+    __offsetof(struct bufdomain, bd_dirtybufthresh), sysctl_bufdomain_int, "I",
     "Number of bdwrite to bawrite conversions to clear dirty buffers");
 static int numfreebuffers;
 SYSCTL_INT(_vfs, OID_AUTO, numfreebuffers, CTLFLAG_RD, &numfreebuffers, 0,
     "Number of free buffers");
 static int lofreebuffers;
 SYSCTL_PROC(_vfs, OID_AUTO, lofreebuffers,
-    CTLTYPE_LONG|CTLFLAG_MPSAFE|CTLFLAG_RW, &lofreebuffers,
-    __offsetof(struct bufdomain, bd_lofreebuffers), sysctl_bufdomain_int, "L",
+    CTLTYPE_INT|CTLFLAG_MPSAFE|CTLFLAG_RW, &lofreebuffers,
+    __offsetof(struct bufdomain, bd_lofreebuffers), sysctl_bufdomain_int, "I",
    "Target number of free buffers");
 static int hifreebuffers;
 SYSCTL_PROC(_vfs, OID_AUTO, hifreebuffers,
-    CTLTYPE_LONG|CTLFLAG_MPSAFE|CTLFLAG_RW, &hifreebuffers,
-    __offsetof(struct bufdomain, bd_hifreebuffers), sysctl_bufdomain_int, "L",
+    CTLTYPE_INT|CTLFLAG_MPSAFE|CTLFLAG_RW, &hifreebuffers,
+    __offsetof(struct bufdomain, bd_hifreebuffers), sysctl_bufdomain_int, "I",
    "Threshold for clean buffer recycling");
 static counter_u64_t getnewbufcalls;
 SYSCTL_COUNTER_U64(_vfs, OID_AUTO, getnewbufcalls, CTLFLAG_RD,
@@ -435,7 +435,7 @@ sysctl_bufdomain_int(SYSCTL_HANDLER_ARGS)
 		return (error);
 	*(int *)arg1 = value;
 	for (i = 0; i < buf_domains; i++)
-		*(int *)(((uintptr_t)&bdomain[i]) + arg2) =
+		*(int *)(uintptr_t)(((uintptr_t)&bdomain[i]) + arg2) =
 		    value / buf_domains;
 
 	return (error);
@@ -454,7 +454,7 @@ sysctl_bufdomain_long(SYSCTL_HANDLER_ARGS)
 		return (error);
 	*(long *)arg1 = value;
 	for (i = 0; i < buf_domains; i++)
-		*(long *)(((uintptr_t)&bdomain[i]) + arg2) =
+		*(long *)(uintptr_t)(((uintptr_t)&bdomain[i]) + arg2) =
 		    value / buf_domains;
 
 	return (error);
@@ -1376,25 +1376,20 @@ bufshutdown(int show_busybufs)
 
 #ifdef PREEMPTION
 		/*
-		 * Drop Giant and spin for a while to allow
-		 * interrupt threads to run.
+		 * Spin for a while to allow interrupt threads to run.
 		 */
-		DROP_GIANT();
 		DELAY(50000 * iter);
-		PICKUP_GIANT();
 #else
 		/*
-		 * Drop Giant and context switch several times to
-		 * allow interrupt threads to run.
+		 * Context switch several times to allow interrupt
+		 * threads to run.
 		 */
-		DROP_GIANT();
 		for (subiter = 0; subiter < 50 * iter; subiter++) {
 			thread_lock(curthread);
 			mi_switch(SW_VOL, NULL);
 			thread_unlock(curthread);
 			DELAY(1000);
 		}
-		PICKUP_GIANT();
 #endif
 	}
 	printf("\n");
@@ -2906,29 +2901,41 @@ vfs_vmio_iodone(struct buf *bp)
 }
 
 /*
- * Unwire a page held by a buf and place it on the appropriate vm queue.
+ * Unwire a page held by a buf and either free it or update the page queues to
+ * reflect its recent use.
  */
 static void
 vfs_vmio_unwire(struct buf *bp, vm_page_t m)
 {
+	bool freed;
 
 	vm_page_lock(m);
 	if (vm_page_unwire_noq(m)) {
-		if ((bp->b_flags & B_DIRECT) == 0 || !vm_page_try_to_free(m)) {
+		if ((bp->b_flags & B_DIRECT) != 0)
+			freed = vm_page_try_to_free(m);
+		else
+			freed = false;
+		if (!freed) {
 			/*
 			 * Use a racy check of the valid bits to determine
 			 * whether we can accelerate reclamation of the page.
-			 * This allows elision of the object write lock in the
-			 * common case.
+			 * The valid bits will be stable unless the page is
+			 * being mapped or is referenced by multiple buffers,
+			 * and in those cases we expect races to be rare.  At
+			 * worst we will either accelerate reclamation of a
+			 * valid page and violate LRU, or unnecessarily defer
+			 * reclamation of an invalid page.
+			 *
+			 * The B_NOREUSE flag marks data that is not expected to
+			 * be reused, so accelerate reclamation in that case
+			 * too.  Otherwise, maintain LRU.
 			 */
 			if (m->valid == 0 || (bp->b_flags & B_NOREUSE) != 0)
 				vm_page_deactivate_noreuse(m);
 			else if (m->queue == PQ_ACTIVE)
 				vm_page_reference(m);
-			else if (m->queue != PQ_INACTIVE)
-				vm_page_deactivate(m);
 			else
-				vm_page_requeue(m);
+				vm_page_deactivate(m);
 		}
 	}
 	vm_page_unlock(m);
@@ -3012,8 +3019,7 @@ vfs_vmio_truncate(struct buf *bp, int desiredpages)
 		BUF_CHECK_UNMAPPED(bp);
 
 	/*
-	 * The object lock is needed only if we attempt to free the buffer's
-	 * pages.
+	 * The object lock is needed only if we will attempt to free pages.
 	 */
 	obj = (bp->b_flags & B_DIRECT) != 0 ? bp->b_bufobj->bo_object : NULL;
 	if (obj != NULL)

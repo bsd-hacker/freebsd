@@ -71,6 +71,8 @@
 #include <isa/isareg.h>
 #endif
 
+#include <vm/vm.h>
+
 #define	MAX_STRAY_LOG	5
 
 typedef void (*mask_fn)(void *);
