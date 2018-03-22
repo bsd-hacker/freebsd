@@ -31,6 +31,10 @@
 # contigmalloc(9) / contigfree(9) test scenario.
 # Test allocation with 1GB
 
+# "panic: Bad link elm 0x6766fbc next->prev != elm" seen:
+# https://people.freebsd.org/~pho/stress/log/kostik1094.txt
+# Fixed by r331247
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 [ -d /usr/src/sys ] || exit 0
 builddir=`sysctl kern.version | grep @ | sed 's/.*://'`
