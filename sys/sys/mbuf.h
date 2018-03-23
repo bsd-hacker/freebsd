@@ -1373,5 +1373,12 @@ mbuf_tstmp2timespec(struct mbuf *m, struct timespec *ts)
 }
 #endif
 
+#ifdef NETDUMP
+/* Invoked from the netdump client code. */
+void	netdump_mbuf_init(int, int);
+void	netdump_mbuf_drain(void);
+void	netdump_mbuf_dump(void);
+#endif
+
 #endif /* _KERNEL */
 #endif /* !_SYS_MBUF_H_ */

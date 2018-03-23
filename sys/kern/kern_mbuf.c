@@ -381,11 +381,6 @@ mbuf_init(void *dummy)
 SYSINIT(mbuf, SI_SUB_MBUF, SI_ORDER_FIRST, mbuf_init, NULL);
 
 #ifdef NETDUMP
-/* External functions invoked from the netdump code. */
-void	netdump_mbuf_init(int, int);
-void	netdump_mbuf_drain(void);
-void	netdump_mbuf_dump(void);
-
 static struct mbufq nd_mbufq;
 static struct mbufq nd_clustq;
 
@@ -407,7 +402,6 @@ nd_buf_import(void *arg, void **store, int count, int domain __unused,
 		m = mbufq_dequeue(q);
 		if (m == NULL)
 			break;
-		trash_init(m, q == &nd_mbufq ? MSIZE : MCLBYTES, flags);
 		store[i] = m;
 	}
 	return (i);
@@ -429,7 +423,7 @@ nd_buf_release(void *arg, void **store, int count)
 }
 
 static int
-nd_pack_import(void *arg, void **store, int count, int domain __unused,
+nd_pack_import(void *arg __unused, void **store, int count, int domain __unused,
     int flags __unused)
 {
 	struct mbuf *m;
@@ -446,14 +440,14 @@ nd_pack_import(void *arg, void **store, int count, int domain __unused,
 			break;
 		}
 
-		mb_ctor_clust(clust, MCLBYTES, m, M_NOWAIT);
+		mb_ctor_clust(clust, MCLBYTES, m, 0);
 		store[i] = m;
 	}
 	return (i);
 }
 
 static void
-nd_pack_release(void *arg, void **store, int count)
+nd_pack_release(void *arg __unused, void **store, int count)
 {
 	struct mbuf *m;
 	void *clust;

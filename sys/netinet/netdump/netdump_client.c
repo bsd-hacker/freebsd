@@ -92,11 +92,6 @@ __FBSDID("$FreeBSD$");
 #define	NETDDEBUGV_IF(i, f, ...)
 #endif
 
-/* Defined in kern_mbuf.c. */
-void	netdump_mbuf_init(int nmbuf, int nclust);
-void	netdump_mbuf_drain(void);
-void	netdump_mbuf_dump(void);
-
 static int	 netdump_arp_gw(void);
 static void	 netdump_cleanup(void);
 static int	 netdump_configure(struct netdump_conf *);

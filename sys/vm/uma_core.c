@@ -1673,6 +1673,9 @@ zone_ctor(void *mem, int size, void *udata, int flags)
 	}
 
 out:
+	KASSERT((arg->flags & (UMA_ZONE_MAXBUCKET | UMA_ZONE_NOBUCKET)) !=
+	    (UMA_ZONE_MAXBUCKET | UMA_ZONE_NOBUCKET),
+	    ("Invalid zone flag combination"));
 	if ((arg->flags & UMA_ZONE_MAXBUCKET) != 0)
 		zone->uz_count = BUCKET_MAX;
 	else if ((arg->flags & UMA_ZONE_NOBUCKET) != 0)
