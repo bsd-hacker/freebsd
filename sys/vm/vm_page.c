@@ -2762,7 +2762,8 @@ retry:
 					 */
 					if (object->ref_count != 0)
 						pmap_remove_all(m);
-					m_new->aflags = m->aflags;
+					m_new->aflags = m->aflags &
+					    ~PGA_QUEUE_STATE_MASK;
 					KASSERT(m_new->oflags == VPO_UNMANAGED,
 					    ("page %p is managed", m));
 					m_new->oflags = m->oflags & VPO_NOSYNC;
