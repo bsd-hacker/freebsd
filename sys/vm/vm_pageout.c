@@ -1126,6 +1126,65 @@ dolaundry:
 	}
 }
 
+static int
+vm_pageout_free_pages(vm_object_t object, vm_page_t m, struct mtx **mtxp)
+{
+	vm_page_t p, pp;
+	vm_pindex_t start;
+	int pcount, count;
+
+	pcount = MAX(object->iosize / PAGE_SIZE, 1);
+	count = 1;
+	if (pcount == 1) {
+		vm_page_free(m);
+		goto out;
+	}
+
+	/* Find the first page in the block. */
+	start = m->pindex - (m->pindex % pcount);
+	for (p = m; p->pindex > start && (pp = vm_page_prev(p)) != NULL; 
+	    p = pp);
+
+	/* Free the original page so we don't validate it twice. */
+	if (p == m)
+		p = vm_page_next(m);
+	vm_page_free(m);
+	/* Iterate through the block range and free compatible pages. */
+	/* XXX Fix cache miss on last page. */
+	for (m = p; m != NULL && m->pindex < start + pcount; m = p) {
+		p = TAILQ_NEXT(m, listq);
+		vm_page_change_lock(m, mtxp);
+		if (vm_page_held(m) || vm_page_busied(m) ||
+		    m->queue != PQ_INACTIVE)
+			continue;
+		if (m->valid == 0)
+			goto free_page;
+		if ((m->aflags & PGA_REFERENCED) != 0)
+			continue;
+		if (object->ref_count != 0) {
+			if (pmap_ts_referenced(m)) {
+				vm_page_aflag_set(m, PGA_REFERENCED);
+				continue;
+			}
+			vm_page_test_dirty(m);
+			if (m->dirty == 0)
+				pmap_remove_all(m);
+		}
+		if (m->dirty) {
+			if ((object->flags & OBJ_DEAD) == 0)
+				vm_page_launder(m);
+			continue;
+		}
+free_page:
+		vm_page_free(m);
+		count++;
+	}
+out:
+	VM_CNT_ADD(v_dfree, count);
+
+	return (count);
+}
+
 /*
  *	vm_pageout_scan does the dirty work for the pageout daemon.
  *
@@ -1364,9 +1423,8 @@ recheck:
 			 */
 			if (m->dirty == 0) {
 free_page:
-				vm_page_free(m);
-				page_shortage--;
-				VM_CNT_INC(v_dfree);
+				page_shortage -= vm_pageout_free_pages(object,
+				    m, &mtx);
 			} else if ((object->flags & OBJ_DEAD) == 0)
 				vm_page_launder(m);
 			continue;
