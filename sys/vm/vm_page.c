@@ -3680,7 +3680,6 @@ vm_page_free_toq(vm_page_t m)
 		return;
 
 	domain = vm_phys_domain(m);
-	freed = 0;
 	vmd = VM_DOMAIN(domain);
 
 	critical_enter();
@@ -3694,6 +3693,8 @@ vm_page_free_toq(vm_page_t m)
 	critical_exit();
 
 	vm_domain_free_lock(vmd);
+	vm_phys_free_pages(m, 0);
+	freed = 1;
 	VM_BATCHQ_FOREACH(&bq, m) {
 		vm_phys_free_pages(m, 0);
 		freed++;
