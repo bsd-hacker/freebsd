@@ -3863,15 +3863,10 @@ _vm_page_deactivate(vm_page_t m, bool noreuse)
 	if (m->wire_count > 0 || (m->oflags & VPO_UNMANAGED) != 0)
 		return;
 
-	/*
-	 * XXX we can do this with only one lock acquisition if m is already
-	 * in PQ_INACTIVE
-	 */
-	vm_page_remque(m);
-
-	pq = &vm_pagequeue_domain(m)->vmd_pagequeues[PQ_INACTIVE];
 	if (noreuse) {
-		/* This is a slow path. */
+		/* This is slower than it could be. */
+		vm_page_remque(m);
+		pq = &vm_pagequeue_domain(m)->vmd_pagequeues[PQ_INACTIVE];
 		vm_pagequeue_lock(pq);
 		m->queue = PQ_INACTIVE;
 		TAILQ_INSERT_BEFORE(&vm_pagequeue_domain(m)->vmd_inacthead, m,
@@ -3881,8 +3876,11 @@ _vm_page_deactivate(vm_page_t m, bool noreuse)
 		if ((m->aflags & PGA_REQUEUE) != 0)
 			vm_page_aflag_clear(m, PGA_REQUEUE);
 		vm_pagequeue_unlock(pq);
-	} else
+	} else if (!vm_page_inactive(m)) {
+		vm_page_remque(m);
 		vm_page_enqueue_lazy(m, PQ_INACTIVE);
+	} else
+		vm_page_requeue(m);
 }
 
 /*
