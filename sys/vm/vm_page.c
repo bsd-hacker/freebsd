@@ -3922,8 +3922,12 @@ vm_page_launder(vm_page_t m)
 	if (m->wire_count > 0 || (m->oflags & VPO_UNMANAGED) != 0)
 		return;
 
-	vm_page_remque(m);
-	vm_page_enqueue_lazy(m, PQ_LAUNDRY);
+	if (m->queue == PQ_LAUNDRY)
+		vm_page_requeue(m);
+	else {
+		vm_page_remque(m);
+		vm_page_enqueue_lazy(m, PQ_LAUNDRY);
+	}
 }
 
 /*
