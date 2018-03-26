@@ -12,7 +12,7 @@ sudo service postgresql initdb
 sudo service postgresql start
 
 # Create a superuser for myself
-sudo -u pgsql createuser -s des
+sudo -u postgres createuser -s des
 
 # Create a regular user and database for FBCE
 createuser -S -D -R fbce
