@@ -17,6 +17,7 @@ pkg install \
     p5-Catalyst-Plugin-Session-Store-FastMmap \
     p5-Catalyst-Plugin-Static-Simple \
     p5-Catalyst-View-TT \
+    p5-MooseX-Types-Common \
     p5-MooseX-Types-DateTime-MoreCoercions \
     p5-Crypt-SaltedHash \
     p5-Text-WikiFormat
