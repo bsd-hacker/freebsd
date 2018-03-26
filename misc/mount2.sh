@@ -29,7 +29,9 @@
 #
 
 # Stress test by performing parallel calls to mount and umount. Alternate
-# between forced and non-forced unmounts
+# between forced and non-forced unmounts.
+
+# "kernel: g_dev_taste: make_dev_p() failed (gp->name=md10, error=17)" seen.
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
@@ -38,45 +40,36 @@
 mounts=15	# Number of parallel scripts
 D=$diskimage
 
-if [ $# -eq 0 ]; then
-	for i in `jot $mounts`; do
-		m=$(( i + mdstart - 1 ))
-		[ ! -d ${mntpoint}$m ] && mkdir ${mntpoint}$m
-		mount | grep "$mntpoint" | grep -q md$m &&
-		    umount ${mntpoint}$m
-		mdconfig -l | grep -q md$m &&  mdconfig -d -u $m
+for i in `jot $mounts`; do
+	m=$(( i + mdstart - 1 ))
+	[ ! -d ${mntpoint}$m ] && mkdir ${mntpoint}$m
+	mount | grep "$mntpoint" | grep -q md$m &&
+	    umount ${mntpoint}$m
+	mdconfig -l | grep -q md$m && mdconfig -d -u $m
 
-		dd if=/dev/zero of=$D$m bs=1m count=1 > /dev/null 2>&1
-		mdconfig -a -t vnode -f $D$m -u $m || { rm -f $D$m; exit 1; }
-		bsdlabel -w md$m auto
-		newfs md${m}$part > /dev/null 2>&1
-	done
+	dd if=/dev/zero of=$D$m bs=1m count=1 status=none
+	mdconfig -a -t vnode -f $D$m -u $m || { rm -f $D$m; exit 1; }
+	bsdlabel -w md$m auto
+	newfs md${m}$part > /dev/null
+done
 
-	# start the parallel tests
-	for i in `jot $mounts`; do
-		m=$(( i + mdstart - 1 ))
-		./$0 $m &
-	done
-
-
-	for i in `jot $mounts`; do
-		wait
-	done
-
-	for i in `jot $mounts`; do
-		m=$(( i + mdstart - 1 ))
-		mdconfig -d -u $m
-		rm -f $D$m
-	done
-
-else
-	# The test: Parallel mount and unmounts
-	for i in `jot 1024`; do
-		m=$1
+# start the parallel tests
+for i in `jot $mounts`; do
+	m=$(( i + mdstart - 1 ))
+	start=`date +%s`
+	while [ $((`date +%s` - start)) -lt 300 ]; do
 		opt=`[ $(( m % 2 )) -eq 0 ] && echo -f`
 		mount /dev/md${m}$part ${mntpoint}$m
 		while mount | grep -q ${mntpoint}$m; do
 			umount $opt ${mntpoint}$m > /dev/null 2>&1
 		done
-	done
-fi
+	done &
+done
+wait
+
+for i in `jot $mounts`; do
+	m=$((i + mdstart - 1))
+	mdconfig -d -u $m
+	rm -f $D$m
+done
+exit 0
