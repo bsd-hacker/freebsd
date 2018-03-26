@@ -1968,15 +1968,15 @@ again:
 		    VM_FREEPOOL_DIRECT;
 		vm_domain_free_lock(vmd);
 		do {
-			i = vm_phys_alloc_npages(domain, pool, &m,
-			    avail - nalloc);
+			i = vm_phys_alloc_npages(domain, pool, &m, avail);
 			if (i == 0) {
-				vm_domain_freecnt_inc(vmd, avail - nalloc);
+				vm_domain_freecnt_inc(vmd, avail);
 				break;
 			}
+			avail -= i;
 			for (; i > 0; i--)
 				ma[nalloc++] = m++;
-		} while (nalloc < avail);
+		} while (avail > 0);
 		vm_domain_free_unlock(vmd);
 	}
 	if (nalloc == 0 || (nalloc < nreq && (req & VM_ALLOC_WAITOK) != 0)) {
