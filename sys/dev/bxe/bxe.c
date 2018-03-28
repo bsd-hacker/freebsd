@@ -236,6 +236,8 @@ MODULE_DEPEND(bxe, pci, 1, 1, 1);
 MODULE_DEPEND(bxe, ether, 1, 1, 1);
 DRIVER_MODULE(bxe, pci, bxe_driver, bxe_devclass, 0, 0);
 
+NETDUMP_DEFINE(bxe);
+
 /* resources needed for unloading a previously loaded device */
 
 #define BXE_PREV_WAIT_NEEDED 1
@@ -12767,6 +12769,9 @@ bxe_init_ifnet(struct bxe_softc *sc)
     /* attach to the Ethernet interface list */
     ether_ifattach(ifp, sc->link_params.mac_addr);
 
+    /* Attach driver netdump methods. */
+    NETDUMP_SET(ifp, bxe);
+
     return (0);
 }
 
@@ -19164,3 +19169,53 @@ bxe_eioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag,
 
     return (rval);
 }
+
+#ifdef NETDUMP
+static void
+bxe_netdump_init(struct ifnet *ifp, int *nrxr)
+{
+	struct bxe_softc *sc;
+
+	sc = if_getsoftc(ifp);
+	*nrxr = sc->num_queues;
+}
+
+static void
+bxe_netdump_event(struct ifnet *ifp __unused, enum netdump_ev event __unused)
+{
+}
+
+static int
+bxe_netdump_transmit(struct ifnet *ifp, struct mbuf *m)
+{
+	struct bxe_softc *sc;
+	int error;
+
+	sc = if_getsoftc(ifp);
+	if ((if_getdrvflags(ifp) & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=
+	    IFF_DRV_RUNNING || !sc->link_vars.link_up)
+		return (ENOENT);
+
+	error = bxe_tx_encap(&sc->fp[0], &m);
+	if (error != 0 && m != NULL)
+		m_freem(m);
+	return (error);
+}
+
+static int
+bxe_netdump_poll(struct ifnet *ifp, int count)
+{
+	struct bxe_softc *sc;
+	int i;
+
+	sc = if_getsoftc(ifp);
+	if ((if_getdrvflags(ifp) & IFF_DRV_RUNNING) == 0 ||
+	    !sc->link_vars.link_up)
+		return (ENOENT);
+
+	for (i = 0; i < sc->num_queues; i++)
+		(void)bxe_rxeof(sc, &sc->fp[0]);
+	(void)bxe_txeof(sc, &sc->fp[0]);
+	return (0);
+}
+#endif /* NETDUMP */
