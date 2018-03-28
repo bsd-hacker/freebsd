@@ -4658,11 +4658,10 @@ sysctl_hw_alc_int_mod(SYSCTL_HANDLER_ARGS)
 
 #ifdef NETDUMP
 static void
-alc_netdump_init(struct ifnet *ifp, int *nmbufp, int *nclustp)
+alc_netdump_init(struct ifnet *ifp __unused, int *nrxr)
 {
 
-	*nmbufp += ALC_RX_RING_CNT;
-	*nclustp += ALC_RX_RING_CNT;
+	*nrxr = ALC_RX_RING_CNT;
 }
 
 static void
@@ -4670,7 +4669,7 @@ alc_netdump_event(struct ifnet *ifp, enum netdump_ev event)
 {
 	struct alc_softc *sc;
 
-	sc = ifp->if_softc;
+	sc = if_getsoftc(ifp);
 	switch (event) {
 	case NETDUMP_START:
 		sc->alc_buf_size = imin(sc->alc_buf_size, MCLBYTES);
@@ -4686,8 +4685,7 @@ alc_netdump_transmit(struct ifnet *ifp, struct mbuf *m)
 	struct alc_softc *sc;
 	int error;
 
-	sc = ifp->if_softc;
-
+	sc = if_getsoftc(ifp);
 	if ((if_getdrvflags(ifp) & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=
 	    IFF_DRV_RUNNING)
 		return (EBUSY);
@@ -4703,8 +4701,7 @@ alc_netdump_poll(struct ifnet *ifp, int count)
 {
 	struct alc_softc *sc;
 
-	sc = ifp->if_softc;
-
+	sc = if_getsoftc(ifp);
 	if ((if_getdrvflags(ifp) & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=
 	    IFF_DRV_RUNNING)
 		return (EBUSY);

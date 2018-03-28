@@ -1048,7 +1048,7 @@ static int
 netdump_configure(struct netdump_conf *conf)
 {
 	struct ifnet *ifp;
-	int nmbuf, nclust;
+	int nmbuf, nclust, nrxr;
 
 	IFNET_RLOCK_NOSLEEP();
 	TAILQ_FOREACH(ifp, &V_ifnet, if_link) {
@@ -1067,13 +1067,15 @@ netdump_configure(struct netdump_conf *conf)
 		return (1);
 	}
 
+	ifp->if_netdump_methods->nd_init(ifp, &nrxr);
+	KASSERT(nrxr > 0, ("invalid receive ring count %d", nrxr));
+
 	/*
-	 * We need two headers per message. Multiply by four to give us some
-	 * breathing room.
+	 * We need two headers per message on the transmit side. Multiply by
+	 * four to give us some breathing room.
 	 */
-	nmbuf = NETDUMP_MAX_IN_FLIGHT * 4;
-	nclust = 0;
-	ifp->if_netdump_methods->nd_init(ifp, &nmbuf, &nclust);
+	nmbuf = NETDUMP_MAX_IN_FLIGHT * (4 + nrxr);
+	nclust = NETDUMP_MAX_IN_FLIGHT * nrxr;
 	netdump_mbuf_init(nmbuf, nclust);
 
 	nd_ifp = ifp;

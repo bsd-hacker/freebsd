@@ -4095,14 +4095,12 @@ sysctl_hw_re_int_mod(SYSCTL_HANDLER_ARGS)
 
 #ifdef NETDUMP
 static void
-re_netdump_init(struct ifnet *ifp, int *nmbufp, int *nclustp)
+re_netdump_init(struct ifnet *ifp, int *nrxr)
 {
 	struct rl_softc *sc;
 
-	sc = ifp->if_softc;
-
-	*nmbufp += sc->rl_ldata.rl_rx_desc_cnt;
-	*nclustp += sc->rl_ldata.rl_rx_desc_cnt;
+	sc = if_getsoftc(ifp);
+	*nrxr = sc->rl_ldata.rl_rx_desc_cnt;
 }
 
 static void
@@ -4110,8 +4108,7 @@ re_netdump_event(struct ifnet *ifp, enum netdump_ev event)
 {
 	struct rl_softc *sc;
 
-	sc = ifp->if_softc;
-
+	sc = if_getsoftc(ifp);
 	switch (event) {
 	case NETDUMP_START:
 		sc->rl_flags &= ~RL_FLAG_JUMBOV2;
@@ -4127,9 +4124,8 @@ re_netdump_transmit(struct ifnet *ifp, struct mbuf *m)
 	struct rl_softc *sc;
 	int error;
 
-	sc = ifp->if_softc;
-
-	if ((ifp->if_drv_flags & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=
+	sc = if_getsoftc(ifp);
+	if ((if_getdrvflags(ifp) & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=
 	    IFF_DRV_RUNNING || (sc->rl_flags & RL_FLAG_LINK) == 0)
 		return (EBUSY);
 
@@ -4145,10 +4141,9 @@ re_netdump_poll(struct ifnet *ifp, int count)
 	struct rl_softc *sc;
 	int error;
 
-	sc = ifp->if_softc;
-
-	if ((ifp->if_drv_flags & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=
-	    IFF_DRV_RUNNING || (sc->rl_flags & RL_FLAG_LINK) == 0)
+	sc = if_getsoftc(ifp);
+	if ((if_getdrvflags(ifp) & IFF_DRV_RUNNING) == 0 ||
+	    (sc->rl_flags & RL_FLAG_LINK) == 0)
 		return (EBUSY);
 
 	re_txeof(sc);

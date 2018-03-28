@@ -3984,18 +3984,12 @@ vtnet_tunable_int(struct vtnet_softc *sc, const char *knob, int def)
 
 #ifdef NETDUMP
 static void
-vtnet_netdump_init(struct ifnet *ifp, int *nmbufp, int *nclustp)
+vtnet_netdump_init(struct ifnet *ifp, int *nrxr)
 {
 	struct vtnet_softc *sc;
 
-	sc = ifp->if_softc;
-
-	/*
-	 * Allocate enough packet buffers to fill an entire queue. This ought
-	 * to be enough provided that we don't have many queues.
-	 */
-	*nmbufp += virtqueue_size(sc->vtnet_rxqs[0].vtnrx_vq);
-	*nclustp += virtqueue_size(sc->vtnet_rxqs[0].vtnrx_vq);
+	sc = if_getsoftc(ifp);
+	*nrxr = sc->vtnet_max_vq_pairs;
 
 	/*
 	 * We need to allocate from this zone in the transmit path, so ensure
@@ -4012,8 +4006,7 @@ vtnet_netdump_event(struct ifnet *ifp, enum netdump_ev event)
 {
 	struct vtnet_softc *sc;
 
-	sc = ifp->if_softc;
-
+	sc = if_getsoftc(ifp);
 	switch (event) {
 	case NETDUMP_START:
 		sc->vtnet_rx_clsize = MCLBYTES;
@@ -4030,8 +4023,7 @@ vtnet_netdump_transmit(struct ifnet *ifp, struct mbuf *m)
 	struct vtnet_txq *txq;
 	int error;
 
-	sc = ifp->if_softc;
-
+	sc = if_getsoftc(ifp);
 	if ((if_getdrvflags(ifp) & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=
 	    IFF_DRV_RUNNING)
 		return (EBUSY);
@@ -4049,8 +4041,7 @@ vtnet_netdump_poll(struct ifnet *ifp, int count)
 	struct vtnet_softc *sc;
 	int i;
 
-	sc = ifp->if_softc;
-
+	sc = if_getsoftc(ifp);
 	if ((if_getdrvflags(ifp) & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=
 	    IFF_DRV_RUNNING)
 		return (EBUSY);

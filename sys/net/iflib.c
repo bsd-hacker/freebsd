@@ -5973,14 +5973,12 @@ iflib_fixup_rx(struct mbuf *m)
 
 #ifdef NETDUMP
 static void
-iflib_netdump_init(struct ifnet *ifp, int *nmbufp, int *nclustp)
+iflib_netdump_init(struct ifnet *ifp, int *nrxr)
 {
 	if_ctx_t ctx;
 
-	ctx = ifp->if_softc;
-
-	*nmbufp += ctx->ifc_rxqs[0].ifr_fl->ifl_size;
-	*nclustp += ctx->ifc_rxqs[0].ifr_fl->ifl_size;
+	ctx = if_getsoftc(ifp);
+	*nrxr = NRXQSETS(ctx);
 }
 
 static void
@@ -5990,7 +5988,7 @@ iflib_netdump_event(struct ifnet *ifp, enum netdump_ev event)
 	if_softc_ctx_t scctx;
 	int i;
 
-	ctx = ifp->if_softc;
+	ctx = if_getsoftc(ifp);
 	scctx = &ctx->ifc_softc_ctx;
 
 	switch (event) {
@@ -6011,8 +6009,7 @@ iflib_netdump_transmit(struct ifnet *ifp, struct mbuf *m)
 	iflib_txq_t txq;
 	int error;
 
-	ctx = ifp->if_softc;
-
+	ctx = if_getsoftc(ifp);
 	if ((if_getdrvflags(ifp) & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=
 	    IFF_DRV_RUNNING)
 		return (EBUSY);
@@ -6032,7 +6029,7 @@ iflib_netdump_poll(struct ifnet *ifp, int count)
 	iflib_txq_t txq;
 	int i;
 
-	ctx = ifp->if_softc;
+	ctx = if_getsoftc(ifp);
 	scctx = &ctx->ifc_softc_ctx;
 
 	if ((if_getdrvflags(ifp) & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=

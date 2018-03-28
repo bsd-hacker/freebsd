@@ -6811,13 +6811,12 @@ bge_get_counter(if_t ifp, ift_counter cnt)
 
 #ifdef NETDUMP
 static void
-bge_netdump_init(if_t ifp, int *nmbufp, int *nclustp)
+bge_netdump_init(if_t ifp, int *nrxr)
 {
 	struct bge_softc *sc;
 
 	sc = if_getsoftc(ifp);
-	*nmbufp += sc->bge_return_ring_cnt;
-	*nclustp += sc->bge_return_ring_cnt;
+	*nrxr = sc->bge_return_ring_cnt;
 }
 
 static void
@@ -6842,11 +6841,11 @@ bge_netdump_transmit(if_t ifp, struct mbuf *m)
 	uint32_t prodidx;
 	int error;
 
+	sc = if_getsoftc(ifp);
 	if ((if_getdrvflags(ifp) & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=
 	    IFF_DRV_RUNNING)
 		return (1);
 
-	sc = if_getsoftc(ifp);
 	prodidx = sc->bge_tx_prodidx;
 	error = bge_encap(sc, &m, &prodidx);
 	if (error == 0)
@@ -6861,7 +6860,6 @@ bge_netdump_poll(if_t ifp, int count)
 	uint32_t rx_prod, tx_cons;
 
 	sc = if_getsoftc(ifp);
-
 	if ((if_getdrvflags(ifp) & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=
 	    IFF_DRV_RUNNING)
 		return (1);

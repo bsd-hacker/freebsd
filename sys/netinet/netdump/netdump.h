@@ -86,7 +86,7 @@ enum netdump_ev {
 struct ifnet;
 struct mbuf;
 
-typedef void netdump_init_t(struct ifnet *, int *nmbufp, int *nclustp);
+typedef void netdump_init_t(struct ifnet *, int *nrxr);
 typedef void netdump_event_t(struct ifnet *, enum netdump_ev);
 typedef int netdump_transmit_t(struct ifnet *, struct mbuf *);
 typedef int netdump_poll_t(struct ifnet *, int);
