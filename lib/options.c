@@ -131,11 +131,11 @@ environment(void)
 			usage("VERBOSE");
 	}
 	if ((cp = gete("KBLOCKS")) != NULL) {
-		if (sscanf(cp, "%d", &op->kblocks) != 1)
+		if (sscanf(cp, "%jd", &op->kblocks) != 1)
 			usage("KBLOCKS");
 	}
 	if ((cp = gete("INODES")) != NULL) {
-		if (sscanf(cp, "%d", &op->inodes) != 1)
+		if (sscanf(cp, "%jd", &op->inodes) != 1)
 			usage("INODES");
 	}
 }
@@ -208,17 +208,20 @@ options(int argc, char **argv)
 void
 show_status(void)
 {
-	char buf[80];
+	char buf[80], pgname[9];
 	int days;
 	time_t t;
 
 	if (op->verbose > 0) {
+		strncpy(pgname, getprogname(), sizeof(pgname));
+		pgname[8] = 0;
 		t = op->run_time;
 		days = t / (60 * 60 * 24);
 		t = t % (60 * 60 * 24);
 		strftime(buf, sizeof(buf), "%T", gmtime(&t));
-		printf("%8s: run time %2d+%s, incarnations %3d, load %3d, verbose %d\n",
-			getprogname(), days, buf, op->incarnations, op->load,
+		printf("%8s: run time %2d+%s, incarnations %3d, load %3d, "
+			"verbose %d\n",
+			pgname, days, buf, op->incarnations, op->load,
 			op->verbose);
 		fflush(stdout);
 	}
@@ -227,7 +230,8 @@ show_status(void)
 void
 rmval(void)
 {
-	if (snprintf(path, sizeof(path), "%s/%s.conf", op->cd, getprogname()) < 0)
+	if (snprintf(path, sizeof(path), "%s/%s.conf", op->cd,
+	    getprogname()) < 0)
 		err(1, "snprintf path");
 	(void) unlink(path);
 }
@@ -257,7 +261,8 @@ getval(void)
 				break;
 		}
 		if (n < 0)
-			err(1, "readlink(%s). %s:%d", path, __FILE__, __LINE__);
+			err(1, "readlink(%s). %s:%d", path, __FILE__,
+			    __LINE__);
 	}
 	buf[n] = '\0';
 	if (sscanf(buf, "%ld", &val) != 1)
