@@ -53,6 +53,8 @@
 #include "en.h"
 #include "en_port.h"
 
+NETDUMP_DEFINE(mlx4_en);
+
 static void mlx4_en_sysctl_stat(struct mlx4_en_priv *priv);
 static void mlx4_en_sysctl_conf(struct mlx4_en_priv *priv);
 
@@ -2298,6 +2300,8 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	ifmedia_add(&priv->media, IFM_ETHER | IFM_AUTO, 0, NULL);
 	ifmedia_set(&priv->media, IFM_ETHER | IFM_AUTO);
 
+	NETDUMP_SET(dev, mlx4_en);
+
 	en_warn(priv, "Using %d TX rings\n", prof->tx_ring_num);
 	en_warn(priv, "Using %d RX rings\n", prof->rx_ring_num);
 
@@ -2879,3 +2883,52 @@ static void mlx4_en_sysctl_stat(struct mlx4_en_priv *priv)
 		    CTLFLAG_RD, &rx_ring->errors, 0, "RX soft errors");
 	}
 }
+
+#ifdef NETDUMP
+static void
+mlx4_en_netdump_init(struct ifnet *dev, int *nrxr)
+{
+	struct mlx4_en_priv *priv;
+
+	priv = if_getsoftc(dev);
+	*nrxr = priv->rx_ring_num;
+}
+
+static void
+mlx4_en_netdump_event(struct ifnet *dev, enum netdump_ev event)
+{
+}
+
+static int
+mlx4_en_netdump_transmit(struct ifnet *dev, struct mbuf *m)
+{
+	struct mlx4_en_priv *priv;
+	int err;
+
+	priv = if_getsoftc(dev);
+	if ((if_getdrvflags(dev) & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=
+	    IFF_DRV_RUNNING || !priv->link_state)
+		return (ENOENT);
+
+	err = mlx4_en_xmit(priv, 0, &m);
+	if (err != 0 && m != NULL)
+		m_freem(m);
+	return (err);
+}
+
+static int
+mlx4_en_netdump_poll(struct ifnet *dev, int count)
+{
+	struct mlx4_en_priv *priv;
+	int i;
+
+	priv = if_getsoftc(dev);
+	if ((if_getdrvflags(dev) & IFF_DRV_RUNNING) == 0 || !priv->link_state)
+		return (ENOENT);
+
+	(void)mlx4_en_process_tx_cq(dev, priv->tx_cq[0]);
+	for (i = 0; i < priv->rx_ring_num; i++)
+		(void)mlx4_en_process_rx_cq(dev, priv->rx_cq[i], 0);
+	return (0);
+}
+#endif /* NETDUMP */

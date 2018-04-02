@@ -356,8 +356,7 @@ mlx4_en_tx_ring_is_full(struct mlx4_en_tx_ring *ring)
 	return (wqs < (HEADROOM + (2 * MLX4_EN_TX_WQE_MAX_WQEBBS)));
 }
 
-static int mlx4_en_process_tx_cq(struct net_device *dev,
-				 struct mlx4_en_cq *cq)
+int mlx4_en_process_tx_cq(struct net_device *dev, struct mlx4_en_cq *cq)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	struct mlx4_cq *mcq = &cq->mcq;
@@ -648,7 +647,7 @@ static void mlx4_bf_copy(void __iomem *dst, volatile unsigned long *src, unsigne
 	__iowrite64_copy(dst, __DEVOLATILE(void *, src), bytecnt / 8);
 }
 
-static int mlx4_en_xmit(struct mlx4_en_priv *priv, int tx_ind, struct mbuf **mbp)
+int mlx4_en_xmit(struct mlx4_en_priv *priv, int tx_ind, struct mbuf **mbp)
 {
 	enum {
 		DS_FACT = TXBB_SIZE / DS_SIZE_ALIGNMENT,
