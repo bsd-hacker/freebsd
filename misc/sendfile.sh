@@ -110,16 +110,17 @@ reader(void) {
 
 	t = 0;
 	if ((buf = malloc(bufsize)) == NULL)
-			err(1, "malloc(%d), %s:%d", bufsize, __FILE__, __LINE__);
+		err(1, "malloc(%d), %s:%d", bufsize, __FILE__, __LINE__);
 
 	if ((fd = open(outputFile, O_RDWR | O_CREAT | O_TRUNC, 0640)) == -1)
-			err(1, "open(%s)", outputFile);
+		err(1, "open(%s)", outputFile);
 
 	for (;;) {
 		if ((n = read(msgsock, buf, bufsize)) < 0)
 			err(1, "read(), %s:%d", __FILE__, __LINE__);
 		t += n;
-		if (n == 0) break;
+		if (n == 0)
+			break;
 
 		if ((write(fd, buf, n)) != n)
 			err(1, "write");
@@ -152,9 +153,10 @@ writer(void) {
 
 #if 1		/* livelock trigger */
 		size = getpagesize() -4;
-		if (setsockopt(tcpsock,
-		    SOL_SOCKET, SO_SNDBUF, (void *)&size, sizeof(size)) < 0)
-			err(1, "setsockopt(SO_SNDBUF), %s:%d", __FILE__, __LINE__);
+		if (setsockopt(tcpsock, SOL_SOCKET, SO_SNDBUF, (void *)&size,
+		    sizeof(size)) < 0)
+			err(1, "setsockopt(SO_SNDBUF), %s:%d",
+			    __FILE__, __LINE__);
 #endif
 
 		hostent = gethostbyname ("localhost");
@@ -194,8 +196,9 @@ main(int argc, char **argv)
 	pid_t pid;
 
 	if (argc != 4) {
-		fprintf(stderr, "Usage: %s <inputFile outputFile portNumber\n", argv[0]);
-			return (1);
+		fprintf(stderr, "Usage: %s <inputFile outputFile portNumber\n",
+		    argv[0]);
+		return (1);
 	}
 	inputFile = argv[1];
 	outputFile = argv[2];
@@ -204,7 +207,6 @@ main(int argc, char **argv)
 	if ((pid = fork()) == 0) {
 		writer();
 		exit(EXIT_SUCCESS);
-
 	} else if (pid > 0) {
 		reader();
 		kill(pid, SIGINT);
