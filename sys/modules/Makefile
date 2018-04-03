@@ -68,6 +68,7 @@ SUBDIR=	\
 	${_bxe} \
 	${_bios} \
 	${_bktr} \
+	${_blake2} \
 	${_bm} \
 	bnxt \
 	bridgestp \
@@ -295,6 +296,7 @@ SUBDIR=	\
 	${_nvram} \
 	${_nxge} \
 	oce \
+	${_ocs_fc} \
 	otus \
 	${_otusfw} \
 	ow \
@@ -608,6 +610,7 @@ _lio=		lio
 .endif
 _nctgpio=	nctgpio
 _ndis=		ndis
+_ocs_fc=	ocs_fc
 _pccard=	pccard
 .if ${MK_OFED} != "no" || defined(ALL_MODULES)
 _rdma=		rdma
@@ -635,6 +638,9 @@ _amdsmn=	amdsmn
 _amdtemp=	amdtemp
 _arcmsr=	arcmsr
 _asmc=		asmc
+.if ${MK_CRYPT} != "no" || defined(ALL_MODULES)
+_blake2=	blake2
+.endif
 _bytgpio=	bytgpio
 _chvgpio=	chvgpio
 _ciss=		ciss

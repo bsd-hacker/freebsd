@@ -43,13 +43,12 @@ if not core.isMenuSkipped() then
 end
 local password = require("password")
 
-local result = lfs.attributes("/boot/lua/local.lua")
--- Effectively discard any errors; we'll just act if it succeeds.
-if result ~= nil then
-	require("local")
-end
+try_include("local")
 
 config.load()
+if core.isUEFIBoot() then
+	loader.perform("efi-autoresizecons")
+end
 -- Our console may have been setup for a different color scheme before we get
 -- here, so make sure we set the default.
 if color.isEnabled() then

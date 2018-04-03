@@ -112,6 +112,14 @@ __FBSDID("$FreeBSD$");
 #include <netinet6/in6_fib.h>
 #include <netinet6/in6_pcb.h>
 
+/*
+ * struct in6_ifreq and struct ifreq must be type punnable for common members
+ * of ifr_ifru to allow accessors to be shared.
+ */
+_Static_assert(offsetof(struct in6_ifreq, ifr_ifru) ==
+    offsetof(struct ifreq, ifr_ifru),
+    "struct in6_ifreq and struct ifreq are not type punnable");
+
 VNET_DECLARE(int, icmp6_nodeinfo_oldmcprefix);
 #define V_icmp6_nodeinfo_oldmcprefix	VNET(icmp6_nodeinfo_oldmcprefix)
 
@@ -476,10 +484,6 @@ in6_control(struct socket *so, u_long cmd, caddr_t data,
 			error = EINVAL;
 			goto out;
 		}
-		/*
-		 * XXX: should we check if ifa_dstaddr is NULL and return
-		 * an error?
-		 */
 		ifr->ifr_dstaddr = ia->ia_dstaddr;
 		if ((error = sa6_recoverscope(&ifr->ifr_dstaddr)) != 0)
 			goto out;
@@ -1970,8 +1974,6 @@ in6_if2idlen(struct ifnet *ifp)
 	case IFT_INFINIBAND:
 		return (64);
 	case IFT_FDDI:		/* RFC2467 */
-		return (64);
-	case IFT_ISO88025:	/* RFC2470 (IPv6 over Token Ring) */
 		return (64);
 	case IFT_PPP:		/* RFC2472 */
 		return (64);
