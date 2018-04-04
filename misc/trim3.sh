@@ -42,6 +42,7 @@ size="1g"
 [ $# -eq 0 ] && trim=-t
 n=0
 opt=""
+s=0
 [ "$newfs_flags" = "-U" ] && opt="-U -j"
 for flag in ' ' $opt; do
 	echo "mdconfig -a -t swap -s $size -u $mdstart"
@@ -59,10 +60,13 @@ for flag in ' ' $opt; do
 
 	su $testuser -c 'cd ..; ./run.sh marcus.cfg' > /dev/null 2>&1
 
-	while mount | grep $mntpoint | grep -q /dev/md; do
-		umount $mntpoint || sleep 1
+	for i in `jot 6`; do
+		mount | grep -q "on $mntpoint " || break
+		umount $mntpoint && break || sleep 10
+		[ $i -eq 6 ] &&
+		    { echo FATAL; fstat -mf $mntpoint; exit 1; }
 	done
-	checkfs /dev/md${mdstart}$part; s=$?
+	checkfs /dev/md${mdstart}$part || s=$?
 	mdconfig -d -u $mdstart
 done
 exit $s
