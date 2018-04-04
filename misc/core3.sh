@@ -37,6 +37,7 @@
 # "Sleeping on "pmapdi" with the following non-sleepable locks held:"
 # https://people.freebsd.org/~pho/stress/log/kostik883.txt
 
+[ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 . ../default.cfg
 
 odir=`pwd`
@@ -84,7 +85,7 @@ sleep 1
 while pgrep -q core3; do
 	[ -d $mntpoint/d ] &&
 	   umount -f $mntpoint
-done &
+done > /dev/null &
 while pgrep -q core3; do
 	if [ ! -d $mntpoint/d ]; then
 		mount -t tmpfs tmpfs $mntpoint
