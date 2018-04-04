@@ -65,6 +65,7 @@
 # (gdb)
 #
 
+[ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 . ../default.cfg
 
 cat > /tmp/fifo3.c <<EOF

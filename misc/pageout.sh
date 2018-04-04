@@ -35,6 +35,7 @@
 # "panic: handle_written_filepage: not started" seen:
 # https://people.freebsd.org/~pho/stress/log/pageout-2.txt
 
+[ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 . ../default.cfg
 
 dir=/tmp
