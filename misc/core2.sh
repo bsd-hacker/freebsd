@@ -30,6 +30,7 @@
 
 # Test multiple (parallel) core dumps and umount
 
+[ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 . ../default.cfg
 
 odir=`pwd`
