@@ -41,14 +41,15 @@
 . ../default.cfg
 
 CONT=/tmp/crossmp3.continue
-N=`sysctl -n hw.ncpu`
-usermem=`sysctl -n hw.usermem`
-[ `swapinfo | wc -l` -eq 1 ] && usermem=$((usermem/100*80))
-size=$((usermem / 1024 / 1024 / N))
-
-mounts=$N		# Number of parallel scripts
-
 if [ $# -eq 0 ]; then
+	N=`sysctl -n hw.ncpu`
+	usermem=`sysctl -n hw.usermem`
+	[ `sysctl -n vm.swap_total` -eq 0 ] && usermem=$((usermem / 2))
+	size=$((usermem / 1024 / 1024 / N))
+	echo "Using $N memory disks of size $size MB."
+
+	mounts=$N		# Number of parallel scripts
+
 	for i in `jot $mounts`; do
 		m=$(( i + mdstart - 1 ))
 		[ ! -d ${mntpoint}$m ] &&
@@ -68,14 +69,13 @@ if [ $# -eq 0 ]; then
 		./$0 $m &
 		./$0 find &
 	done
-
 	wait
 
 	for i in `jot $mounts`; do
 		m=$(( i + mdstart - 1 ))
 		mdconfig -d -u $m
 	done
-
+	exit 0
 else
 	if [ $1 = find ]; then
 		while [ -f $CONT ]; do
