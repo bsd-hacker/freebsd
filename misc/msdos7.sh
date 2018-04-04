@@ -55,4 +55,5 @@ rm -f msdos7.c
 
 umount $mntpoint
 mdconfig -d -u $mdstart
+rm -f /tmp/msdos7
 exit 0
