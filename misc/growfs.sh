@@ -31,6 +31,7 @@
 # growfs(8) test
 # "checksum failed: cg 52, cgp: 0x0 != bp: 0xe35de2ca" seen.
 # https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=222876
+# Fixed by r324499
 
 . ../default.cfg
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
@@ -61,4 +62,4 @@ umount $mntpoint
 checkfs /dev/md${mdstart}p1 || { s=1; echo "Final fsck fail";  }
 
 mdconfig -d -u $mdstart
-exit $s 
+exit $s
