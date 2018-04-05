@@ -242,7 +242,7 @@ bsdlabel -w md$mdstart auto
 newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
-dd if=/dev/random of=$mntpoint/data bs=123456 count=1 > /dev/null 2>&1
+dd if=/dev/random of=$mntpoint/data bs=123456 count=1 status=none
 ./sendfile6_server $mntpoint/data mysocket &
 sleep 0.2
 ./sendfile6_client mysocket > data.$$

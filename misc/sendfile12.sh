@@ -55,7 +55,7 @@ chmod 777 $mntpoint
 set +e
 
 cd $mntpoint
-dd if=/dev/zero of=file bs=1m count=512 2>&1 | egrep -v "records|transferred"
+dd if=/dev/zero of=file bs=1m count=512 status=none
 (cd $odir/../testcases/swap; ./swap -t 5m -i 20 -h -l 100) > /dev/null &
 sleep 5
 /tmp/sendfile12 file output 12345; s=$?
@@ -231,7 +231,6 @@ main(int argc, char **argv)
 	if ((pid = fork()) == 0) {
 		writer();
 		exit(EXIT_SUCCESS);
-
 	} else if (pid > 0) {
 		reader();
 		kill(pid, SIGINT);

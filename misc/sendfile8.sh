@@ -51,7 +51,7 @@ newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 
 cd $mntpoint
-dd if=/dev/random of=in bs=1m count=50  2>&1 | egrep -v "records|transferred"
+dd if=/dev/random of=in bs=1m count=50 status=none
 /tmp/sendfile8 in out 76543
 s=$?
 cd $odir

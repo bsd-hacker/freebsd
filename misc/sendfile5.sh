@@ -46,8 +46,7 @@ need=1024
 [ `df -k $(dirname $diskimage) | tail -1 | awk '{print int($4 / 1024)'}` \
     -lt $need ] &&
     printf "Need %d MB on %s.\n" $need `dirname $diskimage` && exit 0
-dd if=/dev/zero of=$diskimage bs=1m count=$need 2>&1 |
-    egrep -v "records|transferred"
+dd if=/dev/zero of=$diskimage bs=1m count=$need status=none
 cd $here
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint

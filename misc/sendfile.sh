@@ -48,8 +48,7 @@ out=outputFile
 
 for i in 1 2 3 4 8 16 1k 2k 3k 4k 5k 1m 2m 3m 4m 5m ; do
 	rm -f $in $out
-	dd if=/dev/random of=$in bs=$i count=1 2>&1 | \
-		egrep -v "records|transferred"
+	dd if=/dev/random of=$in bs=$i count=1 status=none
 	/tmp/sendfile $in $out 12345
 	cmp $in $out || { echo FAIL; ls -l $in $out; }
 	rm -f $in $out

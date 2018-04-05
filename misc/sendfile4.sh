@@ -40,9 +40,7 @@ mycc -o sendfile4 -Wall -Wextra -O2 sendfile4.c || exit
 rm -f sendfile4.c
 cd $here
 
-dd if=/dev/zero of=$diskimage bs=1m count=6 2>&1 | \
-    egrep -v "records|transferred"
-
+dd if=/dev/zero of=$diskimage bs=1m count=6 status=none
 /tmp/sendfile4 $diskimage || echo FAIL
 
 rm -f /tmp/sendfile4 $diskimage

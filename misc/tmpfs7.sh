@@ -237,7 +237,7 @@ rm -f server.c client.c util.c util.o util.h mysocket
 mount | grep "$mntpoint" | grep -q tmpfs && umount $mntpoint
 mount -t tmpfs tmpfs  $mntpoint
 
-dd if=/dev/random of=$mntpoint/data bs=123456 count=1 > /dev/null 2>&1
+dd if=/dev/random of=$mntpoint/data bs=123456 count=1 status=none
 ./server $mntpoint/data mysocket &
 sleep 0.2
 ./client mysocket > data.$$

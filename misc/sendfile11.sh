@@ -46,7 +46,7 @@ mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 [ -c /dev/md$mdstart ] &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 2g -u $mdstart
 
-dd if=/dev/random of=/tmp/geli.key bs=64 count=1 > /dev/null 2>&1
+dd if=/dev/random of=/tmp/geli.key bs=64 count=1 status=none
 echo test | geli init -s 8192 -J - -K /tmp/geli.key /dev/md$mdstart > /dev/null
 echo test | geli attach -j - -k /tmp/geli.key /dev/md$mdstart
 newfs $newfs_flags /dev/md$mdstart.eli > /dev/null
@@ -56,7 +56,7 @@ chmod 777 $mntpoint
 set +e
 
 cd $mntpoint
-dd if=/dev/zero of=file bs=1m count=512
+dd if=/dev/zero of=file bs=1m count=512 status=none
 (cd $odir/../testcases/swap; ./swap -t 5m -i 20 -h -l 100) &
 sleep 5
 /tmp/sendfile11 file output 12345; s=$?
@@ -223,7 +223,6 @@ main(int argc, char **argv)
 	if ((pid = fork()) == 0) {
 		writer();
 		exit(EXIT_SUCCESS);
-
 	} else if (pid > 0) {
 		reader();
 		kill(pid, SIGINT);

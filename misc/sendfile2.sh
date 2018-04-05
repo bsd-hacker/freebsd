@@ -43,8 +43,7 @@ rm -f sendfile2.c
 [ -d "$RUNDIR" ] || mkdir -p $RUNDIR
 cd $RUNDIR
 
-dd if=/dev/random of=large bs=1m count=3 2>&1 |
-    egrep -v "records|transferred"
+dd if=/dev/random of=large bs=1m count=3 status=none
 md1=`md5 large`
 
 nc -l 7000 > lf &

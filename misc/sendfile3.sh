@@ -50,8 +50,7 @@ parallel=20
 
 for i in 50m 100m; do
 	rm -f $in
-	dd if=/dev/random of=$in bs=$i count=1 2>&1 | \
-		egrep -v "records|transferred"
+	dd if=/dev/random of=$in bs=$i count=1 status=none
 	for j in `jot $parallel`; do
 		rm -f ${out}$j
 		/tmp/sendfile3 $in ${out}$j 1234$j &
@@ -120,10 +119,10 @@ reader(void) {
 
 	t = 0;
 	if ((buf = malloc(bufsize)) == NULL)
-			err(1, "malloc(%d), %s:%d", bufsize, __FILE__, __LINE__);
+		err(1, "malloc(%d), %s:%d", bufsize, __FILE__, __LINE__);
 
 	if ((fd = open(outputFile, O_RDWR | O_CREAT | O_TRUNC, 0640)) == -1)
-			err(1, "open(%s)", outputFile);
+		err(1, "open(%s)", outputFile);
 
 	for (;;) {
 		if ((n = read(msgsock, buf, bufsize)) < 0)
@@ -203,7 +202,6 @@ main(int argc, char **argv)
 	if ((pid = fork()) == 0) {
 		writer();
 		exit(EXIT_SUCCESS);
-
 	} else if (pid > 0) {
 		reader();
 		kill(pid, SIGINT);
