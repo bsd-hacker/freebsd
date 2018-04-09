@@ -57,12 +57,12 @@ ofw_bus_gen_setup_devinfo(struct ofw_bus_devinfo *obd, phandle_t node)
 	if (obd == NULL)
 		return (ENOMEM);
 	/* The 'name' property is considered mandatory. */
-	if ((OF_getprop_alloc(node, "name", 1, (void **)&obd->obd_name)) == -1)
+	if ((OF_getprop_alloc(node, "name", (void **)&obd->obd_name)) == -1)
 		return (EINVAL);
-	OF_getprop_alloc(node, "compatible", 1, (void **)&obd->obd_compat);
-	OF_getprop_alloc(node, "device_type", 1, (void **)&obd->obd_type);
-	OF_getprop_alloc(node, "model", 1, (void **)&obd->obd_model);
-	OF_getprop_alloc(node, "status", 1, (void **)&obd->obd_status);
+	OF_getprop_alloc(node, "compatible", (void **)&obd->obd_compat);
+	OF_getprop_alloc(node, "device_type", (void **)&obd->obd_type);
+	OF_getprop_alloc(node, "model", (void **)&obd->obd_model);
+	OF_getprop_alloc(node, "status", (void **)&obd->obd_status);
 	obd->obd_node = node;
 	return (0);
 }
@@ -489,9 +489,9 @@ ofw_bus_msimap(phandle_t node, uint16_t pci_rid, phandle_t *msi_parent,
 	return (err);
 }
 
-int
-ofw_bus_reg_to_rl(device_t dev, phandle_t node, pcell_t acells, pcell_t scells,
-    struct resource_list *rl)
+static int
+ofw_bus_reg_to_rl_helper(device_t dev, phandle_t node, pcell_t acells, pcell_t scells,
+    struct resource_list *rl, const char *reg_source)
 {
 	uint64_t phys, size;
 	ssize_t i, j, rid, nreg, ret;
@@ -502,11 +502,11 @@ ofw_bus_reg_to_rl(device_t dev, phandle_t node, pcell_t acells, pcell_t scells,
 	 * This may be just redundant when having ofw_bus_devinfo
 	 * but makes this routine independent of it.
 	 */
-	ret = OF_getprop_alloc(node, "name", sizeof(*name), (void **)&name);
+	ret = OF_getprop_alloc(node, "name", (void **)&name);
 	if (ret == -1)
 		name = NULL;
 
-	ret = OF_getencprop_alloc(node, "reg", sizeof(*reg), (void **)&reg);
+	ret = OF_getencprop_alloc(node, reg_source, sizeof(*reg), (void **)&reg);
 	nreg = (ret == -1) ? 0 : ret;
 
 	if (nreg % (acells + scells) != 0) {
@@ -535,6 +535,23 @@ ofw_bus_reg_to_rl(device_t dev, phandle_t node, pcell_t acells, pcell_t scells,
 	free(reg, M_OFWPROP);
 
 	return (0);
+}
+
+int
+ofw_bus_reg_to_rl(device_t dev, phandle_t node, pcell_t acells, pcell_t scells,
+    struct resource_list *rl)
+{
+
+	return (ofw_bus_reg_to_rl_helper(dev, node, acells, scells, rl, "reg"));
+}
+
+int
+ofw_bus_assigned_addresses_to_rl(device_t dev, phandle_t node, pcell_t acells,
+    pcell_t scells, struct resource_list *rl)
+{
+
+	return (ofw_bus_reg_to_rl_helper(dev, node, acells, scells,
+	    rl, "assigned-addresses"));
 }
 
 /*
@@ -703,7 +720,7 @@ ofw_bus_find_child(phandle_t start, const char *child_name)
 	phandle_t child;
 
 	for (child = OF_child(start); child != 0; child = OF_peer(child)) {
-		ret = OF_getprop_alloc(child, "name", sizeof(*name), (void **)&name);
+		ret = OF_getprop_alloc(child, "name", (void **)&name);
 		if (ret == -1)
 			continue;
 		if (strcmp(name, child_name) == 0) {
@@ -899,7 +916,7 @@ ofw_bus_find_string_index(phandle_t node, const char *list_name,
 	int rv, i, cnt, nelems;
 
 	elems = NULL;
-	nelems = OF_getprop_alloc(node, list_name, 1, (void **)&elems);
+	nelems = OF_getprop_alloc(node, list_name, (void **)&elems);
 	if (nelems <= 0)
 		return (ENOENT);
 
@@ -930,7 +947,7 @@ ofw_bus_string_list_to_array(phandle_t node, const char *list_name,
 	int i, cnt, nelems, len;
 
 	elems = NULL;
-	nelems = OF_getprop_alloc(node, list_name, 1, (void **)&elems);
+	nelems = OF_getprop_alloc(node, list_name, (void **)&elems);
 	if (nelems <= 0)
 		return (nelems);
 

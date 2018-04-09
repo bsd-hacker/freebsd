@@ -42,7 +42,6 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_atpic.h"
-#include "opt_compat.h"
 #include "opt_cpu.h"
 #include "opt_ddb.h"
 #include "opt_inet.h"
@@ -84,6 +83,9 @@ __FBSDID("$FreeBSD$");
 #include <machine/tss.h>
 #ifdef SMP
 #include <machine/smp.h>
+#endif
+#ifdef CPU_ELAN
+#include <machine/elan_mmcr.h>
 #endif
 #include <x86/acpica_machdep.h>
 

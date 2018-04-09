@@ -319,6 +319,18 @@
     ..
     nfsserver
     ..
+    opencsd
+        c_api
+        ..
+        etmv3
+        ..
+        etmv4
+        ..
+        ptm
+        ..
+        stm
+        ..
+    ..
     openssl
     ..
     pcap
