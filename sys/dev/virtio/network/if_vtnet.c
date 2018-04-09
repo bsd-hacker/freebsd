@@ -3984,12 +3984,16 @@ vtnet_tunable_int(struct vtnet_softc *sc, const char *knob, int def)
 
 #ifdef NETDUMP
 static void
-vtnet_netdump_init(struct ifnet *ifp, int *nrxr)
+vtnet_netdump_init(struct ifnet *ifp, int *nrxr, int *clsize)
 {
 	struct vtnet_softc *sc;
 
 	sc = if_getsoftc(ifp);
+
+	VTNET_CORE_LOCK(sc);
 	*nrxr = sc->vtnet_max_vq_pairs;
+	*clsize = sc->vtnet_rx_clsize;
+	VTNET_CORE_UNLOCK(sc);
 
 	/*
 	 * We need to allocate from this zone in the transmit path, so ensure
@@ -4002,18 +4006,8 @@ vtnet_netdump_init(struct ifnet *ifp, int *nrxr)
 }
 
 static void
-vtnet_netdump_event(struct ifnet *ifp, enum netdump_ev event)
+vtnet_netdump_event(struct ifnet *ifp __unused, enum netdump_ev event __unused)
 {
-	struct vtnet_softc *sc;
-
-	sc = if_getsoftc(ifp);
-	switch (event) {
-	case NETDUMP_START:
-		sc->vtnet_rx_clsize = MCLBYTES;
-		break;
-	default:
-		break;
-	}
 }
 
 static int

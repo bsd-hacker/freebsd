@@ -86,7 +86,9 @@ enum netdump_ev {
 struct ifnet;
 struct mbuf;
 
-typedef void netdump_init_t(struct ifnet *, int *nrxr);
+void	netdump_reinit(struct ifnet *);
+
+typedef void netdump_init_t(struct ifnet *, int *nrxr, int *clsize);
 typedef void netdump_event_t(struct ifnet *, enum netdump_ev);
 typedef int netdump_transmit_t(struct ifnet *, struct mbuf *);
 typedef int netdump_poll_t(struct ifnet *, int);
@@ -111,12 +113,15 @@ struct netdump_methods {
 		.nd_poll = driver##_netdump_poll,		\
 	}
 
+#define	NETDUMP_REINIT(ifp)	netdump_reinit(ifp)
+
 #define	NETDUMP_SET(ifp, driver)				\
 	(ifp)->if_netdump_methods = &driver##_netdump_methods
 
 #else /* !NETDUMP */
 
 #define	NETDUMP_DEFINE(driver)
+#define	NETDUMP_REINIT(ifp)
 #define	NETDUMP_SET(ifp, driver)
 
 #endif /* NETDUMP */

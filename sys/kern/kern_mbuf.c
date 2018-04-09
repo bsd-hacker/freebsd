@@ -381,9 +381,12 @@ mbuf_init(void *dummy)
 SYSINIT(mbuf, SI_SUB_MBUF, SI_ORDER_FIRST, mbuf_init, NULL);
 
 #ifdef NETDUMP
-static struct mbufq nd_mbufq;
-static struct mbufq nd_clustq;
+static struct mbufq nd_mbufq =
+    { STAILQ_HEAD_INITIALIZER(nd_mbufq.mq_head), 0, INT_MAX };
+static struct mbufq nd_clustq =
+    { STAILQ_HEAD_INITIALIZER(nd_clustq.mq_head), 0, INT_MAX };
 
+static int nd_clsize;
 static uma_zone_t nd_zone_mbuf;
 static uma_zone_t nd_zone_clust;
 static uma_zone_t nd_zone_pack;
@@ -402,6 +405,7 @@ nd_buf_import(void *arg, void **store, int count, int domain __unused,
 		m = mbufq_dequeue(q);
 		if (m == NULL)
 			break;
+		trash_init(m, q == &nd_mbufq ? MSIZE : nd_clsize, flags);
 		store[i] = m;
 	}
 	return (i);
@@ -439,7 +443,6 @@ nd_pack_import(void *arg __unused, void **store, int count, int domain __unused,
 			m_free(m);
 			break;
 		}
-
 		mb_ctor_clust(clust, MCLBYTES, m, 0);
 		store[i] = m;
 	}
@@ -461,8 +464,54 @@ nd_pack_release(void *arg __unused, void **store, int count)
 	}
 }
 
+void
+netdump_mbuf_drain(void)
+{
+	struct mbuf *m;
+	void *item;
+
+	if (nd_zone_mbuf != NULL) {
+		uma_zdestroy(nd_zone_mbuf);
+		nd_zone_mbuf = NULL;
+	}
+	if (nd_zone_clust != NULL) {
+		uma_zdestroy(nd_zone_clust);
+		nd_zone_clust = NULL;
+	}
+	if (nd_zone_pack != NULL) {
+		uma_zdestroy(nd_zone_pack);
+		nd_zone_pack = NULL;
+	}
+
+	while ((m = mbufq_dequeue(&nd_mbufq)) != NULL)
+		m_free(m);
+	while ((item = mbufq_dequeue(&nd_clustq)) != NULL)
+		uma_zfree(m_getzone(nd_clsize), item);
+}
+
 /*
- * Initialize zones used to cache netdump packet buffers. At panic-time, we
+ * Callback invoked immediately prior to starting a netdump.
+ */
+void
+netdump_mbuf_dump(void)
+{
+
+	/*
+	 * All cluster zones return buffers of the size requested by the
+	 * drivers.  It's up to the driver to reinitialize the zones if the
+	 * MTU of a netdump-enabled interface changes.
+	 */
+	printf("netdump: overwriting mbuf zone pointers\n");
+	zone_mbuf = nd_zone_mbuf;
+	zone_clust = nd_zone_clust;
+	zone_pack = nd_zone_pack;
+	zone_jumbop = nd_zone_clust;
+	zone_jumbo9 = nd_zone_clust;
+	zone_jumbo16 = nd_zone_clust;
+}
+
+/*
+ * (Re-)Initialize zones used to cache netdump packet buffers. At panic-time, we
  * swap out the regular mbuf/cluster zones with these, ensuring that drivers and
  * the protocol code can allocate buffers from a preallocated pool, rather than
  * relying on memory allocation to succeed after a panic.
@@ -471,13 +520,14 @@ nd_pack_release(void *arg __unused, void **store, int count)
  * purpose of caching clusters, we treat them as mbufs.
  */
 void
-netdump_mbuf_init(int nmbuf, int nclust)
+netdump_mbuf_reinit(int nmbuf, int nclust, int clsize)
 {
 	struct mbuf *m;
 	void *item;
 
-	mbufq_init(&nd_mbufq, INT_MAX);
-	mbufq_init(&nd_clustq, INT_MAX);
+	netdump_mbuf_drain();
+
+	nd_clsize = clsize;
 
 	nd_zone_mbuf = uma_zcache_create("netdump_" MBUF_MEM_NAME,
 	    MSIZE, mb_ctor_mbuf, mb_dtor_mbuf,
@@ -490,7 +540,7 @@ netdump_mbuf_init(int nmbuf, int nclust)
 	    &nd_mbufq, UMA_ZONE_NOBUCKET);
 
 	nd_zone_clust = uma_zcache_create("netdump_" MBUF_CLUSTER_MEM_NAME,
-	    MCLBYTES, mb_ctor_clust,
+	    clsize, mb_ctor_clust,
 #ifdef INVARIANTS
 	    trash_dtor, trash_init, trash_fini,
 #else
@@ -509,59 +559,9 @@ netdump_mbuf_init(int nmbuf, int nclust)
 		uma_zfree(nd_zone_mbuf, m);
 	}
 	while (nclust-- > 0) {
-		item = uma_zalloc(zone_clust, M_WAITOK);
+		item = uma_zalloc(m_getzone(nd_clsize), M_WAITOK);
 		uma_zfree(nd_zone_clust, item);
 	}
-}
-
-/*
- * Free preallocated mbufs and clusters and destroy netdump cache zones.
- */
-void
-netdump_mbuf_drain(void)
-{
-	struct mbuf *m;
-	void *item;
-
-	while ((m = mbufq_dequeue(&nd_mbufq)) != NULL)
-		m_free(m);
-	while ((item = mbufq_dequeue(&nd_clustq)) != NULL)
-		uma_zfree(zone_clust, item);
-
-	if (nd_zone_mbuf != NULL) {
-		uma_zdestroy(nd_zone_mbuf);
-		nd_zone_mbuf = NULL;
-	}
-	if (nd_zone_clust != NULL) {
-		uma_zdestroy(nd_zone_clust);
-		nd_zone_clust = NULL;
-	}
-	if (nd_zone_pack != NULL) {
-		uma_zdestroy(nd_zone_pack);
-		nd_zone_pack = NULL;
-	}
-}
-
-/*
- * Callback invoked immediately prior to starting a netdump.
- */
-void
-netdump_mbuf_dump(void)
-{
-
-	/*
-	 * All cluster zones return 2KB buffers. It's up to the per-driver
-	 * netdump hooks to ensure that no attempts are made to use larger
-	 * clusters. netdump ACKs fit easily within an mbuf, let alone a 2KB
-	 * cluster, so there's no need to preallocate larger buffers.
-	 */
-	printf("netdump: overwriting mbuf zone pointers\n");
-	zone_mbuf = nd_zone_mbuf;
-	zone_clust = nd_zone_clust;
-	zone_pack = nd_zone_pack;
-	zone_jumbop = nd_zone_clust;
-	zone_jumbo9 = nd_zone_clust;
-	zone_jumbo16 = nd_zone_clust;
 }
 #endif /* NETDUMP */
 

@@ -5974,12 +5974,15 @@ iflib_fixup_rx(struct mbuf *m)
 
 #ifdef NETDUMP
 static void
-iflib_netdump_init(struct ifnet *ifp, int *nrxr)
+iflib_netdump_init(struct ifnet *ifp, int *nrxr, int *clsize)
 {
 	if_ctx_t ctx;
 
 	ctx = if_getsoftc(ifp);
+	CTX_LOCK(ctx);
 	*nrxr = NRXQSETS(ctx);
+	*clsize = ctx->ifc_rxqs[0].ifr_fl->ifl_buf_size;
+	CTX_UNLOCK(ctx);
 }
 
 static void
@@ -5987,15 +5990,22 @@ iflib_netdump_event(struct ifnet *ifp, enum netdump_ev event)
 {
 	if_ctx_t ctx;
 	if_softc_ctx_t scctx;
-	int i;
+	iflib_fl_t fl;
+	iflib_rxq_t rxq;
+	int i, j;
 
 	ctx = if_getsoftc(ifp);
 	scctx = &ctx->ifc_softc_ctx;
 
 	switch (event) {
 	case NETDUMP_START:
-		for (i = 0; i < scctx->isc_nrxqsets; i++)
-			ctx->ifc_rxqs[i].ifr_fl->ifl_buf_size = MCLBYTES;
+		for (i = 0; i < scctx->isc_nrxqsets; i++) {
+			rxq = &ctx->ifc_rxqs[i];
+			for (j = 0; j < rxq->ifr_nfl; j++) {
+				fl = rxq->ifr_fl;
+				fl->ifl_zone = m_getzone(fl->ifl_buf_size);
+			}
+		}
 		iflib_no_tx_batch = 1;
 		break;
 	default:

@@ -1048,7 +1048,6 @@ static int
 netdump_configure(struct netdump_conf *conf)
 {
 	struct ifnet *ifp;
-	int nmbuf, nclust, nrxr;
 
 	IFNET_RLOCK_NOSLEEP();
 	TAILQ_FOREACH(ifp, &V_ifnet, if_link) {
@@ -1067,7 +1066,27 @@ netdump_configure(struct netdump_conf *conf)
 		return (1);
 	}
 
-	ifp->if_netdump_methods->nd_init(ifp, &nrxr);
+	nd_ifp = ifp;
+	netdump_reinit(ifp);
+	memcpy(&nd_conf, conf, sizeof(nd_conf));
+	nd_enabled = 1;
+	return (0);
+}
+
+/*
+ * Reinitialize the mbuf pool used by drivers while dumping. This is called
+ * from the generic ioctl handler for SIOCSIFMTU after the driver has
+ * reconfigured itself.
+ */
+void
+netdump_reinit(struct ifnet *ifp)
+{
+	int clsize, nmbuf, nclust, nrxr;
+
+	if (ifp != nd_ifp)
+		return;
+
+	ifp->if_netdump_methods->nd_init(ifp, &nrxr, &clsize);
 	KASSERT(nrxr > 0, ("invalid receive ring count %d", nrxr));
 
 	/*
@@ -1076,12 +1095,7 @@ netdump_configure(struct netdump_conf *conf)
 	 */
 	nmbuf = NETDUMP_MAX_IN_FLIGHT * (4 + nrxr);
 	nclust = NETDUMP_MAX_IN_FLIGHT * nrxr;
-	netdump_mbuf_init(nmbuf, nclust);
-
-	nd_ifp = ifp;
-	memcpy(&nd_conf, conf, sizeof(nd_conf));
-	nd_enabled = 1;
-	return (0);
+	netdump_mbuf_reinit(nmbuf, nclust, clsize);
 }
 
 /*

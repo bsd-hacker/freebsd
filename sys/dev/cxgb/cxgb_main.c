@@ -3587,10 +3587,17 @@ cxgbc_mod_event(module_t mod, int cmd, void *arg)
 
 #ifdef NETDUMP
 static void
-cxgb_netdump_init(struct ifnet *ifp, int *nrxr)
+cxgb_netdump_init(struct ifnet *ifp, int *nrxr, int *clsize)
 {
+	struct port_info *pi;
+	adapter_t *adap;
 
+	pi = if_getsoftc(ifp);
+	adap = pi->adapter;
+	ADAPTER_LOCK(adap);
 	*nrxr = SGE_QSETS;
+	*clsize = adap->sge.qs[0].fl[1].buf_size;
+	ADAPTER_UNLOCK(adap);
 }
 
 static void
@@ -3607,7 +3614,7 @@ cxgb_netdump_event(struct ifnet *ifp, enum netdump_ev event)
 
 			/* Need to reinit after netdump_mbuf_dump(). */
 			qs->fl[0].zone = zone_pack;
-			qs->fl[1].zone = zone_pack;
+			qs->fl[1].zone = zone_clust;
 			qs->lro.enabled = 0;
 		}
 }

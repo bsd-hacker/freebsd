@@ -6811,27 +6811,25 @@ bge_get_counter(if_t ifp, ift_counter cnt)
 
 #ifdef NETDUMP
 static void
-bge_netdump_init(if_t ifp, int *nrxr)
+bge_netdump_init(if_t ifp, int *nrxr, int *clsize)
 {
 	struct bge_softc *sc;
 
 	sc = if_getsoftc(ifp);
+	BGE_LOCK(sc);
 	*nrxr = sc->bge_return_ring_cnt;
+	if ((sc->bge_flags & BGE_FLAG_JUMBO_STD) != 0 &&
+	    (if_getmtu(sc->bge_ifp) + ETHER_HDR_LEN + ETHER_CRC_LEN +
+	    ETHER_VLAN_ENCAP_LEN > (MCLBYTES - ETHER_ALIGN)))
+		*clsize = MJUM9BYTES;
+	else
+		*clsize = MCLBYTES;
+	BGE_UNLOCK(sc);
 }
 
 static void
-bge_netdump_event(if_t ifp, enum netdump_ev event)
+bge_netdump_event(if_t ifp __unused, enum netdump_ev event __unused)
 {
-	struct bge_softc *sc;
-
-	sc = if_getsoftc(ifp);
-	switch (event) {
-	case NETDUMP_START:
-		sc->bge_flags &= ~BGE_FLAG_JUMBO_STD;
-		break;
-	default:
-		break;
-	}
 }
 
 static int

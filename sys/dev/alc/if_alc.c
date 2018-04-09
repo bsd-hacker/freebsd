@@ -4658,25 +4658,20 @@ sysctl_hw_alc_int_mod(SYSCTL_HANDLER_ARGS)
 
 #ifdef NETDUMP
 static void
-alc_netdump_init(struct ifnet *ifp __unused, int *nrxr)
-{
-
-	*nrxr = ALC_RX_RING_CNT;
-}
-
-static void
-alc_netdump_event(struct ifnet *ifp, enum netdump_ev event)
+alc_netdump_init(struct ifnet *ifp, int *nrxr, int *clsize)
 {
 	struct alc_softc *sc;
 
 	sc = if_getsoftc(ifp);
-	switch (event) {
-	case NETDUMP_START:
-		sc->alc_buf_size = imin(sc->alc_buf_size, MCLBYTES);
-		break;
-	default:
-		break;
-	}
+	KASSERT(sc->alc_buf_size <= MCLBYTES, ("incorrect cluster size"));
+
+	*nrxr = ALC_RX_RING_CNT;
+	*clsize = MCLBYTES;
+}
+
+static void
+alc_netdump_event(struct ifnet *ifp __unused, enum netdump_ev event __unused)
+{
 }
 
 static int

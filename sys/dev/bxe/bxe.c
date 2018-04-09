@@ -19172,12 +19172,15 @@ bxe_eioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag,
 
 #ifdef NETDUMP
 static void
-bxe_netdump_init(struct ifnet *ifp, int *nrxr)
+bxe_netdump_init(struct ifnet *ifp, int *nrxr, int *clsize)
 {
 	struct bxe_softc *sc;
 
 	sc = if_getsoftc(ifp);
+	BXE_CORE_LOCK(sc);
 	*nrxr = sc->num_queues;
+	*clsize = sc->fp[0].mbuf_alloc_size;
+	BXE_CORE_UNLOCK(sc);
 }
 
 static void

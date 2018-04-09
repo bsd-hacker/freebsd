@@ -4095,27 +4095,21 @@ sysctl_hw_re_int_mod(SYSCTL_HANDLER_ARGS)
 
 #ifdef NETDUMP
 static void
-re_netdump_init(struct ifnet *ifp, int *nrxr)
+re_netdump_init(struct ifnet *ifp, int *nrxr, int *clsize)
 {
 	struct rl_softc *sc;
 
 	sc = if_getsoftc(ifp);
+	RL_LOCK(sc);
 	*nrxr = sc->rl_ldata.rl_rx_desc_cnt;
+	*clsize = (ifp->if_mtu > RL_MTU &&
+	    (sc->rl_flags & RL_FLAG_JUMBOV2) != 0) ? MJUM9BYTES : MCLBYTES;
+	RL_UNLOCK(sc);
 }
 
 static void
-re_netdump_event(struct ifnet *ifp, enum netdump_ev event)
+re_netdump_event(struct ifnet *ifp __unused, enum netdump_ev event __unused)
 {
-	struct rl_softc *sc;
-
-	sc = if_getsoftc(ifp);
-	switch (event) {
-	case NETDUMP_START:
-		sc->rl_flags &= ~RL_FLAG_JUMBOV2;
-		break;
-	default:
-		break;
-	}
 }
 
 static int
