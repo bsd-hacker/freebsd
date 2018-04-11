@@ -3587,7 +3587,7 @@ cxgbc_mod_event(module_t mod, int cmd, void *arg)
 
 #ifdef NETDUMP
 static void
-cxgb_netdump_init(struct ifnet *ifp, int *nrxr, int *clsize)
+cxgb_netdump_init(struct ifnet *ifp, int *nrxr, int *ncl, int *clsize)
 {
 	struct port_info *pi;
 	adapter_t *adap;
@@ -3596,6 +3596,7 @@ cxgb_netdump_init(struct ifnet *ifp, int *nrxr, int *clsize)
 	adap = pi->adapter;
 	ADAPTER_LOCK(adap);
 	*nrxr = SGE_QSETS;
+	*ncl = adap->sge.qs[0].fl[1].size;
 	*clsize = adap->sge.qs[0].fl[1].buf_size;
 	ADAPTER_UNLOCK(adap);
 }

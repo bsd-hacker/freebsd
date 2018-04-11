@@ -4658,7 +4658,7 @@ sysctl_hw_alc_int_mod(SYSCTL_HANDLER_ARGS)
 
 #ifdef NETDUMP
 static void
-alc_netdump_init(struct ifnet *ifp, int *nrxr, int *clsize)
+alc_netdump_init(struct ifnet *ifp, int *nrxr, int *ncl, int *clsize)
 {
 	struct alc_softc *sc;
 
@@ -4666,6 +4666,7 @@ alc_netdump_init(struct ifnet *ifp, int *nrxr, int *clsize)
 	KASSERT(sc->alc_buf_size <= MCLBYTES, ("incorrect cluster size"));
 
 	*nrxr = ALC_RX_RING_CNT;
+	*ncl = NETDUMP_MAX_IN_FLIGHT;
 	*clsize = MCLBYTES;
 }
 

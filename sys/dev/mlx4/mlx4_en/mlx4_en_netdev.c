@@ -2886,13 +2886,14 @@ static void mlx4_en_sysctl_stat(struct mlx4_en_priv *priv)
 
 #ifdef NETDUMP
 static void
-mlx4_en_netdump_init(struct ifnet *dev, int *nrxr, int *clsize)
+mlx4_en_netdump_init(struct ifnet *dev, int *nrxr, int *ncl, int *clsize)
 {
 	struct mlx4_en_priv *priv;
 
 	priv = if_getsoftc(dev);
 	mutex_lock(&priv->mdev->state_lock);
 	*nrxr = priv->rx_ring_num;
+	*ncl = NETDUMP_MAX_IN_FLIGHT;
 	*clsize = priv->rx_mb_size;
 	mutex_unlock(&priv->mdev->state_lock);
 }

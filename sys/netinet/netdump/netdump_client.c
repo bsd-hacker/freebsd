@@ -1081,21 +1081,21 @@ netdump_configure(struct netdump_conf *conf)
 void
 netdump_reinit(struct ifnet *ifp)
 {
-	int clsize, nmbuf, nclust, nrxr;
+	int clsize, nmbuf, ncl, nrxr;
 
 	if (ifp != nd_ifp)
 		return;
 
-	ifp->if_netdump_methods->nd_init(ifp, &nrxr, &clsize);
+	ifp->if_netdump_methods->nd_init(ifp, &nrxr, &ncl, &clsize);
 	KASSERT(nrxr > 0, ("invalid receive ring count %d", nrxr));
 
 	/*
 	 * We need two headers per message on the transmit side. Multiply by
 	 * four to give us some breathing room.
 	 */
-	nmbuf = NETDUMP_MAX_IN_FLIGHT * (4 + nrxr);
-	nclust = NETDUMP_MAX_IN_FLIGHT * nrxr;
-	netdump_mbuf_reinit(nmbuf, nclust, clsize);
+	nmbuf = ncl * (4 + nrxr);
+	ncl *= nrxr;
+	netdump_mbuf_reinit(nmbuf, ncl, clsize);
 }
 
 /*

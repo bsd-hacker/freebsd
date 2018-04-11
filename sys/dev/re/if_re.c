@@ -4095,13 +4095,14 @@ sysctl_hw_re_int_mod(SYSCTL_HANDLER_ARGS)
 
 #ifdef NETDUMP
 static void
-re_netdump_init(struct ifnet *ifp, int *nrxr, int *clsize)
+re_netdump_init(struct ifnet *ifp, int *nrxr, int *ncl, int *clsize)
 {
 	struct rl_softc *sc;
 
 	sc = if_getsoftc(ifp);
 	RL_LOCK(sc);
 	*nrxr = sc->rl_ldata.rl_rx_desc_cnt;
+	*ncl = NETDUMP_MAX_IN_FLIGHT;
 	*clsize = (ifp->if_mtu > RL_MTU &&
 	    (sc->rl_flags & RL_FLAG_JUMBOV2) != 0) ? MJUM9BYTES : MCLBYTES;
 	RL_UNLOCK(sc);

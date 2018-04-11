@@ -6811,13 +6811,14 @@ bge_get_counter(if_t ifp, ift_counter cnt)
 
 #ifdef NETDUMP
 static void
-bge_netdump_init(if_t ifp, int *nrxr, int *clsize)
+bge_netdump_init(if_t ifp, int *nrxr, int *ncl, int *clsize)
 {
 	struct bge_softc *sc;
 
 	sc = if_getsoftc(ifp);
 	BGE_LOCK(sc);
 	*nrxr = sc->bge_return_ring_cnt;
+	*ncl = NETDUMP_MAX_IN_FLIGHT;
 	if ((sc->bge_flags & BGE_FLAG_JUMBO_STD) != 0 &&
 	    (if_getmtu(sc->bge_ifp) + ETHER_HDR_LEN + ETHER_CRC_LEN +
 	    ETHER_VLAN_ENCAP_LEN > (MCLBYTES - ETHER_ALIGN)))

@@ -88,7 +88,7 @@ struct mbuf;
 
 void	netdump_reinit(struct ifnet *);
 
-typedef void netdump_init_t(struct ifnet *, int *nrxr, int *clsize);
+typedef void netdump_init_t(struct ifnet *, int *nrxr, int *ncl, int *clsize);
 typedef void netdump_event_t(struct ifnet *, enum netdump_ev);
 typedef int netdump_transmit_t(struct ifnet *, struct mbuf *);
 typedef int netdump_poll_t(struct ifnet *, int);

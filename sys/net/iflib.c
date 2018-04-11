@@ -5974,13 +5974,14 @@ iflib_fixup_rx(struct mbuf *m)
 
 #ifdef NETDUMP
 static void
-iflib_netdump_init(struct ifnet *ifp, int *nrxr, int *clsize)
+iflib_netdump_init(struct ifnet *ifp, int *nrxr, int *ncl, int *clsize)
 {
 	if_ctx_t ctx;
 
 	ctx = if_getsoftc(ifp);
 	CTX_LOCK(ctx);
 	*nrxr = NRXQSETS(ctx);
+	*ncl = ctx->ifc_rxqs[0].ifr_fl->ifl_size;
 	*clsize = ctx->ifc_rxqs[0].ifr_fl->ifl_buf_size;
 	CTX_UNLOCK(ctx);
 }

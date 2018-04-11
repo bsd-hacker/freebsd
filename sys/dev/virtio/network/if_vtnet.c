@@ -3984,7 +3984,7 @@ vtnet_tunable_int(struct vtnet_softc *sc, const char *knob, int def)
 
 #ifdef NETDUMP
 static void
-vtnet_netdump_init(struct ifnet *ifp, int *nrxr, int *clsize)
+vtnet_netdump_init(struct ifnet *ifp, int *nrxr, int *ncl, int *clsize)
 {
 	struct vtnet_softc *sc;
 
@@ -3992,6 +3992,7 @@ vtnet_netdump_init(struct ifnet *ifp, int *nrxr, int *clsize)
 
 	VTNET_CORE_LOCK(sc);
 	*nrxr = sc->vtnet_max_vq_pairs;
+	*ncl = NETDUMP_MAX_IN_FLIGHT;
 	*clsize = sc->vtnet_rx_clsize;
 	VTNET_CORE_UNLOCK(sc);
 
