@@ -443,7 +443,7 @@ nd_pack_import(void *arg __unused, void **store, int count, int domain __unused,
 			m_free(m);
 			break;
 		}
-		mb_ctor_clust(clust, MCLBYTES, m, 0);
+		mb_ctor_clust(clust, nd_clsize, m, 0);
 		store[i] = m;
 	}
 	return (i);
