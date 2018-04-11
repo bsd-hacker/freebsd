@@ -368,7 +368,7 @@ restart:
 }
 
 /*
- * Dummy free function for EXT_NETDUMP clusters.
+ * Dummy free function for netdump clusters.
  */
 static void
 netdump_mbuf_free(struct mbuf *m __unused)
@@ -454,7 +454,7 @@ retransmit:
 				return (ENOBUFS);
 			}
 			MEXTADD(m2, data + sent_so_far, pktlen,
-			    netdump_mbuf_free, NULL, NULL, 0, EXT_NETDUMP);
+			    netdump_mbuf_free, NULL, NULL, 0, EXT_DISPOSABLE);
 			m2->m_len = pktlen;
 
 			m_cat(m, m2);

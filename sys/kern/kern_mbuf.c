@@ -867,7 +867,6 @@ mb_free_ext(struct mbuf *m)
 		case EXT_NET_DRV:
 		case EXT_MOD_TYPE:
 		case EXT_DISPOSABLE:
-		case EXT_NETDUMP:
 			KASSERT(mref->m_ext.ext_free != NULL,
 			    ("%s: ext_free not set", __func__));
 			mref->m_ext.ext_free(mref);
