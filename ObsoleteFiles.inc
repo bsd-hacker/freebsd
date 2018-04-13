@@ -40,6 +40,7 @@
 
 # 20180409: remove FDDI support
 OLD_FILES+=usr/include/net/fddi.h
+OLD_FILES+=usr/share/man/man4/fpa.4.gz
 # 20180319: remove /boot/overlays, replaced by /boot/dtb/overlays
 OLD_DIRS+=boot/overlays
 # 20180311: remove sys/sys/i386/include/pcaudioio.h
@@ -1069,7 +1070,6 @@ OLD_FILES+=usr/share/man/man7/mm.7.gz
 OLD_FILES+=usr/share/man/man7/mmse.7.gz
 OLD_FILES+=usr/share/man/man7/ms.7.gz
 OLD_FILES+=usr/share/man/man7/orig_me.7.gz
-OLD_FILES+=usr/share/man/man7/roff.7.gz
 OLD_FILES+=usr/share/me/acm.me
 OLD_FILES+=usr/share/me/chars.me
 OLD_FILES+=usr/share/me/deltext.me

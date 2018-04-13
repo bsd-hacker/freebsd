@@ -831,11 +831,13 @@ dev/alpm/alpm.c			optional alpm pci
 dev/altera/avgen/altera_avgen.c		optional altera_avgen
 dev/altera/avgen/altera_avgen_fdt.c	optional altera_avgen fdt
 dev/altera/avgen/altera_avgen_nexus.c	optional altera_avgen
+dev/altera/msgdma/msgdma.c		optional altera_msgdma xdma
 dev/altera/sdcard/altera_sdcard.c	optional altera_sdcard
 dev/altera/sdcard/altera_sdcard_disk.c	optional altera_sdcard
 dev/altera/sdcard/altera_sdcard_io.c	optional altera_sdcard
 dev/altera/sdcard/altera_sdcard_fdt.c	optional altera_sdcard fdt
 dev/altera/sdcard/altera_sdcard_nexus.c	optional altera_sdcard
+dev/altera/softdma/softdma.c	optional altera_softdma xdma fdt
 dev/altera/pio/pio.c		optional altera_pio
 dev/altera/pio/pio_if.m		optional altera_pio
 dev/amdpm/amdpm.c		optional amdpm pci | nfpm pci
@@ -2535,6 +2537,7 @@ dev/netmap/netmap_offloadings.c	optional netmap
 dev/netmap/netmap_pipe.c	optional netmap
 dev/netmap/netmap_pt.c		optional netmap
 dev/netmap/netmap_vale.c	optional netmap
+dev/netmap/netmap_legacy.c	optional netmap
 # compile-with "${NORMAL_C} -Wconversion -Wextra"
 dev/nfsmb/nfsmb.c		optional nfsmb pci
 dev/nge/if_nge.c		optional nge
@@ -3509,9 +3512,16 @@ wpi.fw			optional wpifw					\
 	compile-with	"${NORMAL_FW}"					\
 	no-obj no-implicit-rule						\
 	clean		"wpi.fw"
+dev/xdma/controller/pl330.c	optional xdma pl330
 dev/xdma/xdma.c			optional xdma
-dev/xdma/xdma_if.m		optional xdma
+dev/xdma/xdma_bank.c		optional xdma
+dev/xdma/xdma_bio.c		optional xdma
 dev/xdma/xdma_fdt_test.c	optional xdma xdma_test fdt
+dev/xdma/xdma_if.m		optional xdma
+dev/xdma/xdma_mbuf.c		optional xdma
+dev/xdma/xdma_queue.c		optional xdma
+dev/xdma/xdma_sg.c		optional xdma
+dev/xdma/xdma_sglist.c		optional xdma
 dev/xe/if_xe.c			optional xe
 dev/xe/if_xe_pccard.c		optional xe pccard
 dev/xen/balloon/balloon.c	optional xenhvm
