@@ -845,9 +845,6 @@ device		wlan_xauth
 device		wlan_acl
 device		wlan_amrr
 
-#  The `arcnet' device provides generic code to support Arcnet.
-device		arcnet
-
 #  The `sppp' device serves a similar role for certain types
 #  of synchronous PPP links (like `cx', `ar').
 device		sppp
@@ -1948,8 +1945,6 @@ device		xmphy		# XaQti XMAC II
 # bwi:	Broadcom BCM430* and BCM431* family of wireless adapters.
 # bwn:	Broadcom BCM43xx family of wireless adapters.
 # cas:	Sun Cassini/Cassini+ and National Semiconductor DP83065 Saturn
-# cm:	Arcnet SMC COM90c26 / SMC COM90c56
-#	(and SMC COM90c66 in '56 compatibility mode) adapters.
 # cxgb: Chelsio T3 based 1GbE/10GbE PCIe Ethernet adapters.
 # cxgbe:Chelsio T4, T5, and T6-based 1/10/25/40/100GbE PCIe Ethernet
 #	adapters.
@@ -2074,11 +2069,6 @@ device		xmphy		# XaQti XMAC II
 
 # Order for ISA devices is important here
 
-device		cm
-hint.cm.0.at="isa"
-hint.cm.0.port="0x2e0"
-hint.cm.0.irq="9"
-hint.cm.0.maddr="0xdc000"
 device		ep
 device		ex
 device		fe
