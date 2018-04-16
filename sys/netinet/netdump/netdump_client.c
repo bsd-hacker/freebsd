@@ -1057,14 +1057,12 @@ netdump_configure(struct netdump_conf *conf)
 	/* XXX ref */
 	IFNET_RUNLOCK_NOSLEEP();
 
-	if (ifp == NULL) {
-		printf("netdump: unknown interface '%s'\n", conf->ndc_iface);
-		return (1);
-	} else if (!netdump_supported_nic(ifp) || ifp->if_type != IFT_ETHER) {
-		printf("netdump: unsupported interface '%s'\n",
-		    conf->ndc_iface);
-		return (1);
-	}
+	if (ifp == NULL)
+		return (ENOENT);
+	if ((if_getflags(ifp) & IFF_UP) == 0)
+		return (ENXIO);
+	if (!netdump_supported_nic(ifp) || ifp->if_type != IFT_ETHER)
+		return (EINVAL);
 
 	nd_ifp = ifp;
 	netdump_reinit(ifp);
@@ -1159,10 +1157,9 @@ netdump_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 			break;
 		}
 
-		if (netdump_configure(conf) != 0) {
-			error = EINVAL;
+		error = netdump_configure(conf);
+		if (error != 0)
 			break;
-		}
 
 		dumper.dumper_start = netdump_start;
 		dumper.dumper_hdr = netdump_write_headers;
