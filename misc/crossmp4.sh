@@ -70,7 +70,7 @@ if [ $# -eq 0 ]; then
 		umount $mntpoint > /dev/null 2>&1 || sleep 1
 	done
 	mdconfig -d -u $mdstart
-
+	exit 0
 else
 	touch /tmp/crossmp.continue
 	if [ $1 = find ]; then
