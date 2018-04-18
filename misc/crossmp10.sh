@@ -29,6 +29,8 @@
 #
 
 # ext2fs parallel mount & umount test scenario
+# "panic: vm_fault_hold: fault on nofault entry" seen.
+# https://people.freebsd.org/~pho/stress/log/crossmp10.txt
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 [ -z "`which mke2fs`" ] && echo "mke2fs not found" && exit 0
@@ -36,17 +38,15 @@
 . ../default.cfg
 
 CONT=/tmp/crossmp10.continue
-N=4
-size=512
-
-mounts=$N		# Number of parallel scripts
+mounts=4	# Number of parallel scripts
+size=512	# Disk size in MB
 
 if [ $# -eq 0 ]; then
 	for i in `jot $mounts`; do
 		m=$(( i + mdstart - 1 ))
 		[ ! -d ${mntpoint}$m ] &&
 		    { mkdir ${mntpoint}$m;  chmod 755 ${mntpoint}$m; }
-		mount | grep "${mntpoint}$m" | grep -q md$m && umount ${mntpoint}$m
+		mount | grep "${mntpoint}$m " | grep -q md$m && umount ${mntpoint}$m
 		mdconfig -l | grep -q md$m && mdconfig -d -u $m
 
 		mdconfig -a -t swap -s ${size}m -u $m
@@ -66,9 +66,13 @@ if [ $# -eq 0 ]; then
 
 	for i in `jot $mounts`; do
 		m=$(( i + mdstart - 1 ))
+		while mount | grep -q "on ${mntpoint}$m "; do
+		    umount ${mntpoint}$m && break
+		    sleep 1
+		done
 		mdconfig -d -u $m
 	done
-
+	exit 0
 else
 	if [ $1 = find ]; then
 		while [ -f $CONT ]; do
