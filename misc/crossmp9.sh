@@ -44,7 +44,8 @@ if [ $# -eq 0 ]; then
 	for i in `jot $mounts`; do
 		m=$(( i + mdstart - 1 ))
 		[ ! -d ${mntpoint}$m ] && mkdir ${mntpoint}$m
-		mount | grep "$mntpoint" | grep -q md$m && umount ${mntpoint}$m
+		mount | grep "${mntpoint}$m " | grep -q md$m &&
+		    umount ${mntpoint}$m
 		mdconfig -l | grep -q md$m &&  mdconfig -d -u $m
 
 		mdconfig -a -t swap -s 512m -u $m
@@ -58,7 +59,6 @@ if [ $# -eq 0 ]; then
 		./$0 $m &
 		./$0 find $m &
 	done
-
 	wait
 
 	for i in `jot $mounts`; do
@@ -66,7 +66,7 @@ if [ $# -eq 0 ]; then
 		mdconfig -d -u $m
 		rm -f $D$m
 	done
-
+	exit 0
 else
 	if [ $1 = find ]; then
 		m=$2
@@ -82,7 +82,8 @@ else
 			m=$1
 			mount /dev/md${m}$part ${mntpoint}$m
 			while mount | grep -qw ${mntpoint}$m; do
-				opt=$([ $((`date '+%s'` % 2)) -eq 0 ] && echo "-f")
+				opt=$([ $((`date '+%s'` % 2)) -eq 0 ] &&
+				    echo "-f")
 				umount $opt ${mntpoint}$m > /dev/null 2>&1
 			done
 		done
