@@ -53,8 +53,9 @@ if [ $# -eq 0 ]; then
 	for i in `jot $mounts`; do
 		m=$(( i + mdstart - 1 ))
 		[ ! -d ${mntpoint}$m ] &&
-		    { mkdir ${mntpoint}$m;  chmod 755 ${mntpoint}$m; }
-		mount | grep "${mntpoint}$m" | grep -q md$m && umount ${mntpoint}$m
+		    { mkdir ${mntpoint}$m; chmod 755 ${mntpoint}$m; }
+		mount | grep "${mntpoint}$m " | grep -q md$m &&
+		    umount ${mntpoint}$m
 		mdconfig -l | grep -q md$m && mdconfig -d -u $m
 
 		mdconfig -a -t swap -s ${size}m -u $m
@@ -73,6 +74,10 @@ if [ $# -eq 0 ]; then
 
 	for i in `jot $mounts`; do
 		m=$(( i + mdstart - 1 ))
+		while mount | grep -q "on ${mntpoint}$m "; do
+		    umount ${mntpoint}$m && break
+		    sleep 1
+		done
 		mdconfig -d -u $m
 	done
 	exit 0
