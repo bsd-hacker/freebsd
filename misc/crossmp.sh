@@ -44,8 +44,9 @@ if [ $# -eq 0 ]; then
 	for i in `jot $mounts`; do
 		m=$(( i + mdstart - 1 ))
 		[ ! -d ${mntpoint}$m ] && mkdir ${mntpoint}$m
-		mount | grep "$mntpoint" | grep -q md$m && umount ${mntpoint}$m
-		mdconfig -l | grep -q md$m &&  mdconfig -d -u $m
+		mount | grep "on ${mntpoint}$m " | grep -q md$m &&
+		    umount ${mntpoint}$m
+		mdconfig -l | grep -q md$m && mdconfig -d -u $m
 
 		dede $D$m 1m 1
 		mdconfig -a -t vnode -f $D$m -u $m
@@ -67,7 +68,7 @@ if [ $# -eq 0 ]; then
 		mdconfig -d -u $m
 		rm -f $D$m
 	done
-
+	exit 0
 else
 	if [ $1 = find ]; then
 		while [ -r $cont ]; do
@@ -79,8 +80,9 @@ else
 		for i in `jot 1024`; do
 			m=$1
 			mount /dev/md${m}$part ${mntpoint}$m
-			while mount | grep -qw $mntpoint$m; do
-				opt=$([ $((`date '+%s'` % 2)) -eq 0 ] && echo "-f")
+			while mount | grep -q "on ${mntpoint}$m "; do
+				opt=$([ $((`date '+%s'` % 2)) -eq 0 ] &&
+				    echo "-f")
 				umount $opt ${mntpoint}$m > /dev/null 2>&1
 			done
 		done
