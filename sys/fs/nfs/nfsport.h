@@ -700,8 +700,10 @@ void nfsrvd_rcv(struct socket *, void *, int);
 #define	NFSSESSIONMUTEXPTR(s)	(&((s)->mtx))
 #define	NFSLOCKSESSION(s)	mtx_lock(&((s)->mtx))
 #define	NFSUNLOCKSESSION(s)	mtx_unlock(&((s)->mtx))
+#define	NFSLAYOUTMUTEXPTR(l)	(&((l)->mtx))
 #define	NFSLOCKLAYOUT(l)	mtx_lock(&((l)->mtx))
 #define	NFSUNLOCKLAYOUT(l)	mtx_unlock(&((l)->mtx))
+#define	NFSDDSMUTEXPTR		(&nfsrv_dslock_mtx)
 #define	NFSDDSLOCK()		mtx_lock(&nfsrv_dslock_mtx)
 #define	NFSDDSUNLOCK()		mtx_unlock(&nfsrv_dslock_mtx)
 #define	NFSDSCLOCKMUTEXPTR	(&nfsrv_dsclock_mtx)
@@ -719,6 +721,12 @@ void nfsrvd_rcv(struct socket *, void *, int);
 #define	NFSDARPCLOCKMUTEXPTR	(&nfsrv_darpclock_mtx)
 #define	NFSDARPCLOCK()		mtx_lock(&nfsrv_darpclock_mtx)
 #define	NFSDARPCUNLOCK()	mtx_unlock(&nfsrv_darpclock_mtx)
+#define	NFSDDONTLISTMUTEXPTR	(&nfsrv_dontlistlock_mtx)
+#define	NFSDDONTLISTLOCK()	mtx_lock(&nfsrv_dontlistlock_mtx)
+#define	NFSDDONTLISTUNLOCK()	mtx_unlock(&nfsrv_dontlistlock_mtx)
+#define	NFSDRECALLMUTEXPTR	(&nfsrv_recalllock_mtx)
+#define	NFSDRECALLLOCK()	mtx_lock(&nfsrv_recalllock_mtx)
+#define	NFSDRECALLUNLOCK()	mtx_unlock(&nfsrv_recalllock_mtx)
 
 /*
  * Use these macros to initialize/free a mutex.
