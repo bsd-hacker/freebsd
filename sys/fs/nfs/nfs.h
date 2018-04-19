@@ -200,6 +200,16 @@ struct nfsd_nfsd_args {
 #define	NFSDEV_MAXMIRRORS	4
 #define	NFSDEV_MAXVERS		4
 
+struct nfsd_pnfsd_args {
+	int	op;		/* Which pNFSd op to perform. */
+	char	*mdspath;	/* Path of MDS file. */
+	char	*dspath;	/* Path of recovered DS mounted on dir. */
+	char	*curdspath;	/* Path of current DS mounted on dir. */
+};
+
+#define	PNFSDOP_DELDSSERVER	1
+#define	PNFSDOP_COPYMR		2
+
 /* Old version. */
 struct nfsd_nfsd_oargs {
 	const char *principal;	/* GSS-API service principal name */
