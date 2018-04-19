@@ -220,7 +220,6 @@ udp6_input(struct mbuf **mp, int *offp, int proto)
 	uint8_t nxt;
 
 	ifp = m->m_pkthdr.rcvif;
-	ip6 = mtod(m, struct ip6_hdr *);
 
 #ifndef PULLDOWN_TEST
 	IP6_EXTHDR_CHECK(m, off, sizeof(struct udphdr), IPPROTO_DONE);
@@ -230,6 +229,7 @@ udp6_input(struct mbuf **mp, int *offp, int proto)
 	IP6_EXTHDR_GET(uh, struct udphdr *, m, off, sizeof(*uh));
 	if (!uh)
 		return (IPPROTO_DONE);
+	ip6 = mtod(m, struct ip6_hdr *);
 #endif
 
 	UDPSTAT_INC(udps_ipackets);
@@ -1190,7 +1190,6 @@ udp6_disconnect(struct socket *so)
 {
 	struct inpcb *inp;
 	struct inpcbinfo *pcbinfo;
-	int error;
 
 	pcbinfo = udp_get_inpcbinfo(so->so_proto->pr_protocol);
 	inp = sotoinpcb(so);
@@ -1212,8 +1211,8 @@ udp6_disconnect(struct socket *so)
 #endif
 
 	if (IN6_IS_ADDR_UNSPECIFIED(&inp->in6p_faddr)) {
-		error = ENOTCONN;
-		goto out;
+		INP_WUNLOCK(inp);
+		return (ENOTCONN);
 	}
 
 	INP_HASH_WLOCK(pcbinfo);
@@ -1223,7 +1222,6 @@ udp6_disconnect(struct socket *so)
 	SOCK_LOCK(so);
 	so->so_state &= ~SS_ISCONNECTED;		/* XXX */
 	SOCK_UNLOCK(so);
-out:
 	INP_WUNLOCK(inp);
 	return (0);
 }

@@ -172,16 +172,6 @@ data_abort(struct thread *td, struct trapframe *frame, uint64_t esr,
 #endif
 
 	pcb = td->td_pcb;
-
-	/*
-	 * Special case for fuswintr and suswintr. These can't sleep so
-	 * handle them early on in the trap handler.
-	 */
-	if (__predict_false(pcb->pcb_onfault == (vm_offset_t)&fsu_intr_fault)) {
-		frame->tf_elr = pcb->pcb_onfault;
-		return;
-	}
-
 	p = td->td_proc;
 	if (lower)
 		map = &p->p_vmspace->vm_map;
@@ -323,8 +313,12 @@ do_el1h_sync(struct thread *td, struct trapframe *frame)
 			break;
 		}
 #endif
+#ifdef KDB
 		kdb_trap(exception, 0,
 		    (td->td_frame != NULL) ? td->td_frame : frame);
+#else
+		panic("No debugger in kernel.\n");
+#endif
 		frame->tf_elr += 4;
 		break;
 	case EXCP_WATCHPT_EL1:
@@ -352,6 +346,7 @@ do_el1h_sync(struct thread *td, struct trapframe *frame)
 void
 do_el0_sync(struct thread *td, struct trapframe *frame)
 {
+	pcpu_bp_harden bp_harden;
 	uint32_t exception;
 	uint64_t esr, far;
 
@@ -363,11 +358,25 @@ do_el0_sync(struct thread *td, struct trapframe *frame)
 	esr = frame->tf_esr;
 	exception = ESR_ELx_EXCEPTION(esr);
 	switch (exception) {
-	case EXCP_UNKNOWN:
 	case EXCP_INSN_ABORT_L:
+		far = READ_SPECIALREG(far_el1);
+
+		/*
+		 * Userspace may be trying to train the branch predictor to
+		 * attack the kernel. If we are on a CPU affected by this
+		 * call the handler to clear the branch predictor state.
+		 */
+		if (far > VM_MAXUSER_ADDRESS) {
+			bp_harden = PCPU_GET(bp_harden);
+			if (bp_harden != NULL)
+				bp_harden();
+		}
+		break;
+	case EXCP_UNKNOWN:
 	case EXCP_DATA_ABORT_L:
 	case EXCP_DATA_ABORT:
 		far = READ_SPECIALREG(far_el1);
+		break;
 	}
 	intr_enable();
 

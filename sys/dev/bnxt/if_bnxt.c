@@ -2085,8 +2085,13 @@ bnxt_add_media_types(struct bnxt_softc *softc)
 		break;
 
 	case HWRM_PORT_PHY_QCFG_OUTPUT_PHY_TYPE_UNKNOWN:
-        default:
 		/* Only Autoneg is supported for TYPE_UNKNOWN */
+		device_printf(softc->dev, "Unknown phy type\n");
+		break;
+
+        default:
+		/* Only Autoneg is supported for new phy type values */
+		device_printf(softc->dev, "phy type %d not supported by driver\n", phy_type);
 		break;
 	}
 
@@ -2224,6 +2229,10 @@ bnxt_report_link(struct bnxt_softc *softc)
 	link_info->last_flow_ctrl.tx = link_info->flow_ctrl.tx;
 	link_info->last_flow_ctrl.rx = link_info->flow_ctrl.rx;
 	link_info->last_flow_ctrl.autoneg = link_info->flow_ctrl.autoneg;
+	/* update media types */
+	ifmedia_removeall(softc->media);
+	bnxt_add_media_types(softc);
+	ifmedia_set(softc->media, IFM_ETHER | IFM_AUTO);
 }
 
 static int

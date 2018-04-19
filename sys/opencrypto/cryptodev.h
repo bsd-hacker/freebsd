@@ -112,7 +112,8 @@
 #define	AES_ICM_BLOCK_LEN	1
 #define	ARC4_BLOCK_LEN		1
 #define	CAMELLIA_BLOCK_LEN	16
-#define	EALG_MAX_BLOCK_LEN	AES_BLOCK_LEN /* Keep this updated */
+#define	CHACHA20_NATIVE_BLOCK_LEN	64
+#define	EALG_MAX_BLOCK_LEN	CHACHA20_NATIVE_BLOCK_LEN /* Keep this updated */
 
 /* IV Lengths */
 
@@ -178,7 +179,10 @@
 #define	CRYPTO_AES_128_NIST_GMAC 26 /* auth side */
 #define	CRYPTO_AES_192_NIST_GMAC 27 /* auth side */
 #define	CRYPTO_AES_256_NIST_GMAC 28 /* auth side */
-#define	CRYPTO_ALGORITHM_MAX	28 /* Keep updated - see below */
+#define	CRYPTO_BLAKE2B		29 /* Blake2b hash */
+#define	CRYPTO_BLAKE2S		30 /* Blake2s hash */
+#define	CRYPTO_CHACHA20		31 /* Chacha20 stream cipher */
+#define	CRYPTO_ALGORITHM_MAX	31 /* Keep updated - see below */
 
 #define	CRYPTO_ALGO_VALID(x)	((x) >= CRYPTO_ALGORITHM_MIN && \
 				 (x) <= CRYPTO_ALGORITHM_MAX)
@@ -346,10 +350,11 @@ struct cryptostats {
 #ifdef _KERNEL
 
 #if 0
-#define CRYPTDEB(s)	do { printf("%s:%d: %s\n", __FILE__, __LINE__, s); \
-			} while (0)
+#define CRYPTDEB(s, ...) do {						\
+	printf("%s:%d: " s "\n", __FILE__, __LINE__, ## __VA_ARGS__);	\
+} while (0)
 #else
-#define CRYPTDEB(s)	do { } while (0)
+#define CRYPTDEB(...)	do { } while (0)
 #endif
 
 /* Standard initialization structure beginning */
@@ -425,8 +430,12 @@ struct cryptop {
 					 * if CRYPTO_F_ASYNC flags is set
 					 */
 
-	caddr_t		crp_buf;	/* Data to be processed */
-	caddr_t		crp_opaque;	/* Opaque pointer, passed along */
+	union {
+		caddr_t		crp_buf;	/* Data to be processed */
+		struct mbuf	*crp_mbuf;
+		struct uio	*crp_uio;
+	};
+	void *		crp_opaque;	/* Opaque pointer, passed along */
 	struct cryptodesc *crp_desc;	/* Linked list of processing descriptors */
 
 	int (*crp_callback)(struct cryptop *); /* Callback function */
@@ -538,5 +547,6 @@ extern	void crypto_copydata(int flags, caddr_t buf, int off, int size,
 	    caddr_t out);
 extern	int crypto_apply(int flags, caddr_t buf, int off, int len,
 	    int (*f)(void *, void *, u_int), void *arg);
+
 #endif /* _KERNEL */
 #endif /* _CRYPTO_CRYPTO_H_ */

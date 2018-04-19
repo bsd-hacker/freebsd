@@ -323,7 +323,7 @@ nfsvno_getfs(struct nfsfsinfo *sip, int isdgram)
  * Do the pathconf vnode op.
  */
 int
-nfsvno_pathconf(struct vnode *vp, int flag, register_t *retf,
+nfsvno_pathconf(struct vnode *vp, int flag, long *retf,
     struct ucred *cred, struct thread *p)
 {
 	int error;
@@ -695,7 +695,7 @@ int
 nfs_supportsnfsv4acls(struct vnode *vp)
 {
 	int error;
-	register_t retval;
+	long retval;
 
 	ASSERT_VOP_LOCKED(vp, "nfs supports nfsv4acls");
 

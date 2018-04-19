@@ -1103,7 +1103,7 @@ void
 sleepq_chains_remove_matching(bool (*matches)(struct thread *))
 {
 	struct sleepqueue_chain *sc;
-	struct sleepqueue *sq;
+	struct sleepqueue *sq, *sq1;
 	int i, wakeup_swapper;
 
 	wakeup_swapper = 0;
@@ -1112,7 +1112,7 @@ sleepq_chains_remove_matching(bool (*matches)(struct thread *))
 			continue;
 		}
 		mtx_lock_spin(&sc->sc_lock);
-		LIST_FOREACH(sq, &sc->sc_queues, sq_hash) {
+		LIST_FOREACH_SAFE(sq, &sc->sc_queues, sq_hash, sq1) {
 			for (i = 0; i < NR_SLEEPQS; ++i) {
 				wakeup_swapper |= sleepq_remove_matching(sq, i,
 				    matches, 0);
@@ -1141,11 +1141,10 @@ sleepq_sbuf_print_stacks(struct sbuf *sb, void *wchan, int queue,
 	struct stack **st;
 	struct sbuf **td_infos;
 	int i, stack_idx, error, stacks_to_allocate;
-	bool finished, partial_print;
+	bool finished;
 
 	error = 0;
 	finished = false;
-	partial_print = false;
 
 	KASSERT(wchan != NULL, ("%s: invalid NULL wait channel", __func__));
 	MPASS((queue >= 0) && (queue < NR_SLEEPQS));

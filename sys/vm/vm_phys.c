@@ -67,21 +67,20 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_object.h>
 #include <vm/vm_page.h>
 #include <vm/vm_phys.h>
-
-#include <vm/vm_domain.h>
+#include <vm/vm_pagequeue.h>
 
 _Static_assert(sizeof(long) * NBBY >= VM_PHYSSEG_MAX,
     "Too many physsegs.");
 
-#ifdef VM_NUMA_ALLOC
-struct mem_affinity *mem_affinity;
-int *mem_locality;
+#ifdef NUMA
+struct mem_affinity __read_mostly *mem_affinity;
+int __read_mostly *mem_locality;
 #endif
 
-int vm_ndomains = 1;
+int __read_mostly vm_ndomains = 1;
 
-struct vm_phys_seg vm_phys_segs[VM_PHYSSEG_MAX];
-int vm_phys_nsegs;
+struct vm_phys_seg __read_mostly vm_phys_segs[VM_PHYSSEG_MAX];
+int __read_mostly vm_phys_nsegs;
 
 struct vm_phys_fictitious_seg;
 static int vm_phys_fictitious_cmp(struct vm_phys_fictitious_seg *,
@@ -101,18 +100,18 @@ struct vm_phys_fictitious_seg {
 RB_GENERATE_STATIC(fict_tree, vm_phys_fictitious_seg, node,
     vm_phys_fictitious_cmp);
 
-static struct rwlock vm_phys_fictitious_reg_lock;
+static struct rwlock_padalign vm_phys_fictitious_reg_lock;
 MALLOC_DEFINE(M_FICT_PAGES, "vm_fictitious", "Fictitious VM pages");
 
-static struct vm_freelist
+static struct vm_freelist __aligned(CACHE_LINE_SIZE)
     vm_phys_free_queues[MAXMEMDOM][VM_NFREELIST][VM_NFREEPOOL][VM_NFREEORDER];
 
-static int vm_nfreelists;
+static int __read_mostly vm_nfreelists;
 
 /*
  * Provides the mapping from VM_FREELIST_* to free list indices (flind).
  */
-static int vm_freelist_to_flind[VM_NFREELIST];
+static int __read_mostly vm_freelist_to_flind[VM_NFREELIST];
 
 CTASSERT(VM_FREELIST_DEFAULT == 0);
 
@@ -142,7 +141,7 @@ static int sysctl_vm_phys_segs(SYSCTL_HANDLER_ARGS);
 SYSCTL_OID(_vm, OID_AUTO, phys_segs, CTLTYPE_STRING | CTLFLAG_RD,
     NULL, 0, sysctl_vm_phys_segs, "A", "Phys Seg Info");
 
-#ifdef VM_NUMA_ALLOC
+#ifdef NUMA
 static int sysctl_vm_phys_locality(SYSCTL_HANDLER_ARGS);
 SYSCTL_OID(_vm, OID_AUTO, phys_locality, CTLTYPE_STRING | CTLFLAG_RD,
     NULL, 0, sysctl_vm_phys_locality, "A", "Phys Locality Info");
@@ -200,20 +199,32 @@ vm_phys_fictitious_cmp(struct vm_phys_fictitious_seg *p1,
 	    (uintmax_t)p1->end, (uintmax_t)p2->start, (uintmax_t)p2->end);
 }
 
-boolean_t
-vm_phys_domain_intersects(long mask, vm_paddr_t low, vm_paddr_t high)
+int
+vm_phys_domain_match(int prefer, vm_paddr_t low, vm_paddr_t high)
 {
-	struct vm_phys_seg *s;
-	int idx;
+#ifdef NUMA
+	domainset_t mask;
+	int i;
 
-	while ((idx = ffsl(mask)) != 0) {
-		idx--;	/* ffsl counts from 1 */
-		mask &= ~(1UL << idx);
-		s = &vm_phys_segs[idx];
-		if (low < s->end && high > s->start)
-			return (TRUE);
-	}
-	return (FALSE);
+	if (vm_ndomains == 1 || mem_affinity == NULL)
+		return (0);
+
+	DOMAINSET_ZERO(&mask);
+	/*
+	 * Check for any memory that overlaps low, high.
+	 */
+	for (i = 0; mem_affinity[i].end != 0; i++)
+		if (mem_affinity[i].start <= high &&
+		    mem_affinity[i].end >= low)
+			DOMAINSET_SET(mem_affinity[i].domain, &mask);
+	if (prefer != -1 && DOMAINSET_ISSET(prefer, &mask))
+		return (prefer);
+	if (DOMAINSET_EMPTY(&mask))
+		panic("vm_phys_domain_match:  Impossible constraint");
+	return (DOMAINSET_FFS(&mask) - 1);
+#else
+	return (0);
+#endif
 }
 
 /*
@@ -296,7 +307,7 @@ int
 vm_phys_mem_affinity(int f, int t)
 {
 
-#ifdef VM_NUMA_ALLOC
+#ifdef NUMA
 	if (mem_locality == NULL)
 		return (-1);
 	if (f >= vm_ndomains || t >= vm_ndomains)
@@ -307,7 +318,7 @@ vm_phys_mem_affinity(int f, int t)
 #endif
 }
 
-#ifdef VM_NUMA_ALLOC
+#ifdef NUMA
 /*
  * Outputs the VM locality table.
  */
@@ -383,7 +394,7 @@ _vm_phys_create_seg(vm_paddr_t start, vm_paddr_t end, int domain)
 static void
 vm_phys_create_seg(vm_paddr_t start, vm_paddr_t end)
 {
-#ifdef VM_NUMA_ALLOC
+#ifdef NUMA
 	int i;
 
 	if (mem_affinity == NULL) {
@@ -613,6 +624,26 @@ vm_phys_alloc_pages(int domain, int pool, int order)
 	return (NULL);
 }
 
+int
+vm_phys_alloc_npages(int domain, int pool, vm_page_t *mp, int cnt)
+{
+	vm_page_t m;
+	int order, freelist;
+
+	for (freelist = 0; freelist < VM_NFREELIST; freelist++) {
+		for (order = fls(cnt) -1; order >= 0; order--) {
+			m = vm_phys_alloc_freelist_pages(domain, freelist,
+			    pool, order);
+			if (m != NULL) {
+				*mp = m;
+				return (1 << order);
+			}
+		}
+	}
+	*mp = NULL;
+	return (0);
+}
+
 /*
  * Allocate a contiguous, power of two-sized set of physical pages from the
  * specified free list.  The free list must be specified using one of the
@@ -643,7 +674,7 @@ vm_phys_alloc_freelist_pages(int domain, int freelist, int pool, int order)
 	if (flind < 0)
 		return (NULL);
 
-	mtx_assert(&vm_page_queue_free_mtx, MA_OWNED);
+	vm_domain_free_assert_locked(VM_DOMAIN(domain));
 	fl = &vm_phys_free_queues[domain][flind][pool][0];
 	for (oind = order; oind < VM_NFREEORDER; oind++) {
 		m = TAILQ_FIRST(&fl[oind].pl);
@@ -896,8 +927,8 @@ vm_phys_free_pages(vm_page_t m, int order)
 	    m, m->pool));
 	KASSERT(order < VM_NFREEORDER,
 	    ("vm_phys_free_pages: order %d is out of range", order));
-	mtx_assert(&vm_page_queue_free_mtx, MA_OWNED);
 	seg = &vm_phys_segs[m->segind];
+	vm_domain_free_assert_locked(VM_DOMAIN(seg->domain));
 	if (order < VM_NFREEORDER - 1) {
 		pa = VM_PAGE_TO_PHYS(m);
 		do {
@@ -935,7 +966,7 @@ vm_phys_free_contig(vm_page_t m, u_long npages)
 	 * Avoid unnecessary coalescing by freeing the pages in the largest
 	 * possible power-of-two-sized subsets.
 	 */
-	mtx_assert(&vm_page_queue_free_mtx, MA_OWNED);
+	vm_domain_free_assert_locked(vm_pagequeue_domain(m));
 	for (;; npages -= n) {
 		/*
 		 * Unsigned "min" is used here so that "order" is assigned
@@ -973,7 +1004,7 @@ vm_phys_free_contig(vm_page_t m, u_long npages)
  * be a power of two.
  */
 vm_page_t
-vm_phys_scan_contig(u_long npages, vm_paddr_t low, vm_paddr_t high,
+vm_phys_scan_contig(int domain, u_long npages, vm_paddr_t low, vm_paddr_t high,
     u_long alignment, vm_paddr_t boundary, int options)
 {
 	vm_paddr_t pa_end;
@@ -988,6 +1019,8 @@ vm_phys_scan_contig(u_long npages, vm_paddr_t low, vm_paddr_t high,
 		return (NULL);
 	for (segind = 0; segind < vm_phys_nsegs; segind++) {
 		seg = &vm_phys_segs[segind];
+		if (seg->domain != domain)
+			continue;
 		if (seg->start >= high)
 			break;
 		if (low >= seg->end)
@@ -1039,14 +1072,13 @@ vm_phys_unfree_page(vm_page_t m)
 	vm_page_t m_set, m_tmp;
 	int order;
 
-	mtx_assert(&vm_page_queue_free_mtx, MA_OWNED);
-
 	/*
 	 * First, find the contiguous, power of two-sized set of free
 	 * physical pages containing the given physical page "m" and
 	 * assign it to "m_set".
 	 */
 	seg = &vm_phys_segs[m->segind];
+	vm_domain_free_assert_locked(VM_DOMAIN(seg->domain));
 	for (m_set = m, order = 0; m_set->order == VM_NFREEORDER &&
 	    order < VM_NFREEORDER - 1; ) {
 		order++;
@@ -1110,7 +1142,7 @@ vm_phys_alloc_contig(int domain, u_long npages, vm_paddr_t low, vm_paddr_t high,
 	KASSERT(npages > 0, ("npages is 0"));
 	KASSERT(powerof2(alignment), ("alignment is not a power of 2"));
 	KASSERT(powerof2(boundary), ("boundary is not a power of 2"));
-	mtx_assert(&vm_page_queue_free_mtx, MA_OWNED);
+	vm_domain_free_assert_locked(VM_DOMAIN(domain));
 	if (low >= high)
 		return (NULL);
 	m_run = NULL;
@@ -1155,7 +1187,7 @@ vm_phys_alloc_seg_contig(struct vm_phys_seg *seg, u_long npages,
 	KASSERT(npages > 0, ("npages is 0"));
 	KASSERT(powerof2(alignment), ("alignment is not a power of 2"));
 	KASSERT(powerof2(boundary), ("boundary is not a power of 2"));
-	mtx_assert(&vm_page_queue_free_mtx, MA_OWNED);
+	vm_domain_free_assert_locked(VM_DOMAIN(seg->domain));
 	/* Compute the queue that is the best fit for npages. */
 	for (order = 0; (1 << order) < npages; order++);
 	/* Search for a run satisfying the specified conditions. */
@@ -1177,6 +1209,8 @@ vm_phys_alloc_seg_contig(struct vm_phys_seg *seg, u_long npages,
 					 */
 					pa = VM_PAGE_TO_PHYS(m_ret);
 					pa_end = pa + size;
+					if (pa_end < pa)
+						continue;
 					for (;;) {
 						pa += 1 << (PAGE_SHIFT +
 						    VM_NFREEORDER - 1);

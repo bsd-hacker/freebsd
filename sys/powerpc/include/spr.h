@@ -120,6 +120,20 @@
 #define	SPR_EIE			0x050	/* ..8 Exception Interrupt ??? */
 #define	SPR_EID			0x051	/* ..8 Exception Interrupt ??? */
 #define	SPR_NRI			0x052	/* ..8 Exception Interrupt ??? */
+#define	SPR_FSCR		0x099	/* Facility Status and Control Register */
+#define FSCR_IC_MASK		  0xFF00000000000000ULL	/* FSCR[0:7] is Interrupt Cause */
+#define FSCR_IC_FP		  0x0000000000000000ULL	/* FP unavailable */
+#define FSCR_IC_VSX		  0x0100000000000000ULL	/* VSX unavailable */
+#define FSCR_IC_DSCR		  0x0200000000000000ULL	/* Access to the DSCR at SPRs 3 or 17 */
+#define FSCR_IC_PM		  0x0300000000000000ULL	/* Read or write access of a Performance Monitor SPR in group A */
+#define FSCR_IC_BHRB		  0x0400000000000000ULL	/* Execution of a BHRB Instruction */
+#define FSCR_IC_HTM		  0x0500000000000000ULL	/* Access to a Transactional Memory */
+/* Reserved 0x0600000000000000ULL */
+#define FSCR_IC_EBB		  0x0700000000000000ULL	/* Access to Event-Based Branch */
+#define FSCR_IC_TAR		  0x0800000000000000ULL	/* Access to Target Address Register */
+#define FSCR_IC_STOP		  0x0900000000000000ULL	/* Access to the 'stop' instruction in privileged non-hypervisor state */
+#define FSCR_IC_MSG		  0x0A00000000000000ULL	/* Access to 'msgsndp' or 'msgclrp' instructions */
+#define FSCR_IC_SCV		  0x0C00000000000000ULL	/* Execution of a 'scv' instruction */
 #define	SPR_USPRG0		0x100	/* 4.. User SPR General 0 */
 #define	SPR_VRSAVE		0x100	/* .6. AltiVec VRSAVE */
 #define	SPR_SPRG0		0x110	/* 468 SPR General 0 */
@@ -170,6 +184,7 @@
 #define	  IBMPOWER3PLUS		  0x0041
 #define	  IBM970MP		  0x0044
 #define	  IBM970GX		  0x0045
+#define	  IBMPOWERPCA2		  0x0049
 #define	  IBMPOWER7PLUS		  0x004a
 #define	  IBMPOWER8E		  0x004b
 #define	  IBMPOWER8		  0x004d
@@ -199,6 +214,16 @@
 #define	  FSL_E300C3		  0x8085
 #define	  FSL_E300C4		  0x8086
 
+#define	SPR_LPCR		0x13e	/* Logical Partitioning Control */
+#define	  LPCR_LPES		0x008	/* Bit 60 */
+#define   LPCR_PECE_DRBL        (1ULL << 16)    /* Directed Privileged Doorbell */
+#define   LPCR_PECE_HDRBL       (1ULL << 15)    /* Directed Hypervisor Doorbell */
+#define   LPCR_PECE_EXT         (1ULL << 14)    /* External exceptions */
+#define   LPCR_PECE_DECR        (1ULL << 13)    /* Decrementer exceptions */
+#define   LPCR_PECE_ME          (1ULL << 12)    /* Machine Check and Hypervisor */
+                                                /* Maintenance exceptions */
+#define   LPCR_PECE_WAKESET     (LPCR_PECE_EXT | LPCR_PECE_DECR | LPCR_PECE_ME)
+ 
 #define	SPR_EPCR		0x133
 #define	  EPCR_EXTGS		  0x80000000
 #define	  EPCR_DTLBGS		  0x40000000
@@ -664,19 +689,7 @@
 #define	PMC970N_CYCLES		0xf /* Processor cycles */
 #define	PMC970N_ICOMP		0x9 /* Instructions completed */
 
-#if defined(AIM)
-
-#define	SPR_ESR			0x3d4	/* 4.. Exception Syndrome Register */
-#define	  ESR_MCI		  0x80000000 /* Machine check - instruction */
-#define	  ESR_PIL		  0x08000000 /* Program interrupt - illegal */
-#define	  ESR_PPR		  0x04000000 /* Program interrupt - privileged */
-#define	  ESR_PTR		  0x02000000 /* Program interrupt - trap */
-#define	  ESR_ST		  0x01000000 /* Store operation */
-#define	  ESR_DST		  0x00800000 /* Data storage interrupt - store fault */
-#define	  ESR_DIZ		  0x00800000 /* Data/instruction storage interrupt - zone fault */
-#define	  ESR_U0F		  0x00008000 /* Data storage interrupt - U0 fault */
-
-#elif defined(BOOKE)
+#if defined(BOOKE)
 
 #define	SPR_MCARU		0x239	/* ..8 Machine Check Address register upper bits */
 #define	SPR_MCSR		0x23c	/* ..8 Machine Check Syndrome register */

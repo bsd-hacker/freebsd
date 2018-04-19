@@ -274,8 +274,6 @@ found:
 	case IFT_BRIDGE:
 	case IFT_ETHER:
 	case IFT_L2VLAN:
-	case IFT_FDDI:
-	case IFT_ISO88025:
 	case IFT_ATM:
 	case IFT_IEEE1394:
 		/* IEEE802/EUI64 cases - what others? */
@@ -316,26 +314,6 @@ found:
 			in6->s6_addr[14] = addr[4];
 			in6->s6_addr[15] = addr[5];
 		}
-		break;
-
-	case IFT_ARCNET:
-		if (addrlen != 1) {
-			IF_ADDR_RUNLOCK(ifp);
-			return -1;
-		}
-		if (!addr[0]) {
-			IF_ADDR_RUNLOCK(ifp);
-			return -1;
-		}
-
-		bzero(&in6->s6_addr[8], 8);
-		in6->s6_addr[15] = addr[0];
-
-		/*
-		 * due to insufficient bitwidth, we mark it local.
-		 */
-		in6->s6_addr[8] &= ~EUI64_GBIT;	/* g bit to "individual" */
-		in6->s6_addr[8] |= EUI64_UBIT;	/* u bit to "local" */
 		break;
 
 	case IFT_GIF:
@@ -690,7 +668,6 @@ void
 in6_ifattach(struct ifnet *ifp, struct ifnet *altifp)
 {
 	struct in6_ifaddr *ia;
-	struct in6_addr in6;
 
 	if (ifp->if_afdata[AF_INET6] == NULL)
 		return;
@@ -723,18 +700,16 @@ in6_ifattach(struct ifnet *ifp, struct ifnet *altifp)
 
 	/*
 	 * assign loopback address for loopback interface.
-	 * XXX multiple loopback interface case.
 	 */
 	if ((ifp->if_flags & IFF_LOOPBACK) != 0) {
-		struct ifaddr *ifa;
-
-		in6 = in6addr_loopback;
-		ifa = (struct ifaddr *)in6ifa_ifpwithaddr(ifp, &in6);
-		if (ifa == NULL) {
-			if (in6_ifattach_loopback(ifp) != 0)
-				return;
-		} else
-			ifa_free(ifa);
+		/*
+		 * check that loopback address doesn't exist yet.
+		 */
+		ia = in6ifa_ifwithaddr(&in6addr_loopback, 0);
+		if (ia == NULL)
+			in6_ifattach_loopback(ifp);
+		else
+			ifa_free(&ia->ia_ifa);
 	}
 
 	/*
@@ -742,18 +717,10 @@ in6_ifattach(struct ifnet *ifp, struct ifnet *altifp)
 	 */
 	if (!(ND_IFINFO(ifp)->flags & ND6_IFF_IFDISABLED) &&
 	    ND_IFINFO(ifp)->flags & ND6_IFF_AUTO_LINKLOCAL) {
-		int error;
-
 		ia = in6ifa_ifpforlinklocal(ifp, 0);
-		if (ia == NULL) {
-			error = in6_ifattach_linklocal(ifp, altifp);
-#if 0
-			if (error)
-				log(LOG_NOTICE, "in6_ifattach_linklocal: "
-				    "failed to add a link-local addr to %s\n",
-				    if_name(ifp));
-#endif
-		} else
+		if (ia == NULL)
+			in6_ifattach_linklocal(ifp, altifp);
+		else
 			ifa_free(&ia->ia_ifa);
 	}
 

@@ -42,7 +42,6 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_atpic.h"
-#include "opt_compat.h"
 #include "opt_cpu.h"
 #include "opt_ddb.h"
 #include "opt_inet.h"
@@ -85,6 +84,9 @@ __FBSDID("$FreeBSD$");
 #ifdef SMP
 #include <machine/smp.h>
 #endif
+#ifdef CPU_ELAN
+#include <machine/elan_mmcr.h>
+#endif
 #include <x86/acpica_machdep.h>
 
 #include <vm/vm.h>
@@ -96,9 +98,17 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_pager.h>
 #include <vm/vm_param.h>
 
+#include <isa/isareg.h>
+
 #define	STATE_RUNNING	0x0
 #define	STATE_MWAIT	0x1
 #define	STATE_SLEEPING	0x2
+
+#ifdef SMP
+static u_int	cpu_reset_proxyid;
+static volatile u_int	cpu_reset_proxy_active;
+#endif
+
 
 /*
  * Machine dependent boot() routine
@@ -142,6 +152,12 @@ acpi_cpu_idle_mwait(uint32_t mwait_hint)
 	int *state;
 
 	/*
+	 * A comment in Linux patch claims that 'CPUs run faster with
+	 * speculation protection disabled. All CPU threads in a core
+	 * must disable speculation protection for it to be
+	 * disabled. Disable it while we are idle so the other
+	 * hyperthread can run fast.'
+	 *
 	 * XXXKIB.  Software coordination mode should be supported,
 	 * but all Intel CPUs provide hardware coordination.
 	 */
@@ -150,9 +166,11 @@ acpi_cpu_idle_mwait(uint32_t mwait_hint)
 	KASSERT(*state == STATE_SLEEPING,
 		("cpu_mwait_cx: wrong monitorbuf state"));
 	*state = STATE_MWAIT;
+	handle_ibrs_entry();
 	cpu_monitor(state, 0, 0);
 	if (*state == STATE_MWAIT)
 		cpu_mwait(MWAIT_INTRBREAK, mwait_hint);
+	handle_ibrs_exit();
 
 	/*
 	 * We should exit on any event that interrupts mwait, because
@@ -232,6 +250,141 @@ cpu_halt(void)
 {
 	for (;;)
 		halt();
+}
+
+static void
+cpu_reset_real(void)
+{
+	struct region_descriptor null_idt;
+	int b;
+
+	disable_intr();
+#ifdef CPU_ELAN
+	if (elan_mmcr != NULL)
+		elan_mmcr->RESCFG = 1;
+#endif
+#ifdef __i386__
+	if (cpu == CPU_GEODE1100) {
+		/* Attempt Geode's own reset */
+		outl(0xcf8, 0x80009044ul);
+		outl(0xcfc, 0xf);
+	}
+#endif
+#if !defined(BROKEN_KEYBOARD_RESET)
+	/*
+	 * Attempt to do a CPU reset via the keyboard controller,
+	 * do not turn off GateA20, as any machine that fails
+	 * to do the reset here would then end up in no man's land.
+	 */
+	outb(IO_KBD + 4, 0xFE);
+	DELAY(500000);	/* wait 0.5 sec to see if that did it */
+#endif
+
+	/*
+	 * Attempt to force a reset via the Reset Control register at
+	 * I/O port 0xcf9.  Bit 2 forces a system reset when it
+	 * transitions from 0 to 1.  Bit 1 selects the type of reset
+	 * to attempt: 0 selects a "soft" reset, and 1 selects a
+	 * "hard" reset.  We try a "hard" reset.  The first write sets
+	 * bit 1 to select a "hard" reset and clears bit 2.  The
+	 * second write forces a 0 -> 1 transition in bit 2 to trigger
+	 * a reset.
+	 */
+	outb(0xcf9, 0x2);
+	outb(0xcf9, 0x6);
+	DELAY(500000);  /* wait 0.5 sec to see if that did it */
+
+	/*
+	 * Attempt to force a reset via the Fast A20 and Init register
+	 * at I/O port 0x92.  Bit 1 serves as an alternate A20 gate.
+	 * Bit 0 asserts INIT# when set to 1.  We are careful to only
+	 * preserve bit 1 while setting bit 0.  We also must clear bit
+	 * 0 before setting it if it isn't already clear.
+	 */
+	b = inb(0x92);
+	if (b != 0xff) {
+		if ((b & 0x1) != 0)
+			outb(0x92, b & 0xfe);
+		outb(0x92, b | 0x1);
+		DELAY(500000);  /* wait 0.5 sec to see if that did it */
+	}
+
+	printf("No known reset method worked, attempting CPU shutdown\n");
+	DELAY(1000000); /* wait 1 sec for printf to complete */
+
+	/* Wipe the IDT. */
+	null_idt.rd_limit = 0;
+	null_idt.rd_base = 0;
+	lidt(&null_idt);
+
+	/* "good night, sweet prince .... <THUNK!>" */
+	breakpoint();
+
+	/* NOTREACHED */
+	while(1);
+}
+
+#ifdef SMP
+static void
+cpu_reset_proxy(void)
+{
+
+	cpu_reset_proxy_active = 1;
+	while (cpu_reset_proxy_active == 1)
+		ia32_pause(); /* Wait for other cpu to see that we've started */
+
+	printf("cpu_reset_proxy: Stopped CPU %d\n", cpu_reset_proxyid);
+	DELAY(1000000);
+	cpu_reset_real();
+}
+#endif
+
+void
+cpu_reset(void)
+{
+#ifdef SMP
+	cpuset_t map;
+	u_int cnt;
+
+	if (smp_started) {
+		map = all_cpus;
+		CPU_CLR(PCPU_GET(cpuid), &map);
+		CPU_NAND(&map, &stopped_cpus);
+		if (!CPU_EMPTY(&map)) {
+			printf("cpu_reset: Stopping other CPUs\n");
+			stop_cpus(map);
+		}
+
+		if (PCPU_GET(cpuid) != 0) {
+			cpu_reset_proxyid = PCPU_GET(cpuid);
+			cpustop_restartfunc = cpu_reset_proxy;
+			cpu_reset_proxy_active = 0;
+			printf("cpu_reset: Restarting BSP\n");
+
+			/* Restart CPU #0. */
+			CPU_SETOF(0, &started_cpus);
+			wmb();
+
+			cnt = 0;
+			while (cpu_reset_proxy_active == 0 && cnt < 10000000) {
+				ia32_pause();
+				cnt++;	/* Wait for BSP to announce restart */
+			}
+			if (cpu_reset_proxy_active == 0) {
+				printf("cpu_reset: Failed to restart BSP\n");
+			} else {
+				cpu_reset_proxy_active = 2;
+				while (1)
+					ia32_pause();
+				/* NOTREACHED */
+			}
+		}
+
+		DELAY(1000000);
+	}
+#endif
+	cpu_reset_real();
+	/* NOTREACHED */
 }
 
 bool
@@ -569,3 +722,73 @@ nmi_handle_intr(u_int type, struct trapframe *frame)
 	nmi_call_kdb(PCPU_GET(cpuid), type, frame);
 #endif
 }
+
+int hw_ibrs_active;
+int hw_ibrs_disable = 1;
+
+SYSCTL_INT(_hw, OID_AUTO, ibrs_active, CTLFLAG_RD, &hw_ibrs_active, 0,
+    "Indirect Branch Restricted Speculation active");
+
+void
+hw_ibrs_recalculate(void)
+{
+	uint64_t v;
+
+	if ((cpu_ia32_arch_caps & IA32_ARCH_CAP_IBRS_ALL) != 0) {
+		if (hw_ibrs_disable) {
+			v= rdmsr(MSR_IA32_SPEC_CTRL);
+			v &= ~(uint64_t)IA32_SPEC_CTRL_IBRS;
+			wrmsr(MSR_IA32_SPEC_CTRL, v);
+		} else {
+			v= rdmsr(MSR_IA32_SPEC_CTRL);
+			v |= IA32_SPEC_CTRL_IBRS;
+			wrmsr(MSR_IA32_SPEC_CTRL, v);
+		}
+		return;
+	}
+	hw_ibrs_active = (cpu_stdext_feature3 & CPUID_STDEXT3_IBPB) != 0 &&
+	    !hw_ibrs_disable;
+}
+
+static int
+hw_ibrs_disable_handler(SYSCTL_HANDLER_ARGS)
+{
+	int error, val;
+
+	val = hw_ibrs_disable;
+	error = sysctl_handle_int(oidp, &val, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	hw_ibrs_disable = val != 0;
+	hw_ibrs_recalculate();
+	return (0);
+}
+SYSCTL_PROC(_hw, OID_AUTO, ibrs_disable, CTLTYPE_INT | CTLFLAG_RWTUN |
+    CTLFLAG_NOFETCH | CTLFLAG_MPSAFE, NULL, 0, hw_ibrs_disable_handler, "I",
+    "Disable Indirect Branch Restricted Speculation");
+
+/*
+ * Enable and restore kernel text write permissions.
+ * Callers must ensure that disable_wp()/restore_wp() are executed
+ * without rescheduling on the same core.
+ */
+bool
+disable_wp(void)
+{
+	u_int cr0;
+
+	cr0 = rcr0();
+	if ((cr0 & CR0_WP) == 0)
+		return (false);
+	load_cr0(cr0 & ~CR0_WP);
+	return (true);
+}
+
+void
+restore_wp(bool old_wp)
+{
+
+	if (old_wp)
+		load_cr0(rcr0() | CR0_WP);
+}
+

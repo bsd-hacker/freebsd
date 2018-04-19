@@ -108,16 +108,10 @@ alloc_nm_rxq_hwq(struct vi_info *vi, struct sge_nm_rxq *nm_rxq, int cong)
 	    V_FW_IQ_CMD_VFN(0));
 	c.alloc_to_len16 = htobe32(F_FW_IQ_CMD_ALLOC | F_FW_IQ_CMD_IQSTART |
 	    FW_LEN16(c));
-	if (vi->flags & INTR_RXQ) {
-		KASSERT(nm_rxq->intr_idx < sc->intr_count,
-		    ("%s: invalid direct intr_idx %d", __func__,
-		    nm_rxq->intr_idx));
-		v = V_FW_IQ_CMD_IQANDSTINDEX(nm_rxq->intr_idx);
-	} else {
-		CXGBE_UNIMPLEMENTED(__func__);	/* XXXNM: needs review */
-		v = V_FW_IQ_CMD_IQANDSTINDEX(nm_rxq->intr_idx) |
-		    F_FW_IQ_CMD_IQANDST;
-	}
+	MPASS(!forwarding_intr_to_fwq(sc));
+	KASSERT(nm_rxq->intr_idx < sc->intr_count,
+	    ("%s: invalid direct intr_idx %d", __func__, nm_rxq->intr_idx));
+	v = V_FW_IQ_CMD_IQANDSTINDEX(nm_rxq->intr_idx);
 	c.type_to_iqandstindex = htobe32(v |
 	    V_FW_IQ_CMD_TYPE(FW_IQ_TYPE_FL_INT_CAP) |
 	    V_FW_IQ_CMD_VIID(vi->viid) |
@@ -350,7 +344,7 @@ cxgbe_netmap_on(struct adapter *sc, struct vi_info *vi, struct ifnet *ifp,
 	for_each_nm_rxq(vi, i, nm_rxq) {
 		struct irq *irq = &sc->irq[vi->first_intr + i];
 
-		kring = &na->rx_rings[nm_rxq->nid];
+		kring = na->rx_rings[nm_rxq->nid];
 		if (!nm_kring_pending_on(kring) ||
 		    nm_rxq->iq_cntxt_id != INVALID_NM_RXQ_CNTXT_ID)
 			continue;
@@ -381,7 +375,7 @@ cxgbe_netmap_on(struct adapter *sc, struct vi_info *vi, struct ifnet *ifp,
 	}
 
 	for_each_nm_txq(vi, i, nm_txq) {
-		kring = &na->tx_rings[nm_txq->nid];
+		kring = na->tx_rings[nm_txq->nid];
 		if (!nm_kring_pending_on(kring) ||
 		    nm_txq->cntxt_id != INVALID_NM_TXQ_CNTXT_ID)
 			continue;
@@ -433,7 +427,7 @@ cxgbe_netmap_off(struct adapter *sc, struct vi_info *vi, struct ifnet *ifp,
 	for_each_nm_txq(vi, i, nm_txq) {
 		struct sge_qstat *spg = (void *)&nm_txq->desc[nm_txq->sidx];
 
-		kring = &na->tx_rings[nm_txq->nid];
+		kring = na->tx_rings[nm_txq->nid];
 		if (!nm_kring_pending_off(kring) ||
 		    nm_txq->cntxt_id == INVALID_NM_TXQ_CNTXT_ID)
 			continue;
@@ -451,7 +445,7 @@ cxgbe_netmap_off(struct adapter *sc, struct vi_info *vi, struct ifnet *ifp,
 	for_each_nm_rxq(vi, i, nm_rxq) {
 		struct irq *irq = &sc->irq[vi->first_intr + i];
 
-		kring = &na->rx_rings[nm_rxq->nid];
+		kring = na->rx_rings[nm_rxq->nid];
 		if (!nm_kring_pending_off(kring) ||
 		    nm_rxq->iq_cntxt_id == INVALID_NM_RXQ_CNTXT_ID)
 			continue;
@@ -939,7 +933,7 @@ t4_nm_intr(void *arg)
 	struct adapter *sc = vi->pi->adapter;
 	struct ifnet *ifp = vi->ifp;
 	struct netmap_adapter *na = NA(ifp);
-	struct netmap_kring *kring = &na->rx_rings[nm_rxq->nid];
+	struct netmap_kring *kring = na->rx_rings[nm_rxq->nid];
 	struct netmap_ring *ring = kring->ring;
 	struct iq_desc *d = &nm_rxq->iq_desc[nm_rxq->iq_cidx];
 	const void *cpl;
@@ -980,7 +974,7 @@ t4_nm_intr(void *arg)
 			case CPL_RX_PKT:
 				ring->slot[fl_cidx].len = G_RSPD_LEN(lq) -
 				    sc->params.sge.fl_pktshift;
-				ring->slot[fl_cidx].flags = kring->nkr_slot_flags;
+				ring->slot[fl_cidx].flags = 0;
 				fl_cidx += (lq & F_RSPD_NEWBUF) ? 1 : 0;
 				fl_credits += (lq & F_RSPD_NEWBUF) ? 1 : 0;
 				if (__predict_false(fl_cidx == nm_rxq->fl_sidx))

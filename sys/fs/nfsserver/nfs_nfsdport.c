@@ -469,7 +469,7 @@ nfsvno_namei(struct nfsrv_descript *nd, struct nameidata *ndp,
 	struct iovec aiov;
 	struct uio auio;
 	int lockleaf = (cnp->cn_flags & LOCKLEAF) != 0, linklen;
-	int error = 0, crossmnt;
+	int error = 0;
 	char *cp;
 
 	*retdirp = NULL;
@@ -494,7 +494,6 @@ nfsvno_namei(struct nfsrv_descript *nd, struct nameidata *ndp,
 	if (NFSVNO_EXRDONLY(exp))
 		cnp->cn_flags |= RDONLY;
 	ndp->ni_segflg = UIO_SYSSPACE;
-	crossmnt = 1;
 
 	if (nd->nd_flag & ND_PUBLOOKUP) {
 		ndp->ni_loopcnt = 0;
@@ -522,7 +521,6 @@ nfsvno_namei(struct nfsrv_descript *nd, struct nameidata *ndp,
 		 * the mount point, unless nfsrv_enable_crossmntpt is set.
 		 */
 		cnp->cn_flags |= NOCROSSMOUNT;
-		crossmnt = 0;
 	}
 
 	/*
@@ -792,7 +790,7 @@ nfsvno_read(struct vnode *vp, off_t off, int cnt, struct ucred *cred,
 			m3 = m;
 		m2 = m;
 	}
-	MALLOC(iv, struct iovec *, i * sizeof (struct iovec),
+	iv = malloc(i * sizeof (struct iovec),
 	    M_TEMP, M_WAITOK);
 	uiop->uio_iov = iv2 = iv;
 	m = m3;
@@ -823,7 +821,7 @@ nfsvno_read(struct vnode *vp, off_t off, int cnt, struct ucred *cred,
 	/* XXX KDM make this more systematic? */
 	nfsstatsv1.srvbytes[NFSV4OP_READ] += uiop->uio_resid;
 	error = VOP_READ(vp, uiop, IO_NODELOCKED | ioflag, cred);
-	FREE((caddr_t)iv2, M_TEMP);
+	free(iv2, M_TEMP);
 	if (error) {
 		m_freem(m3);
 		*mpp = NULL;
@@ -871,7 +869,7 @@ nfsvno_write(struct vnode *vp, off_t off, int retlen, int cnt, int *stable,
 		return (error);
 	}
 
-	MALLOC(ivp, struct iovec *, cnt * sizeof (struct iovec), M_TEMP,
+	ivp = malloc(cnt * sizeof (struct iovec), M_TEMP,
 	    M_WAITOK);
 	uiop->uio_iov = iv = ivp;
 	uiop->uio_iovcnt = cnt;
@@ -910,7 +908,7 @@ nfsvno_write(struct vnode *vp, off_t off, int retlen, int cnt, int *stable,
 	error = VOP_WRITE(vp, uiop, ioflags, cred);
 	if (error == 0)
 		nh->nh_nextoff = uiop->uio_offset;
-	FREE((caddr_t)iv, M_TEMP);
+	free(iv, M_TEMP);
 
 	NFSEXITCODE(error);
 	return (error);
@@ -1158,7 +1156,7 @@ out:
 
 /*
  * Parse symbolic link arguments.
- * This function has an ugly side effect. It will MALLOC() an area for
+ * This function has an ugly side effect. It will malloc() an area for
  * the symlink and set iov_base to point to it, only if it succeeds.
  * So, if it returns with uiop->uio_iov->iov_base != NULL, that must
  * be FREE'd later.
@@ -1183,7 +1181,7 @@ nfsvno_getsymlink(struct nfsrv_descript *nd, struct nfsvattr *nvap,
 		error = EBADRPC;
 		goto nfsmout;
 	}
-	MALLOC(pathcp, caddr_t, len + 1, M_TEMP, M_WAITOK);
+	pathcp = malloc(len + 1, M_TEMP, M_WAITOK);
 	error = nfsrv_mtostr(nd, pathcp, len);
 	if (error)
 		goto nfsmout;
@@ -1830,11 +1828,11 @@ nfsrvd_readdir(struct nfsrv_descript *nd, int isdgram,
 		goto out;
 	}
 	is_ufs = strcmp(vp->v_mount->mnt_vfc->vfc_name, "ufs") == 0;
-	MALLOC(rbuf, caddr_t, siz, M_TEMP, M_WAITOK);
+	rbuf = malloc(siz, M_TEMP, M_WAITOK);
 again:
 	eofflag = 0;
 	if (cookies) {
-		free((caddr_t)cookies, M_TEMP);
+		free(cookies, M_TEMP);
 		cookies = NULL;
 	}
 
@@ -1866,9 +1864,9 @@ again:
 	 */
 	if (nd->nd_repstat) {
 		vput(vp);
-		free((caddr_t)rbuf, M_TEMP);
+		free(rbuf, M_TEMP);
 		if (cookies)
-			free((caddr_t)cookies, M_TEMP);
+			free(cookies, M_TEMP);
 		if (nd->nd_flag & ND_NFSV3)
 			nfsrv_postopattr(nd, getret, &at);
 		goto out;
@@ -1889,8 +1887,8 @@ again:
 		}
 		*tl++ = newnfs_false;
 		*tl = newnfs_true;
-		FREE((caddr_t)rbuf, M_TEMP);
-		FREE((caddr_t)cookies, M_TEMP);
+		free(rbuf, M_TEMP);
+		free(cookies, M_TEMP);
 		goto out;
 	}
 
@@ -1988,8 +1986,8 @@ again:
 		*tl = newnfs_true;
 	else
 		*tl = newnfs_false;
-	FREE((caddr_t)rbuf, M_TEMP);
-	FREE((caddr_t)cookies, M_TEMP);
+	free(rbuf, M_TEMP);
+	free(cookies, M_TEMP);
 
 out:
 	NFSEXITCODE2(0, nd);
@@ -2108,11 +2106,11 @@ nfsrvd_readdirplus(struct nfsrv_descript *nd, int isdgram,
 	is_ufs = strcmp(vp->v_mount->mnt_vfc->vfc_name, "ufs") == 0;
 	is_zfs = strcmp(vp->v_mount->mnt_vfc->vfc_name, "zfs") == 0;
 
-	MALLOC(rbuf, caddr_t, siz, M_TEMP, M_WAITOK);
+	rbuf = malloc(siz, M_TEMP, M_WAITOK);
 again:
 	eofflag = 0;
 	if (cookies) {
-		free((caddr_t)cookies, M_TEMP);
+		free(cookies, M_TEMP);
 		cookies = NULL;
 	}
 
@@ -2140,8 +2138,8 @@ again:
 	if (nd->nd_repstat) {
 		vput(vp);
 		if (cookies)
-			free((caddr_t)cookies, M_TEMP);
-		free((caddr_t)rbuf, M_TEMP);
+			free(cookies, M_TEMP);
+		free(rbuf, M_TEMP);
 		if (nd->nd_flag & ND_NFSV3)
 			nfsrv_postopattr(nd, getret, &at);
 		goto out;
@@ -2159,8 +2157,8 @@ again:
 		tl += 2;
 		*tl++ = newnfs_false;
 		*tl = newnfs_true;
-		free((caddr_t)cookies, M_TEMP);
-		free((caddr_t)rbuf, M_TEMP);
+		free(cookies, M_TEMP);
+		free(rbuf, M_TEMP);
 		goto out;
 	}
 
@@ -2500,8 +2498,8 @@ again:
 		else
 			*tl = newnfs_false;
 	}
-	FREE((caddr_t)cookies, M_TEMP);
-	FREE((caddr_t)rbuf, M_TEMP);
+	free(cookies, M_TEMP);
+	free(rbuf, M_TEMP);
 
 out:
 	NFSEXITCODE2(0, nd);
@@ -3463,7 +3461,7 @@ nfssvc_srvcall(struct thread *p, struct nfssvc_args *uap, struct ucred *cred)
 		    nfsrv_dumpclients(dumpclients, dumplist.ndl_size);
 		    error = copyout(dumpclients,
 			CAST_USER_ADDR_T(dumplist.ndl_list), len);
-		    free((caddr_t)dumpclients, M_TEMP);
+		    free(dumpclients, M_TEMP);
 		}
 	} else if (uap->flag & NFSSVC_DUMPLOCKS) {
 		error = copyin(uap->argp, (caddr_t)&dumplocklist,
@@ -3484,7 +3482,7 @@ nfssvc_srvcall(struct thread *p, struct nfssvc_args *uap, struct ucred *cred)
 			vput(nd.ni_vp);
 			error = copyout(dumplocks,
 			    CAST_USER_ADDR_T(dumplocklist.ndllck_list), len);
-			free((caddr_t)dumplocks, M_TEMP);
+			free(dumplocks, M_TEMP);
 		}
 	} else if (uap->flag & NFSSVC_BACKUPSTABLE) {
 		procp = p->td_proc;

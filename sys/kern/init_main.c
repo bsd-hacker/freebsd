@@ -87,9 +87,9 @@ __FBSDID("$FreeBSD$");
 
 #include <vm/vm.h>
 #include <vm/vm_param.h>
+#include <vm/vm_extern.h>
 #include <vm/pmap.h>
 #include <vm/vm_map.h>
-#include <vm/vm_domain.h>
 #include <sys/copyright.h>
 
 #include <ddb/ddb.h>
@@ -220,6 +220,8 @@ mi_startup(void)
 	int verbose;
 #endif
 
+	TSENTER();
+
 	if (boothowto & RB_VERBOSE)
 		bootverbose++;
 
@@ -312,6 +314,8 @@ restart:
 			goto restart;
 		}
 	}
+
+	TSEXIT();	/* Here so we don't overlap with start_init. */
 
 	mtx_assert(&Giant, MA_OWNED | MA_NOTRECURSED);
 	mtx_unlock(&Giant);
@@ -493,10 +497,7 @@ proc0_init(void *dummy __unused)
 	td->td_flags = TDF_INMEM;
 	td->td_pflags = TDP_KTHREAD;
 	td->td_cpuset = cpuset_thread0();
-	vm_domain_policy_init(&td->td_vm_dom_policy);
-	vm_domain_policy_set(&td->td_vm_dom_policy, VM_POLICY_NONE, -1);
-	vm_domain_policy_init(&p->p_vm_dom_policy);
-	vm_domain_policy_set(&p->p_vm_dom_policy, VM_POLICY_NONE, -1);
+	td->td_domain.dr_policy = td->td_cpuset->cs_domain;
 	prison0_init();
 	p->p_peers = 0;
 	p->p_leader = p;
@@ -555,7 +556,7 @@ proc0_init(void *dummy __unused)
 	p->p_limit->pl_rlimit[RLIMIT_STACK].rlim_cur = dflssiz;
 	p->p_limit->pl_rlimit[RLIMIT_STACK].rlim_max = maxssiz;
 	/* Cast to avoid overflow on i386/PAE. */
-	pageablemem = ptoa((vm_paddr_t)vm_cnt.v_free_count);
+	pageablemem = ptoa((vm_paddr_t)vm_free_count());
 	p->p_limit->pl_rlimit[RLIMIT_RSS].rlim_cur =
 	    p->p_limit->pl_rlimit[RLIMIT_RSS].rlim_max = pageablemem;
 	p->p_limit->pl_rlimit[RLIMIT_MEMLOCK].rlim_cur = pageablemem / 3;
@@ -702,9 +703,7 @@ start_init(void *dummy)
 	struct thread *td;
 	struct proc *p;
 
-	mtx_lock(&Giant);
-
-	GIANT_REQUIRED;
+	TSENTER();	/* Here so we don't overlap with mi_startup. */
 
 	td = curthread;
 	p = td->td_proc;
@@ -798,7 +797,7 @@ start_init(void *dummy)
 		 * to user mode as init!
 		 */
 		if ((error = sys_execve(td, &args)) == EJUSTRETURN) {
-			mtx_unlock(&Giant);
+			TSEXIT();
 			return;
 		}
 		if (error != ENOENT)

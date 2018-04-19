@@ -44,6 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/unistd.h>
 #include <sys/wait.h>
 #include <sys/sched.h>
+#include <sys/tslog.h>
 #include <vm/vm.h>
 #include <vm/vm_extern.h>
 
@@ -124,12 +125,13 @@ kproc_create(void (*func)(void *), void *arg,
 #ifdef KTR
 	sched_clear_tdname(td);
 #endif
+	TSTHREAD(td, td->td_name);
 
 	/* call the processes' main()... */
 	cpu_fork_kthread_handler(td, func, arg);
 
 	/* Avoid inheriting affinity from a random parent. */
-	cpuset_setthread(td->td_tid, cpuset_root);
+	cpuset_kernthread(td);
 	thread_lock(td);
 	TD_SET_CAN_RUN(td);
 	sched_prio(td, PVM);
@@ -283,6 +285,8 @@ kthread_add(void (*func)(void *), void *arg, struct proc *p,
 	vsnprintf(newtd->td_name, sizeof(newtd->td_name), fmt, ap);
 	va_end(ap);
 
+	TSTHREAD(newtd, newtd->td_name);
+
 	newtd->td_proc = p;  /* needed for cpu_copy_thread */
 	/* might be further optimized for kthread */
 	cpu_copy_thread(newtd, oldtd);
@@ -305,7 +309,7 @@ kthread_add(void (*func)(void *), void *arg, struct proc *p,
 	tidhash_add(newtd);
 
 	/* Avoid inheriting affinity from a random parent. */
-	cpuset_setthread(newtd->td_tid, cpuset_root);
+	cpuset_kernthread(newtd);
 
 	/* Delay putting it on the run queue until now. */
 	if (!(flags & RFSTOPPED)) {

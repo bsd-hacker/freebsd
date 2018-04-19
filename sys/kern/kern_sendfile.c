@@ -30,8 +30,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include "opt_compat.h"
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/capsicum.h>
@@ -128,6 +126,7 @@ SYSCTL_PROC(_kern_ipc, OID_AUTO, sfstat, CTLTYPE_OPAQUE | CTLFLAG_RW,
 static void
 sendfile_free_page(vm_page_t pg, bool nocache)
 {
+	bool freed;
 
 	vm_page_lock(pg);
 	/*
@@ -136,15 +135,15 @@ sendfile_free_page(vm_page_t pg, bool nocache)
 	 * responsible for freeing the page.  In 'noncache' case try to free
 	 * the page, but only if it is cheap to.
 	 */
-	if (vm_page_unwire(pg, nocache ? PQ_NONE : PQ_INACTIVE)) {
+	if (vm_page_unwire_noq(pg)) {
 		vm_object_t obj;
 
 		if ((obj = pg->object) == NULL)
 			vm_page_free(pg);
-		else if (nocache) {
-			if (!vm_page_xbusied(pg) && VM_OBJECT_TRYWLOCK(obj)) {
-				bool freed;
-
+		else {
+			freed = false;
+			if (nocache && !vm_page_xbusied(pg) &&
+			    VM_OBJECT_TRYWLOCK(obj)) {
 				/* Only free unmapped pages. */
 				if (obj->ref_count == 0 ||
 				    !pmap_page_is_mapped(pg))
@@ -153,13 +152,22 @@ sendfile_free_page(vm_page_t pg, bool nocache)
 					 * locked cannot be relied upon.
 					 */
 					freed = vm_page_try_to_free(pg);
-				else
-					freed = false;
 				VM_OBJECT_WUNLOCK(obj);
-				if (!freed)
+			}
+			if (!freed) {
+				/*
+				 * If we were asked to not cache the page, place
+				 * it near the head of the inactive queue so
+				 * that it is reclaimed sooner.  Otherwise,
+				 * maintain LRU.
+				 */
+				if (nocache)
 					vm_page_deactivate_noreuse(pg);
-			} else
-				vm_page_deactivate_noreuse(pg);
+				else if (pg->queue == PQ_ACTIVE)
+					vm_page_reference(pg);
+				else
+					vm_page_deactivate(pg);
+			}
 		}
 	}
 	vm_page_unlock(pg);
@@ -273,6 +281,7 @@ sendfile_iodone(void *arg, vm_page_t *pg, int count, int error)
 	if (!refcount_release(&sfio->nios))
 		return;
 
+	CURVNET_SET(so->so_vnet);
 	if (sfio->error) {
 		struct mbuf *m;
 
@@ -293,15 +302,13 @@ sendfile_iodone(void *arg, vm_page_t *pg, int count, int error)
 		m = sfio->m;
 		for (int i = 0; i < sfio->npages; i++)
 			m = m_free(m);
-	} else {
-		CURVNET_SET(so->so_vnet);
+	} else
 		(void )(so->so_proto->pr_usrreqs->pru_ready)(so, sfio->m,
 		    sfio->npages);
-		CURVNET_RESTORE();
-	}
 
 	SOCK_LOCK(so);
 	sorele(so);
+	CURVNET_RESTORE();
 	free(sfio, M_TEMP);
 }
 
