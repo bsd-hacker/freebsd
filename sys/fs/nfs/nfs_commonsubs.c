@@ -77,6 +77,8 @@ NFSNAMEIDMUTEX;
 NFSSOCKMUTEX;
 extern int nfsrv_lughashsize;
 extern struct mtx nfsrv_dslock_mtx;
+extern volatile int nfsrv_devidcnt;
+extern int nfscl_debuglevel;
 extern struct nfsdevicehead nfsrv_devidhead;
 
 SYSCTL_DECL(_vfs_nfs);
@@ -491,7 +493,7 @@ nfsm_fhtom(struct nfsrv_descript *nd, u_int8_t *fhp, int size, int set_true)
 {
 	u_int32_t *tl;
 	u_int8_t *cp;
-	int fullsiz, bytesize = 0;
+	int fullsiz, rem, bytesize = 0;
 
 	if (size == 0)
 		size = NFSX_MYFH;
@@ -508,6 +510,7 @@ nfsm_fhtom(struct nfsrv_descript *nd, u_int8_t *fhp, int size, int set_true)
 	case ND_NFSV3:
 	case ND_NFSV4:
 		fullsiz = NFSM_RNDUP(size);
+		rem = fullsiz - size;
 		if (set_true) {
 		    bytesize = 2 * NFSX_UNSIGNED + fullsiz;
 		    NFSM_BUILD(tl, u_int32_t *, NFSX_UNSIGNED);
@@ -1790,15 +1793,13 @@ nfsv4_loadattr(struct nfsrv_descript *nd, vnode_t vp,
 				     j != NFSLAYOUT_NFSV4_1_FILES)))
 					*retcmpp = NFSERR_NOTSAME;
 			}
-			NFSDDSLOCK();
-			if (TAILQ_EMPTY(&nfsrv_devidhead)) {
+			if (nfsrv_devidcnt == 0) {
 				if (compare && !(*retcmpp) && i > 0)
 					*retcmpp = NFSERR_NOTSAME;
 			} else {
 				if (compare && !(*retcmpp) && i != 1)
 					*retcmpp = NFSERR_NOTSAME;
 			}
-			NFSDDSUNLOCK();
 			break;
 		case NFSATTRBIT_LAYOUTALIGNMENT:
 		case NFSATTRBIT_LAYOUTBLKSIZE:
@@ -2556,12 +2557,10 @@ nfsv4_fillattr(struct nfsrv_descript *nd, struct mount *mp, vnode_t vp,
 			break;
 		case NFSATTRBIT_FSLAYOUTTYPE:
 		case NFSATTRBIT_LAYOUTTYPE:
-			NFSDDSLOCK();
-			if (TAILQ_EMPTY(&nfsrv_devidhead))
+			if (nfsrv_devidcnt == 0)
 				siz = 1;
 			else
 				siz = 2;
-			NFSDDSUNLOCK();
 			if (siz == 2) {
 				NFSM_BUILD(tl, u_int32_t *, 2 * NFSX_UNSIGNED);
 				*tl++ = txdr_unsigned(1);	/* One entry. */
@@ -4307,5 +4306,51 @@ nfsv4_freeslot(struct nfsclsession *sep, int slot)
 	sep->nfsess_slots &= ~bitval;
 	wakeup(&sep->nfsess_slots);
 	mtx_unlock(&sep->nfsess_mtx);
+}
+
+/*
+ * Search for a matching pnfsd mirror device structure, base on the nmp arg.
+ * Return one if found, NULL otherwise.
+ */
+struct nfsdevice *
+nfsv4_findmirror(struct nfsmount *nmp, struct nfsdevice **fndpardsp)
+{
+	struct nfsdevice *ds, *mds, *fndds;
+
+	mtx_assert(NFSDDSMUTEXPTR, MA_OWNED);
+	/*
+	 * Search the DS server list for a match with dvp.
+	 * Remove the DS entry if found and there is a mirror.
+	 */
+	fndds = NULL;
+	if (fndpardsp != NULL)
+		*fndpardsp = NULL;
+	if (nfsrv_devidcnt == 0)
+		return (fndds);
+	TAILQ_FOREACH(ds, &nfsrv_devidhead, nfsdev_list) {
+		if (fndds != NULL)
+			break;
+		if (ds->nfsdev_nmp == nmp) {
+			/* If there are no mirrors, return error. */
+			if (TAILQ_EMPTY(&ds->nfsdev_mirrors)) {
+				NFSCL_DEBUG(4, "no mirror for DS\n");
+				return (NULL);
+			}
+			NFSCL_DEBUG(4, "fnd main ds\n");
+			fndds = ds;
+			break;
+		} else {
+			TAILQ_FOREACH(mds, &ds->nfsdev_mirrors, nfsdev_list) {
+				if (mds->nfsdev_nmp == nmp) {
+					NFSCL_DEBUG(4, "fnd mirror ds\n");
+					fndds = mds;
+					if (fndpardsp != NULL)
+						*fndpardsp = ds;
+					break;
+				}
+			}
+		}
+	}
+	return (fndds);
 }
 

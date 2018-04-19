@@ -50,6 +50,7 @@ LIST_HEAD(nfssessionhashhead, nfsdsession);
 LIST_HEAD(nfslayouthead, nfslayout);
 SLIST_HEAD(nfsdsdirhead, nfsdsdir);
 TAILQ_HEAD(nfsdevicehead, nfsdevice);
+LIST_HEAD(nfsdontlisthead, nfsdontlist);
 
 /*
  * List head for nfsusrgrp.
@@ -132,11 +133,17 @@ struct nfslayout {
 	nfsquad_t		lay_clientid;
 	fhandle_t		lay_fh;
 	uint32_t		lay_layoutlen;
+	uint32_t		lay_mirrorcnt;
 	uint16_t		lay_type;
-	uint8_t			lay_read;
-	uint8_t			lay_rw;
-	char			lay_xdr[0];
+	uint16_t		lay_flags;
+	uint32_t		lay_xdr[0];
 };
+
+/* Flags for lay_flags. */
+#define	NFSLAY_READ	0x0001
+#define	NFSLAY_RW	0x0002
+#define	NFSLAY_RECALL	0x0004
+#define	NFSLAY_RETURNED	0x0008
 
 /*
  * Structure for an NFSv4.1 session.
@@ -359,6 +366,19 @@ struct pnfsdsattr {
 	struct timespec	dsa_atime;
 	struct timespec	dsa_mtime;
 };
+
+/*
+ * This structure is a list element for a list the pNFS server uses to
+ * mark that the recovery of a mirror file is in progress.
+ */
+struct nfsdontlist {
+	LIST_ENTRY(nfsdontlist)	nfsmr_list;
+	uint32_t		nfsmr_flags;
+	fhandle_t		nfsmr_fh;
+};
+
+/* nfsmr_flags bits. */
+#define	NFSMR_DONTLAYOUT	0x00000001
 
 #endif	/* defined(_KERNEL) || defined(KERNEL) */
 
