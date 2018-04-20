@@ -50,6 +50,7 @@ static void usage(void);
 static struct option longopts[] = {
 	{ "changeds",	required_argument,	NULL,	'c'	},
 	{ "quiet",	no_argument,		NULL,	'q'	},
+	{ "zerods",	required_argument,	NULL,	'r'	},
 	{ "ds",		required_argument,	NULL,	's'	},
 	{ "zerofh",	no_argument,		NULL,	'z'	},
 	{ NULL,		0,			NULL,	0	}
@@ -69,21 +70,26 @@ main(int argc, char *argv[])
 	struct sockaddr_in6 *sin6, *adsin6;
 	char hostn[2 * NI_MAXHOST + 2], *cp;
 	struct pnfsdsfile dsfile[NFSDEV_MAXMIRRORS];
-	int ch, dosetxattr, i, mirrorcnt, quiet, zerofh;
+	int ch, dosetxattr, i, mirrorcnt, quiet, zerods, zerofh;
 	in_port_t tport;
 	ssize_t xattrsize;
 
+	zerods = 0;
 	zerofh = 0;
 	quiet = 0;
 	dosetxattr = 0;
 	res = NULL;
 	newres = NULL;
-	while ((ch = getopt_long(argc, argv, "c:qs:z", longopts, NULL)) != -1) {
+	while ((ch = getopt_long(argc, argv, "c:qr:s:z", longopts, NULL)) != -1)
+	    {
 		switch (ch) {
 		case 'c':
 			/* Replace the first DS server with the second one. */
-			if (zerofh != 0)
-				errx(1, "-c and -z are mutually exclusive\n");
+			if (zerofh != 0 || zerods != 0)
+				errx(1, "-c, -r and -z are mutually "
+				    "exclusive\n");
+			if (res != NULL)
+				errx(1, "-c and -s are mutually exclusive\n");
 			strlcpy(hostn, optarg, 2 * NI_MAXHOST + 2);
 			cp = strchr(hostn, ',');
 			if (cp == NULL)
@@ -98,14 +104,28 @@ main(int argc, char *argv[])
 		case 'q':
 			quiet = 1;
 			break;
+		case 'r':
+			/* Reset the DS server in a mirror with 0.0.0.0. */
+			if (zerofh != 0 || res != NULL || newres != NULL)
+				errx(1, "-r and -s, -z or -c are mutually "
+				    "exclusive\n");
+			zerods = 1;
+			/* Translate the server name to an IP address. */
+			if (getaddrinfo(optarg, NULL, NULL, &res) != 0)
+				errx(1, "Can't get IP# for %s\n", optarg);
+			break;
 		case 's':
+			if (res != NULL)
+				errx(1, "-s, -c and -r are mutually "
+				    "exclusive\n");
 			/* Translate the server name to an IP address. */
 			if (getaddrinfo(optarg, NULL, NULL, &res) != 0)
 				errx(1, "Can't get IP# for %s\n", optarg);
 			break;
 		case 'z':
-			if (newres != NULL)
-				errx(1, "-c and -z are mutually exclusive\n");
+			if (newres != NULL || zerods != 0)
+				errx(1, "-c, -r and -z are mutually "
+				    "exclusive\n");
 			zerofh = 1;
 			break;
 		default:
@@ -127,9 +147,11 @@ main(int argc, char *argv[])
 	if (mirrorcnt < 1 || xattrsize != mirrorcnt * sizeof(struct pnfsdsfile))
 		err(1, "Can't get extattr pnfsd.dsfile\n");
 
+	if (quiet == 0)
+		printf("%s:\t", *argv);
 	for (i = 0; i < mirrorcnt; i++) {
-		if (i > 0)
-			printf(" ");
+		if (i > 0 && quiet == 0)
+			printf("\t");
 		/* Do the zerofh option. You must be root. */
 		if (zerofh != 0) {
 			if (geteuid() != 0)
@@ -159,6 +181,40 @@ main(int argc, char *argv[])
 			}
 			if (res == NULL || ad != NULL) {
 				memset(&dsfile[i].dsf_fh, 0, sizeof(fhandle_t));
+				dosetxattr = 1;
+			}
+		}
+	
+		/* Do the zerods option. You must be root. */
+		if (zerods != 0 && mirrorcnt > 1) {
+			if (geteuid() != 0)
+				errx(1, "Must be root/su to zerods\n");
+	
+			/*
+			 * Do it for the server specified.
+			 */
+			sin = &dsfile[i].dsf_sin;
+			sin6 = &dsfile[i].dsf_sin6;
+			ad = res;
+			while (ad != NULL) {
+				adsin = (struct sockaddr_in *)ad->ai_addr;
+				adsin6 = (struct sockaddr_in6 *)ad->ai_addr;
+				if (adsin->sin_family == sin->sin_family) {
+					if (sin->sin_family == AF_INET &&
+					    sin->sin_addr.s_addr ==
+					    adsin->sin_addr.s_addr)
+						break;
+					else if (sin->sin_family == AF_INET6 &&
+					    IN6_ARE_ADDR_EQUAL(&sin6->sin6_addr,
+					    &adsin6->sin6_addr))
+						break;
+				}
+				ad = ad->ai_next;
+			}
+			if (ad != NULL) {
+				sin->sin_family = AF_INET;
+				sin->sin_port = 0;
+				sin->sin_addr.s_addr = 0;
 				dosetxattr = 1;
 			}
 		}
@@ -243,7 +299,10 @@ usage(void)
 {
 
 	fprintf(stderr, "pnfsdsfile [-q/--quiet] [-z/--zerofh] "
-	    "[-s/--ds <dshostname>] <filename>\n");
+	    "[-c/--changeds <old dshostname> <new dshostname>] "
+	    "[-r/--zerods <dshostname>] "
+	    "[-s/--ds <dshostname>] "
+	    "<filename>\n");
 	exit(1);
 }
 
