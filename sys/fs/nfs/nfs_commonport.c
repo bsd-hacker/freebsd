@@ -76,6 +76,7 @@ struct mtx nfsrv_dwrpclock_mtx;
 struct mtx nfsrv_dsrpclock_mtx;
 struct mtx nfsrv_darpclock_mtx;
 struct nfsdevicehead nfsrv_devidhead;
+volatile int nfsrv_devidcnt = 0;
 void (*nfsd_call_servertimer)(void) = NULL;
 void (*ncl_call_invalcaches)(struct vnode *) = NULL;
 
