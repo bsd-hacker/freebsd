@@ -1,0 +1,96 @@
+.\" Copyright (c) 2018 Rick Macklem
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd March 9, 2018
+.Dt PNFSDSCOPYMR 1
+.Os
+.Sh NAME
+.Nm pnfsdscopymr
+.Nd
+makes a copy of a file's data on a recovered/new mirror data storage server (DS)
+.Sh SYNOPSIS
+.Nm
+.Ar file
+.Ar mounted_on_path_of_recovered_DS
+.Ar mounted_on_path_of_operational_DS
+.Sh DESCRIPTION
+The
+.Nm
+command copies a file's data from a operational DS to a recovered (or new)
+DS that is configured as a mirror of this operational DS.
+If the recovered/new DS is configured as a mirror of the operational DS, the
+data of the
+.Ar file
+on the MDS
+is copied to the recovered DS, unless the recovered/new DS
+already has a valid copy.
+The copy is considered valid if it exists in the extended attribute of the
+MDS file and its IP address is non-zero.
+If the
+.Ar file
+does not have the operational DS in its extended attribute or it already
+has a valid copy of the file's data, the command simply does an exit(0).
+This is done so that the command can be called on any file within the MDS's
+exported file tree safely.
+.Pp
+The first argument
+.Ar file
+is the file on the MDS, the second argument
+.Ar mounted_on_path_of_recovered_DS
+is the mounted on directory path of the recovered/new mirror and
+the third argument
+.Ar mounted_on_path_of_operational_DS
+is the mounted on directory path of a non-disabled DS that is a mirror of the
+recovered/new DS.
+The third argument is used to check if the
+.Ar file
+argument is stored on the mirror set that includes the recovered/new DS
+so that it can be used within a
+.Xr find 1 .
+.Pp
+This command must be run on the MDS and a typical usage would be as an
+argument for
+.Xr find 1
+for all regular files.
+.sp
+For example, if the recovered/new DS is mounted on /data3 and it is a
+mirror of the DS mounted on /data2:
+.br
+# cd <top-level-exported-directory-on-the-MDS>
+.br
+# find . -type f -exec pnfsdscopymr {} /data3 /data2 \\;
+.El
+.Sh SEE ALSO
+.Xr find 1 ,
+.Xr pnfsdsfile 1 ,
+.Xr pnfsdskill 1 ,
+.Xr nfsv4 4 ,
+.Xr pnfs 4 ,
+.Xr nfsd 8
+.Sh HISTORY
+The
+.Nm
+command appeared in FreeBSD12.
