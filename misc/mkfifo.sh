@@ -35,6 +35,9 @@
 # but page fault seen in scheduler() due to a _thread_lock_flags() call on
 # an inactive td.
 
+# Fault seen in "softdep_disk_io_initiation+0x41":
+# https://people.freebsd.org/~pho/stress/log/mkfifo.txt
+
 # Run with mkfifo.cfg on a 2g swap backed MD
 
 . ../default.cfg
