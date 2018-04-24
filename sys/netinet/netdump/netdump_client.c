@@ -71,26 +71,22 @@ __FBSDID("$FreeBSD$");
 #include <machine/in_cksum.h>
 #include <machine/pcb.h>
 
-#ifdef NETDUMP_DEBUG
-#define	NETDDEBUG(f, ...)					\
-	printf(("%s: " f), __func__, ## __VA_ARGS__)
-#define	NETDDEBUG_IF(i, f, ...)					\
-	if_printf((i), ("%s: " f), __func__, ## __VA_ARGS__)
-#if NETDUMP_DEBUG > 1
-#define	NETDDEBUGV(f, ...)					\
-	printf(("%s: " f), __func__, ## __VA_ARGS__)
-#define	NETDDEBUGV_IF(i, f, ...)				\
-	if_printf((i), ("%s: " f), __func__, ## __VA_ARGS__)
-#else
-#define	NETDDEBUGV(f, ...)
-#define	NETDDEBUGV_IF(i, f, ...)
-#endif
-#else
-#define	NETDDEBUG(f, ...)
-#define	NETDDEBUG_IF(i, f, ...)
-#define	NETDDEBUGV(f, ...)
-#define	NETDDEBUGV_IF(i, f, ...)
-#endif
+#define	NETDDEBUG(f, ...) do {						\
+	if (nd_debug > 0)						\
+		printf(("%s: " f), __func__, ## __VA_ARGS__);		\
+} while (0)
+#define	NETDDEBUG_IF(i, f, ...) do {					\
+	if (nd_debug > 0)						\
+		if_printf((i), ("%s: " f), __func__, ## __VA_ARGS__);	\
+} while (0)
+#define	NETDDEBUGV(f, ...) do {						\
+	if (nd_debug > 1)						\
+		printf(("%s: " f), __func__, ## __VA_ARGS__);		\
+} while (0)
+#define	NETDDEBUGV_IF(i, f, ...) do {					\
+	if (nd_debug > 1)						\
+		if_printf((i), ("%s: " f), __func__, ## __VA_ARGS__);	\
+} while (0)
 
 static int	 netdump_arp_gw(void);
 static void	 netdump_cleanup(void);
@@ -150,6 +146,10 @@ FEATURE(netdump, "Netdump client support");
 static SYSCTL_NODE(_net, OID_AUTO, netdump, CTLFLAG_RD, NULL,
     "netdump parameters");
 
+static int nd_debug;
+SYSCTL_INT(_net_netdump, OID_AUTO, debug, CTLFLAG_RWTUN,
+    &nd_debug, 0,
+    "Debug message verbosity");
 static int nd_enabled;
 SYSCTL_INT(_net_netdump, OID_AUTO, enabled, CTLFLAG_RD,
     &nd_enabled, 0,
