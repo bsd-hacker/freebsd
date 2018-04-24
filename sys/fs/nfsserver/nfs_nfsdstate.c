@@ -105,6 +105,11 @@ SYSCTL_INT(_vfs_nfsd, OID_AUTO, pnfsstrictatime, CTLFLAG_RW,
     &nfsrv_pnfsatime, 0,
     "For pNFS service, do Getattr ops to keep atime up-to-date");
 
+int	nfsrv_flexlinuxhack = 0;
+SYSCTL_INT(_vfs_nfsd, OID_AUTO, flexlinuxhack, CTLFLAG_RW,
+    &nfsrv_flexlinuxhack, 0,
+    "For Linux clients, hack around Flex File Layout bug");
+
 /*
  * Hash lists for nfs V4.
  */
@@ -6432,13 +6437,15 @@ nfsrv_filelayout(struct nfsrv_descript *nd, int iomode, fhandle_t *fhp,
 }
 
 #define	FLEX_OWNERID	"999"
+#define	FLEX_UID0	"0"
 /*
  * Generate a Flex File Layout.
  * The FLEX_OWNERID can be any string of 3 decimal digits. Although this
  * string goes on the wire, it isn't supposed to be used by the client,
  * since this server uses tight coupling.
- * The Linux Flexible File Layout client driver doesn't like a Null string
- * for these.
+ * Although not recommended by the spec., if vfs.nfsd.flexlinuxhack=1 use
+ * a string of "0". This works around the Linux Flex File Layout driver bug
+ * which uses the synthetic uid/gid strings for the "tightly coupled" case.
  */
 static struct nfslayout *
 nfsrv_flexlayout(struct nfsrv_descript *nd, int iomode, int mirrorcnt,
@@ -6480,10 +6487,19 @@ nfsrv_flexlayout(struct nfsrv_descript *nd, int iomode, int mirrorcnt,
 		NFSBCOPY(dsfhp, tl, sizeof(*dsfhp));
 		tl += (NFSM_RNDUP(NFSX_V4PNFSFH) / NFSX_UNSIGNED);
 		dsfhp++;
-		*tl++ = txdr_unsigned(strlen(FLEX_OWNERID));	/* Any uid. */
-		NFSBCOPY(FLEX_OWNERID, tl++, NFSX_UNSIGNED);
-		*tl++ = txdr_unsigned(strlen(FLEX_OWNERID));	/* Any gid. */
-		NFSBCOPY(FLEX_OWNERID, tl++, NFSX_UNSIGNED);
+		if (nfsrv_flexlinuxhack != 0) {
+			*tl++ = txdr_unsigned(strlen(FLEX_UID0));
+			*tl = 0;		/* 0 pad string. */
+			NFSBCOPY(FLEX_UID0, tl++, strlen(FLEX_UID0));
+			*tl++ = txdr_unsigned(strlen(FLEX_UID0));
+			*tl = 0;		/* 0 pad string. */
+			NFSBCOPY(FLEX_UID0, tl++, strlen(FLEX_UID0));
+		} else {
+			*tl++ = txdr_unsigned(strlen(FLEX_OWNERID));
+			NFSBCOPY(FLEX_OWNERID, tl++, NFSX_UNSIGNED);
+			*tl++ = txdr_unsigned(strlen(FLEX_OWNERID));
+			NFSBCOPY(FLEX_OWNERID, tl++, NFSX_UNSIGNED);
+		}
 	}
 	*tl++ = txdr_unsigned(0);		/* ff_flags. */
 	*tl = txdr_unsigned(60);		/* Status interval hint. */
