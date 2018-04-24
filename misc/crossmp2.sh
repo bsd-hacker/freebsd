@@ -40,14 +40,15 @@ if [ $# -eq 0 ]; then
 	[ -z "$nfs_export" ] && exit 0
 	ping -c 2 `echo $nfs_export | sed 's/:.*//'` > /dev/null 2>&1 ||
 	    exit 0
-	mount -t nfs -o tcp -o nfsv3 -o retrycnt=1 -o intr -o soft,timeout=1 \
+	mount -t nfs -o tcp -o nfsv3 -o retrycnt=1 -o intr,soft,timeout=1 \
 	    -o rw $nfs_export $mntpoint || exit 0
+	sleep .2
 	umount $mntpoint
 
 	for i in `jot $mounts`; do
 		mp=${mntpoint}$i
 		[ ! -d $mp ] && mkdir $mp
-		mount | grep -qw "$mp" && umount $mp
+		mount | grep -q "$mp " && umount $mp
 	done
 
 	# start the parallel tests
@@ -56,6 +57,7 @@ if [ $# -eq 0 ]; then
 		./$0 find &
 	done
 	wait
+	exit 0
 else
 	if [ $1 = find ]; then
 		for i in `jot 128`; do
@@ -67,16 +69,15 @@ else
 		# The test: Parallel mount and unmounts
 		for i in `jot 128`; do
 			m=$1
-			mount -t nfs -o tcp -o nfsv3 -o retrycnt=3 -o intr \
-			    -o soft -o rw $nfs_export ${mntpoint}$m
+			mount -t nfs -o tcp -o nfsv3 -o retrycnt=3 \
+			    -o intr,soft -o rw $nfs_export ${mntpoint}$m
 			sleep .5
 			opt=`[ $(( m % 2 )) -eq 0 ] && echo -f`
 			n=0
-			while mount | grep -qw ${mntpoint}$m; do
+			while mount | grep -q "${mntpoint}$m "; do
 				umount $opt ${mntpoint}$m > /dev/null 2>&1
-				n=$((n + 1))
-				[ $n -gt 99 ] && umount -f ${mntpoint}$m > \
-				    /dev/null 2>&1
+				[ $((n += 1)) -gt 99 ] && umount -f \
+				    ${mntpoint}$m > /dev/null 2>&1
 				[ $n -gt 100 ] && exit
 			done
 		done
