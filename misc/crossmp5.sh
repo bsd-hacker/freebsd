@@ -45,7 +45,7 @@ if [ $# -eq 0 ]; then
 	for i in `jot $mounts`; do
 		m=$(( i + mdstart - 1 ))
 		[ ! -d ${mntpoint}$m ] && mkdir ${mntpoint}$m
-		mount | grep "${mntpoint}$m" | grep -q md$m &&
+		mount | grep "${mntpoint}$m " | grep -q md$m &&
 		    umount ${mntpoint}$m
 		mdconfig -l | grep -q md$m && mdconfig -d -u $m
 
@@ -68,7 +68,7 @@ if [ $# -eq 0 ]; then
 		mdconfig -d -u $m
 		rm -f $D$m
 	done
-
+	exit 0
 else
 	touch /tmp/crossmp.continue
 	if [ $1 = find ]; then
