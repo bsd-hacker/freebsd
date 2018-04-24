@@ -63,7 +63,7 @@ done
     echo "FAIL Unchanged time $m1 $c1 / $1 $2"
 wait
 
-while mount | grep $mntpoint | grep -q /dev/md; do
+while mount | grep $mntpoint | grep -q tmpfs; do
 	umount $mntpoint || sleep 1
 done
 rm -f /tmp/tmpfs14
