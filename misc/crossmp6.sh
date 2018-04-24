@@ -39,6 +39,7 @@
 
 pgrep -q lockd || { echo "lockd not running."; exit 1; }
 
+CONT=/tmp/crossmp6.continue
 mounts=10	# Number of parallel scripts
 
 if [ $# -eq 0 ]; then
@@ -75,12 +76,13 @@ else
 			    /dev/null 2>&1
 			(lockf  -t 10 ${mntpoint}$2/$0.$$.$i sleep 1 &) > \
 			    /dev/null 2>&1
+		[ -f $CONT ] || break
 		done
 		wait
 	else
-
 		# The test: Parallel mount and unmounts
-		for i in `jot 128`; do
+		start=`date '+%s'`
+		while [ $((`date '+%s'` - start)) -lt 300 ]; do
 			m=$1
 			mount -t nfs -o tcp -o nfsv3 -o retrycnt=3 \
 			    -o soft -o rw $nfs_export ${mntpoint}$m
@@ -95,5 +97,6 @@ else
 				[ $n -gt 100 ] && exit
 			done
 		done
+		rm -f $CONT
 	fi
 fi
