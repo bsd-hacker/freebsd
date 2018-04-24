@@ -124,12 +124,16 @@ SYSCTL_INT(_debug, OID_AUTO, debugger_on_panic,
 
 #ifdef KDB_TRACE
 static int trace_on_panic = 1;
+static bool trace_all_panics = true;
 #else
 static int trace_on_panic = 0;
+static bool trace_all_panics = false;
 #endif
 SYSCTL_INT(_debug, OID_AUTO, trace_on_panic,
     CTLFLAG_RWTUN | CTLFLAG_SECURE,
     &trace_on_panic, 0, "Print stack trace on kernel panic");
+SYSCTL_BOOL(_debug, OID_AUTO, trace_all_panics, CTLFLAG_RWTUN,
+    &trace_all_panics, 0, "Print stack traces on secondary kernel panics");
 #endif /* KDB */
 
 static int sync_on_panic = 0;
@@ -642,7 +646,7 @@ static int kassert_do_log = 1;
 static int kassert_log_pps_limit = 4;
 static int kassert_log_mute_at = 0;
 static int kassert_log_panic_at = 0;
-static int kassert_suppress_in_panic = 1;
+static int kassert_suppress_in_panic = 0;
 static int kassert_warnings = 0;
 
 SYSCTL_NODE(_debug, OID_AUTO, kassert, CTLFLAG_RW, NULL, "kassert options");
@@ -663,7 +667,8 @@ SYSCTL_UINT(_debug_kassert, OID_AUTO, do_ktr, CTLFLAG_RWTUN,
 #endif
 
 SYSCTL_INT(_debug_kassert, OID_AUTO, do_log, CTLFLAG_RWTUN,
-    &kassert_do_log, 0, "KASSERT triggers a panic (1) or just a warning (0)");
+    &kassert_do_log, 0,
+    "If warn_only is enabled, log (1) or do not log (0) assertion violations");
 
 SYSCTL_INT(_debug_kassert, OID_AUTO, warnings, CTLFLAG_RWTUN,
     &kassert_warnings, 0, "number of KASSERTs that have been triggered");
@@ -829,7 +834,7 @@ vpanic(const char *fmt, va_list ap)
 #endif
 	printf("time = %jd\n", (intmax_t )time_second);
 #ifdef KDB
-	if (newpanic && trace_on_panic)
+	if ((newpanic || trace_all_panics) && trace_on_panic)
 		kdb_backtrace();
 	if (debugger_on_panic)
 		kdb_enter(KDB_WHY_PANIC, "panic");
