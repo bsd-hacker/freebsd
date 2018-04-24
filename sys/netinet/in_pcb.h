@@ -78,6 +78,11 @@ struct in_addr_4in6 {
 	struct	in_addr	ia46_addr4;
 };
 
+union in_dependaddr {
+	struct in_addr_4in6 id46_addr;
+	struct in6_addr	id6_addr;
+};
+
 /*
  * NOTE: ipv6 addrs should be 64-bit aligned, per RFC 2553.  in_conninfo has
  * some extra padding to accomplish this.
@@ -88,22 +93,14 @@ struct in_endpoints {
 	u_int16_t	ie_fport;		/* foreign port */
 	u_int16_t	ie_lport;		/* local port */
 	/* protocol dependent part, local and foreign addr */
-	union {
-		/* foreign host table entry */
-		struct	in_addr_4in6 ie46_foreign;
-		struct	in6_addr ie6_foreign;
-	} ie_dependfaddr;
-	union {
-		/* local host table entry */
-		struct	in_addr_4in6 ie46_local;
-		struct	in6_addr ie6_local;
-	} ie_dependladdr;
+	union in_dependaddr ie_dependfaddr;	/* foreign host table entry */
+	union in_dependaddr ie_dependladdr;	/* local host table entry */
+#define	ie_faddr	ie_dependfaddr.id46_addr.ia46_addr4
+#define	ie_laddr	ie_dependladdr.id46_addr.ia46_addr4
+#define	ie6_faddr	ie_dependfaddr.id6_addr
+#define	ie6_laddr	ie_dependladdr.id6_addr
 	u_int32_t	ie6_zoneid;		/* scope zone id */
 };
-#define	ie_faddr	ie_dependfaddr.ie46_foreign.ia46_addr4
-#define	ie_laddr	ie_dependladdr.ie46_local.ia46_addr4
-#define	ie6_faddr	ie_dependfaddr.ie6_foreign
-#define	ie6_laddr	ie_dependladdr.ie6_local
 
 /*
  * XXX The defines for inc_* are hacks and should be changed to direct
@@ -156,6 +153,7 @@ struct in_conninfo {
  * from the global list.
  *
  * Key:
+ * (b) - Protected by the hpts lock.
  * (c) - Constant after initialization
  * (g) - Protected by the pcbgroup lock
  * (i) - Protected by the inpcb lock
@@ -164,6 +162,51 @@ struct in_conninfo {
  * (h) - Protected by the pcbhash lock for the inpcb
  * (s) - Protected by another subsystem's locks
  * (x) - Undefined locking
+ * 
+ * Notes on the tcp_hpts:
+ * 
+ * First Hpts lock order is
+ * 1) INP_WLOCK()
+ * 2) HPTS_LOCK() i.e. hpts->pmtx 
+ *
+ * To insert a TCB on the hpts you *must* be holding the INP_WLOCK(). 
+ * You may check the inp->inp_in_hpts flag without the hpts lock. 
+ * The hpts is the only one that will clear this flag holding 
+ * only the hpts lock. This means that in your tcp_output()
+ * routine when you test for the inp_in_hpts flag to be 1 
+ * it may be transitioning to 0 (by the hpts). 
+ * That's ok since that will just mean an extra call to tcp_output 
+ * that most likely will find the call you executed
+ * (when the mis-match occured) will have put the TCB back 
+ * on the hpts and it will return. If your
+ * call did not add the inp back to the hpts then you will either
+ * over-send or the cwnd will block you from sending more.
+ *
+ * Note you should also be holding the INP_WLOCK() when you
+ * call the remove from the hpts as well. Though usually
+ * you are either doing this from a timer, where you need and have
+ * the INP_WLOCK() or from destroying your TCB where again
+ * you should already have the INP_WLOCK().
+ *
+ * The inp_hpts_cpu, inp_hpts_cpu_set, inp_input_cpu and 
+ * inp_input_cpu_set fields are controlled completely by
+ * the hpts. Do not ever set these. The inp_hpts_cpu_set
+ * and inp_input_cpu_set fields indicate if the hpts has
+ * setup the respective cpu field. It is advised if this
+ * field is 0, to enqueue the packet with the appropriate
+ * hpts_immediate() call. If the _set field is 1, then
+ * you may compare the inp_*_cpu field to the curcpu and
+ * may want to again insert onto the hpts if these fields
+ * are not equal (i.e. you are not on the expected CPU).
+ *
+ * A note on inp_hpts_calls and inp_input_calls, these
+ * flags are set when the hpts calls either the output
+ * or do_segment routines respectively. If the routine
+ * being called wants to use this, then it needs to
+ * clear the flag before returning. The hpts will not
+ * clear the flag. The flags can be used to tell if
+ * the hpts is the function calling the respective
+ * routine.
  *
  * A few other notes:
  *
@@ -190,14 +233,45 @@ struct inpcb {
 	LIST_ENTRY(inpcb) inp_pcbgrouphash;	/* (g/i) hash list */
 	struct rwlock	inp_lock;
 	/* Cache line #2 (amd64) */
-#define	inp_start_zero	inp_refcount
+#define	inp_start_zero	inp_hpts
 #define	inp_zero_size	(sizeof(struct inpcb) - \
 			    offsetof(struct inpcb, inp_start_zero))
+	TAILQ_ENTRY(inpcb) inp_hpts;	/* pacing out queue next lock(b) */
+
+	uint32_t inp_hpts_request;	/* Current hpts request, zero if
+					 * fits in the pacing window (i&b). */
+	/*
+	 * Note the next fields are protected by a
+	 * different lock (hpts-lock). This means that 
+	 * they must correspond in size to the smallest
+	 * protectable bit field (uint8_t on x86, and
+	 * other platfomrs potentially uint32_t?). Also
+	 * since CPU switches can occur at different times the two
+	 * fields can *not* be collapsed into a signal bit field.
+	 */
+#if defined(__amd64__) || defined(__i386__)	
+	volatile uint8_t inp_in_hpts; /* on output hpts (lock b) */
+	volatile uint8_t inp_in_input; /* on input hpts (lock b) */
+#else
+	volatile uint32_t inp_in_hpts; /* on output hpts (lock b) */
+	volatile uint32_t inp_in_input; /* on input hpts (lock b) */
+#endif
+	volatile uint16_t  inp_hpts_cpu; /* Lock (i) */
 	u_int	inp_refcount;		/* (i) refcount */
 	int	inp_flags;		/* (i) generic IP/datagram flags */
 	int	inp_flags2;		/* (i) generic IP/datagram flags #2*/
+	volatile uint16_t  inp_input_cpu; /* Lock (i) */
+	volatile uint8_t inp_hpts_cpu_set :1,  /* on output hpts (i) */
+			 inp_input_cpu_set : 1,	/* on input hpts (i) */
+			 inp_hpts_calls :1,	/* (i) from output hpts */
+			 inp_input_calls :1,	/* (i) from input hpts */
+			 inp_spare_bits2 : 4;
+	uint8_t inp_spare_byte;		/* Compiler hole */
 	void	*inp_ppcb;		/* (i) pointer to per-protocol pcb */
 	struct	socket *inp_socket;	/* (i) back pointer to socket */
+	uint32_t 	 inp_hptsslot;	/* Hpts wheel slot this tcb is Lock(i&b) */
+	uint32_t         inp_hpts_drop_reas;	/* reason we are dropping the PCB (lock i&b) */
+	TAILQ_ENTRY(inpcb) inp_input;	/* pacing in  queue next lock(b) */
 	struct	inpcbinfo *inp_pcbinfo;	/* (c) PCB list info */
 	struct	inpcbgroup *inp_pcbgroup; /* (g/i) PCB group list */
 	LIST_ENTRY(inpcb) inp_pcbgroup_wild; /* (g/i/h) group wildcard entry */
@@ -330,6 +404,21 @@ struct inpcbport {
 	u_short phd_port;
 };
 
+struct inpcblbgroup {
+	LIST_ENTRY(inpcblbgroup) il_list;
+	uint16_t	il_lport;
+	u_char		il_vflag;
+	u_char		il_pad;
+	uint32_t	il_pad2;
+	union in_dependaddr il_dependladdr;
+#define il_laddr	il_dependladdr.id46_addr.ia46_addr4
+#define il6_laddr	il_dependladdr.id6_addr
+	uint32_t	il_inpsiz; /* size of il_inp[] */
+	uint32_t	il_inpcnt; /* # of elem in il_inp[] */
+	struct inpcb	*il_inp[];
+};
+LIST_HEAD(inpcblbgrouphead, inpcblbgroup);
+
 /*-
  * Global data structure for each high-level protocol (UDP, TCP, ...) in both
  * IPv4 and IPv6.  Holds inpcb lists and information for managing them.
@@ -423,6 +512,13 @@ struct inpcbinfo {
 	u_long			 ipi_wildmask;		/* (p) */
 
 	/*
+	 * Load balanced group used by the SO_REUSEPORT_LB option,
+	 * hashed by local address and local port.
+	 */
+	struct	inpcblbgrouphead *ipi_lbgrouphashbase;
+	u_long	ipi_lbgrouphashmask;
+
+	/*
 	 * Pointer to network stack instance
 	 */
 	struct vnet		*ipi_vnet;		/* (c) */
@@ -508,7 +604,7 @@ struct tcpcb *
 	inp_inpcbtotcpcb(struct inpcb *inp);
 void 	inp_4tuple_get(struct inpcb *inp, uint32_t *laddr, uint16_t *lp,
 		uint32_t *faddr, uint16_t *fp);
-short	inp_so_options(const struct inpcb *inp);
+int		inp_so_options(const struct inpcb *inp);
 
 #endif /* _KERNEL */
 
@@ -571,6 +667,10 @@ short	inp_so_options(const struct inpcb *inp);
 	(((faddr) ^ ((faddr) >> 16) ^ ntohs((lport) ^ (fport))) & (mask))
 #define INP_PCBPORTHASH(lport, mask) \
 	(ntohs((lport)) & (mask))
+#define INP_PCBLBGROUP_PORTHASH(lport, mask) \
+	(ntohs((lport)) & (mask))
+#define INP_PCBLBGROUP_PKTHASH(faddr, lport, fport) \
+	((faddr) ^ ((faddr) >> 16) ^ ntohs((lport) ^ (fport)))
 #define	INP6_PCBHASHKEY(faddr)	((faddr)->s6_addr32[3])
 
 /*
@@ -638,6 +738,8 @@ short	inp_so_options(const struct inpcb *inp);
 #define	INP_RECVRSSBUCKETID	0x00000200 /* populate recv datagram with bucket id */
 #define	INP_RATE_LIMIT_CHANGED	0x00000400 /* rate limit needs attention */
 #define	INP_ORIGDSTADDR		0x00000800 /* receive IP dst address/port */
+#define INP_CANNOT_DO_ECN	0x00001000 /* The stack does not do ECN */
+#define	INP_REUSEPORT_LB	0x00002000 /* SO_REUSEPORT_LB option is set */
 
 /*
  * Flags passed to in_pcblookup*() functions.
@@ -740,6 +842,8 @@ struct inpcb *
 struct inpcb *
 	in_pcblookup(struct inpcbinfo *, struct in_addr, u_int,
 	    struct in_addr, u_int, int, struct ifnet *);
+struct inpcb *
+	in_pcblookup_lbgroup_last(const struct inpcb *inp);
 struct inpcb *
 	in_pcblookup_mbuf(struct inpcbinfo *, struct in_addr, u_int,
 	    struct in_addr, u_int, int, struct ifnet *, struct mbuf *);

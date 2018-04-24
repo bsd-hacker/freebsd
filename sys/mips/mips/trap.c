@@ -684,14 +684,6 @@ trap(struct trapframe *trapframe)
 		if (td->td_pcb->pcb_onfault == NULL)
 			goto err;
 
-		/* check for fuswintr() or suswintr() getting a page fault */
-		/* XXX There must be a nicer way to do this.  */
-		if (td->td_pcb->pcb_onfault == fswintrberr) {
-			pc = (register_t)(intptr_t)td->td_pcb->pcb_onfault;
-			td->td_pcb->pcb_onfault = NULL;
-			return (pc);
-		}
-
 		goto dofault;
 
 	case T_TLB_LD_MISS + T_USER:
@@ -848,6 +840,7 @@ dofault:
 			if (td->td_md.md_ss_addr != va ||
 			    instr != MIPS_BREAK_SSTEP) {
 				i = SIGTRAP;
+				ucode = TRAP_BRKPT;
 				addr = trapframe->pc;
 				break;
 			}
@@ -859,6 +852,7 @@ dofault:
 			 */
 			addr = trapframe->pc;
 			i = SIGTRAP;
+			ucode = TRAP_TRACE;
 			break;
 		}
 
@@ -873,6 +867,7 @@ dofault:
 				va += sizeof(int);
 			printf("watch exception @ %p\n", (void *)va);
 			i = SIGTRAP;
+			ucode = TRAP_BRKPT;
 			addr = va;
 			break;
 		}
