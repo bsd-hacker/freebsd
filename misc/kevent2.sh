@@ -34,7 +34,7 @@ odir=`pwd`
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > kevent2.c
-mycc -o kevent2 -Wall kevent2.c -pthread
+mycc -o kevent2 -Wall kevent2.c -pthread || exit 1
 rm -f kevent2.c
 cd $RUNDIR
 
@@ -47,11 +47,12 @@ done
 rm -f /tmp/kevent2
 exit
 EOF
-#include <pthread.h>
 #include <sys/types.h>
-#include <sys/time.h>
 #include <sys/event.h>
+#include <sys/time.h>
+
 #include <err.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -65,13 +66,12 @@ static int fd1[2];
 static int fd2[2];
 static int fd3[2];
 
-void *
+static void *
 thr1(void *arg)
 {
-	int n, r;
-	int kq = -1;
 	struct kevent ev[3];
 	struct timespec ts;
+	int kq, n, r;
 
 	if ((kq = kqueue()) < 0)
 		err(1, "kqueue(). %s:%d", __FILE__, __LINE__);
@@ -108,14 +108,13 @@ thr1(void *arg)
 		err(1, "kevent(). %s:%d", __FILE__, __LINE__);
 	close(kq);
 
-//	printf("%s:%d\n", __FILE__, __LINE__); fflush(stdout);
 	close(fd1[1]);
 	close(fd2[1]);
 	close(fd3[1]);
 	return (0);
 }
 
-void *
+static void *
 thr2(void *arg)
 {
 	int r;
@@ -128,7 +127,6 @@ thr2(void *arg)
 	}
 	if ((r = pthread_mutex_unlock(&mutex)) != 0)
 		errc(1, r, "pthread_mutex_unlock");
-//	printf("%s:%d\n", __FILE__, __LINE__); fflush(stdout);
 	close(fd1[0]);
 	close(fd2[0]);
 	close(fd3[0]);
@@ -139,12 +137,10 @@ int
 main(int argc, char **argv)
 {
 	pthread_t threads[2];
-	int r;
-	int i;
+	int i, r;
 
 	for (i = 0; i < 1000; i++) {
 		waiting = 1;
-//		printf("%s:%d\n", __FILE__, __LINE__); fflush(stdout);
 		if (pipe(fd1) == -1)
 			err(1, "pipe()");
 		if (pipe(fd2) == -1)

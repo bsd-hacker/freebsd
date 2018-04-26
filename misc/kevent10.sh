@@ -21,6 +21,8 @@
 
 # Fixed by r315155.
 
+# $FreeBSD$
+
 . ../default.cfg
 
 cat > /tmp/kevent10.c <<EOF
@@ -41,9 +43,9 @@ cat > /tmp/kevent10.c <<EOF
 int
 main(void)
 {
-	char *fn = "/tmp/trace";
 	struct kevent changes;
 	struct kevent events;
+	char *fn = "/tmp/kevent10.trace";
 
 	if (open(fn, O_RDWR | O_CREAT, 0666) == -1)
 		err(1, "%s", fn);
@@ -54,6 +56,7 @@ main(void)
 	if (kevent(0, &changes, -1, &events, 1, 0) == -1)
 		if (errno != EBADF)
 			err(1, "kevent");
+
 	return (0);
 }
 EOF
@@ -64,5 +67,5 @@ rm /tmp/kevent10.c
 /tmp/kevent10
 s=$?
 
-rm /tmp/kevent10
+rm /tmp/kevent10 /tmp/kevent10.trace
 exit $s

@@ -32,7 +32,8 @@
 
 . ../default.cfg
 
-ulimit -k 10000 || { echo FAIL; exit 1; }
+[ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
+ulimit -k 5000 || { echo FAIL; exit 1; }
 
 odir=`pwd`
 
@@ -45,14 +46,17 @@ cd $odir
 mount | grep "on $mntpoint " | grep -q md$mdstart && umount -f $mntpoint
 mdconfig -l | grep -q $mdstart && mdconfig -d -u $mdstart
 
-mdconfig -a -t swap -s 2g -u ${mdstart}
+mdconfig -a -t swap -s 2g -u $mdstart
 bsdlabel -w md$mdstart auto
 newfs $newfs_flags md${mdstart}$part > /dev/null
 mount /dev/md${mdstart}$part $mntpoint
 chmod 777 $mntpoint
 
 su $testuser -c "(cd $mntpoint; /tmp/kevent8)" &
-sleep 99
+for i in `jot 99`; do
+	sleep 1
+	kill -0 $! 2>/dev/null || break
+done
 umount -f $mntpoint
 pkill kevent8
 wait
@@ -66,27 +70,27 @@ rm -f /tmp/kevent8
 exit
 EOF
 #include <sys/types.h>
-#include <sys/mman.h>
 #include <sys/event.h>
+#include <sys/mman.h>
+#include <sys/wait.h>
+
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <sched.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/wait.h>
-#include <sched.h>
-#include <signal.h>
 
 #define PARALLEL 64
 
+static int fd;
 static char path[80];
 
-int fd;
-
-void *
+static void *
 spin(void *arg __unused)
 {
 	int i;
@@ -94,7 +98,8 @@ spin(void *arg __unused)
 
 	for (i= 0;; i++) {
 		snprintf(path, sizeof(path), "file.%06d.%d", getpid(), i);
-		if ((fd = open(path, O_CREAT | O_TRUNC | O_RDWR, 0622)) == -1)
+		if ((fd = open(path, O_CREAT | O_TRUNC | O_RDWR, 0622)) ==
+		    -1)
 			err(1, "creat()");
 		close(fd);
 		fd = 0;
@@ -103,7 +108,7 @@ spin(void *arg __unused)
 	return (NULL);
 }
 
-void *
+static void *
 test(void *arg __unused)
 {
 	int kq;

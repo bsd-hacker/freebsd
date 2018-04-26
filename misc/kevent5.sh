@@ -42,16 +42,19 @@ rm -f kevent5.c
 
 [ -d $RUNDIR ] || mkdir -p $RUNDIR
 cd $RUNDIR
-/tmp/kevent5 kevent5.xxx kevent5.yyy > /dev/null 2>&1
+/tmp/kevent5 kevent5.xxx kevent5.yyy
+s=$?
 
 rm -f /tmp/kevent5 kevent.xxx kevent.yyy
 
-exit
+exit $s
 EOF
-#include <sys/types.h>
+#include <sys/param.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/event.h>
+
+#include <machine/atomic.h>
 
 #include <err.h>
 #include <errno.h>
@@ -62,21 +65,23 @@ EOF
 #include <unistd.h>
 #include <sys/wait.h>
 
+volatile u_int *share;
+
 static char *file1, *file2;
 
 #define N 1000
+#define SYNC 0
 
-
-void
+static void
 test(void) {
-	int kq = -1;
-	int n;
+
 	struct kevent ev[2];
 	struct timespec ts;
-	int fd;
+	int fd, kq, n;
 
 	if ((fd = open(file1, O_RDONLY, 0)) == -1)
 		err(1, "open(%s)(2)", file1);
+	atomic_add_int(&share[SYNC], 1);
 
 	if ((kq = kqueue()) < 0)
 		err(1, "kqueue()");
@@ -94,7 +99,6 @@ test(void) {
 
 	memset(&ev, 0, sizeof(ev));
 	n = kevent(kq, NULL, 0, ev, 1, NULL);
-//	printf("Event 1\n");
 	close(fd);
 	close(kq);
 
@@ -116,32 +120,40 @@ test(void) {
 
 	memset(&ev, 0, sizeof(ev));
 	n = kevent(kq, NULL, 0, ev, 1, &ts);
-//	printf("Event 2\n");
 	close(fd);
 	close(kq);
 }
 
 int
 main(int argc, char **argv) {
-	int i, j;
-	int fd;
-	int status;
+	size_t len;
+	int e, fd, i, j, status;
 
 	if (argc != 3) {
-		fprintf(stderr, "Usage: %s <rendezvous file> <tail file>\n", argv[0]);
+		fprintf(stderr, "Usage: %s <rendezvous file> <tail file>\n",
+		    argv[0]);
 		return (1);
 	}
+	len = PAGE_SIZE;
+	if ((share = mmap(NULL, len, PROT_READ | PROT_WRITE,
+	    MAP_ANON | MAP_SHARED, -1, 0)) == MAP_FAILED)
+		err(1, "mmap");
+
+	e = 0;
 	file1 = argv[1];
 	file2 = argv[2];
 
-	for (j = 0; j < 100; j++) {
-		if ((fd = open(file1, O_CREAT | O_TRUNC | O_RDWR, 0660)) == -1)
+	for (j = 0; j < 100 && e == 0; j++) {
+		if ((fd = open(file1, O_CREAT | O_TRUNC | O_RDWR, 0660)) ==
+		    -1)
 			err(1, "open(%s)", file1);
 		close(fd);
-		if ((fd = open(file2, O_CREAT | O_TRUNC | O_RDWR, 0660)) == -1)
+		if ((fd = open(file2, O_CREAT | O_TRUNC | O_RDWR, 0660)) ==
+		    -1)
 			err(1, "open(%s)", file2);
 		close(fd);
 
+		share[SYNC] = 0;
 		for (i = 0; i < N; i++) {
 			if (fork() == 0) {
 				test();
@@ -149,18 +161,25 @@ main(int argc, char **argv) {
 			}
 		}
 
+		while (share[SYNC] != N)
+			usleep(200);
+
 		sleep(1);
 		if (unlink(file1) == -1)
-			err(1, "unlink(%s). %s:%d\n", file1, __FILE__, __LINE__);
-		sleep(1);
+			err(1, "unlink(%s). %s:%d\n", file1, __FILE__,
+			    __LINE__);
+		sleep(2);
 		if (unlink(file2) == -1)
-			err(1, "unlink(%s). %s:%d\n", file2, __FILE__, __LINE__);
+			err(1, "unlink(%s). %s:%d\n", file2, __FILE__,
+			    __LINE__);
 
 		for (i = 0; i < N; i++) {
 			if (wait(&status) == -1)
 				err(1, "wait(), %s:%d", __FILE__, __LINE__);
+			if (status != 0)
+				e = 1;
 		}
 	}
 
-	return (0);
+	return (e);
 }

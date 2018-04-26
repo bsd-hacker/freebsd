@@ -36,7 +36,7 @@ odir=`pwd`
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > kevent.c
-mycc -o kevent -Wall kevent.c -pthread
+mycc -o kevent -Wall kevent.c -pthread || exit 1
 rm -f kevent.c
 [ -d "$RUNDIR" ] || mkdir -p $RUNDIR
 cd $RUNDIR
@@ -50,10 +50,11 @@ done
 rm -f /tmp/kevent
 exit
 EOF
-#include <pthread.h>
 #include <sys/types.h>
 #include <sys/event.h>
+
 #include <err.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -70,12 +71,11 @@ static int fd3[2];
 
 #define RUNTIME 12
 
-void *
+static void *
 thr1(void *arg)
 {
-	int n, r;
-	int kq = -1;
 	struct kevent ev[3];
+	int kq, n, r;
 
 	if ((kq = kqueue()) < 0)
 		err(1, "kqueue(). %s:%d", __FILE__, __LINE__);
@@ -113,7 +113,7 @@ thr1(void *arg)
 	return (0);
 }
 
-void *
+static void *
 thr2(void *arg)
 {
 	int r;

@@ -34,7 +34,7 @@ odir=`pwd`
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > kevent3.c
-mycc -o kevent3 -Wall kevent3.c -pthread
+mycc -o kevent3 -Wall kevent3.c -pthread || exit 1
 rm -f kevent3.c
 cd $RUNDIR
 
@@ -47,7 +47,7 @@ for i in `jot 64`; do
 	done
 done
 rm -f /tmp/kevent3
-exit
+exit 0
 EOF
 /*
  *  Obtained from:
@@ -56,6 +56,7 @@ EOF
 #include <sys/types.h>
 #include <sys/event.h>
 #include <sys/time.h>
+
 #include <stdio.h>
 #include <unistd.h>
 
@@ -63,11 +64,13 @@ int main(void)
 {
 	struct kevent ke;
 	int kq;
+
 	kq = kqueue();
 	EV_SET(&ke, getpid(), EVFILT_PROC, EV_ADD,
 		NOTE_EXIT|NOTE_EXEC|NOTE_TRACK, 0, NULL);
 	kevent(kq, &ke, 1, NULL, 0, NULL);
 	if (fork() != 0)
 		kevent(kq, NULL, 0, &ke, 1, NULL);
+
 	return (0);
 }

@@ -18,19 +18,20 @@
 
 cd /tmp
 cat > /tmp/kevent9-1.c <<EOF
-#include <stdio.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <sys/event.h>
 #include <sys/time.h>
+#include <sys/types.h>
 #include <sys/wait.h>
-#include <signal.h>
+#include <sys/wait.h>
+
+#include <err.h>
 #include <pthread.h>
 #include <pthread_np.h>
-#include <unistd.h>
+#include <signal.h>
+#include <stdio.h>
 #include <stdlib.h>
-#include <err.h>
+#include <string.h>
+#include <unistd.h>
 
 #define NUM_PROCS 4000
 
@@ -204,3 +205,4 @@ while [ $((`date '+%s'` - start)) -lt 300 ]; do
 	./kevent9-1 > /dev/null
 done
 rm kevent9-1 kevent9-2
+exit 0

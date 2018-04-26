@@ -100,8 +100,7 @@ test(void)
 {
         struct kevent ev[2];
         struct timespec ts;
-        int kq = -1;
-        int fd, n;
+        int kq, fd, n;
 
 	if ((fd = open(file, O_RDONLY, 0)) == -1)
 		err(1, "open(%s). %s:%d", file, __func__, __LINE__);

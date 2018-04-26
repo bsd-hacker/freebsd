@@ -36,6 +36,7 @@
 # https://people.freebsd.org/~pho/stress/log/kevent6.txt
 # Fixed by: r286921
 
+[ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 . ../default.cfg
 
 odir=`pwd`
@@ -73,6 +74,10 @@ rm -f /tmp/kevent6
 exit
 EOF
 #include <sys/types.h>
+#include <sys/event.h>
+#include <sys/mman.h>
+#include <sys/wait.h>
+
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -82,26 +87,23 @@ EOF
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/event.h>
-#include <sys/mman.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #define LOOPS 500000
 #define PARALLEL 8
 
+static int fd;
 static char path[80];
 
-int fd;
-
-void *
+static void *
 spin(void *arg __unused)
 {
 	int i;
 
 	for (i= 0;; i++) {
 		snprintf(path, sizeof(path), "file.%06d.%d", getpid(), i);
-		if ((fd = open(path, O_CREAT | O_TRUNC | O_RDWR, 0622)) == -1)
+		if ((fd = open(path, O_CREAT | O_TRUNC | O_RDWR, 0622)) ==
+		    -1)
 			err(1, "creat()");
 		close(fd);
 		usleep(10000);
@@ -111,7 +113,7 @@ spin(void *arg __unused)
 	return (NULL);
 }
 
-void *
+static void *
 test(void *arg __unused)
 {
 	int kq;

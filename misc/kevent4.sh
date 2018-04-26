@@ -35,7 +35,7 @@ odir=`pwd`
 
 cd /tmp
 sed '1,/^EOF/d' < $odir/$0 > kevent4.c
-mycc -o kevent4 -Wall kevent4.c -pthread
+mycc -o kevent4 -Wall kevent4.c -pthread || exit 1
 rm -f kevent4.c
 
 cd $odir
@@ -56,9 +56,10 @@ exit
 EOF
 // $FreeBSD$
 
-#include <unistd.h>
 #include <sys/types.h>
 #include <sys/event.h>
+
+#include <unistd.h>
 #include <errno.h>
 #include <string.h>
 #include <stdio.h>
@@ -67,16 +68,16 @@ EOF
 # define true 1
 #endif
 
-int kq;
+static int kq;
 
-void
+static void
 err(const char *msg, int err_no)
 {
 	fprintf(stderr, "%s: %s\n", msg, strerror(err_no));
 	exit(1);
 }
 
-void
+static void
 init_kq()
 {
 	kq = kqueue();
@@ -84,10 +85,11 @@ init_kq()
 		err("kqueue", errno);
 }
 
-void
+static void
 add_watch(pid_t pid)
 {
 	struct kevent kev;
+
 	bzero(&kev, sizeof(kev));
 	kev.ident = pid;
 	kev.flags = EV_ADD | EV_ENABLE;
@@ -113,35 +115,7 @@ add_watch(pid_t pid)
 	}
 }
 
-void
-del_watch(pid_t pid)
-{
-	struct kevent kev;
-	bzero(&kev, sizeof(kev));
-	kev.ident = pid;
-	kev.flags = EV_DELETE;
-	kev.filter = EVFILT_PROC;
-
-	while (true) {
-		int res = kevent(kq, &kev, 1, NULL, 0, NULL);
-		if (res == -1) {
-			if (errno == EINTR)
-				continue;
-			if (errno == ESRCH)
-				break;
-
-			int err_no = errno;
-			char msg[64];
-			snprintf(msg, sizeof(msg),
-				 "kevent - del watch for pid %u", pid);
-			err(msg, err_no);
-		}
-		else
-			break;
-	}
-}
-
-void polling()
+static void polling()
 {
 	struct kevent kev[10];
 	pid_t pid;
@@ -165,7 +139,8 @@ void polling()
 			pid = kev[i].ident;
 			if (kev[i].fflags & NOTE_CHILD) {
 				add_watch(pid);
-				printf("%u - new process, parent %u\n", pid, (unsigned int)kev[i].data);
+				printf("%u - new process, parent %u\n", pid,
+				    (unsigned int)kev[i].data);
 			}
 			if (kev[i].fflags & NOTE_FORK) {
 				printf("%u forked\n", pid);
@@ -175,7 +150,6 @@ void polling()
 			}
 			if (kev[i].fflags & NOTE_EXIT) {
 				printf("%u exited\n", pid);
-//				del_watch(pid);
 			}
 			if (kev[i].fflags & NOTE_TRACK) {
 				printf("%u forked - track\n", pid);
