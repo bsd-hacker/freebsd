@@ -87,19 +87,19 @@ main(int argc, char *argv[])
 			/* Replace the first DS server with the second one. */
 			if (zerofh != 0 || zerods != 0)
 				errx(1, "-c, -r and -z are mutually "
-				    "exclusive\n");
+				    "exclusive");
 			if (res != NULL)
-				errx(1, "-c and -s are mutually exclusive\n");
+				errx(1, "-c and -s are mutually exclusive");
 			strlcpy(hostn, optarg, 2 * NI_MAXHOST + 2);
 			cp = strchr(hostn, ',');
 			if (cp == NULL)
-				errx(1, "Bad -c argument %s\n", hostn);
+				errx(1, "Bad -c argument %s", hostn);
 			*cp = '\0';
 			if (getaddrinfo(hostn, NULL, NULL, &res) != 0)
-				errx(1, "Can't get IP# for %s\n", hostn);
+				errx(1, "Can't get IP# for %s", hostn);
 			*cp++ = ',';
 			if (getaddrinfo(cp, NULL, NULL, &newres) != 0)
-				errx(1, "Can't get IP# for %s\n", cp);
+				errx(1, "Can't get IP# for %s", cp);
 			break;
 		case 'q':
 			quiet = 1;
@@ -108,24 +108,24 @@ main(int argc, char *argv[])
 			/* Reset the DS server in a mirror with 0.0.0.0. */
 			if (zerofh != 0 || res != NULL || newres != NULL)
 				errx(1, "-r and -s, -z or -c are mutually "
-				    "exclusive\n");
+				    "exclusive");
 			zerods = 1;
 			/* Translate the server name to an IP address. */
 			if (getaddrinfo(optarg, NULL, NULL, &res) != 0)
-				errx(1, "Can't get IP# for %s\n", optarg);
+				errx(1, "Can't get IP# for %s", optarg);
 			break;
 		case 's':
 			if (res != NULL)
 				errx(1, "-s, -c and -r are mutually "
-				    "exclusive\n");
+				    "exclusive");
 			/* Translate the server name to an IP address. */
 			if (getaddrinfo(optarg, NULL, NULL, &res) != 0)
-				errx(1, "Can't get IP# for %s\n", optarg);
+				errx(1, "Can't get IP# for %s", optarg);
 			break;
 		case 'z':
 			if (newres != NULL || zerods != 0)
 				errx(1, "-c, -r and -z are mutually "
-				    "exclusive\n");
+				    "exclusive");
 			zerofh = 1;
 			break;
 		default:
@@ -145,7 +145,7 @@ main(int argc, char *argv[])
 	    "pnfsd.dsfile", dsfile, sizeof(dsfile));
 	mirrorcnt = xattrsize / sizeof(struct pnfsdsfile);
 	if (mirrorcnt < 1 || xattrsize != mirrorcnt * sizeof(struct pnfsdsfile))
-		err(1, "Can't get extattr pnfsd.dsfile\n");
+		err(1, "Can't get extattr pnfsd.dsfile for %s", *argv);
 
 	if (quiet == 0)
 		printf("%s:\t", *argv);
@@ -155,7 +155,7 @@ main(int argc, char *argv[])
 		/* Do the zerofh option. You must be root. */
 		if (zerofh != 0) {
 			if (geteuid() != 0)
-				errx(1, "Must be root/su to zerofh\n");
+				errx(1, "Must be root/su to zerofh");
 	
 			/*
 			 * Do it for the server specified by -s/--ds or all
@@ -188,7 +188,7 @@ main(int argc, char *argv[])
 		/* Do the zerods option. You must be root. */
 		if (zerods != 0 && mirrorcnt > 1) {
 			if (geteuid() != 0)
-				errx(1, "Must be root/su to zerods\n");
+				errx(1, "Must be root/su to zerods");
 	
 			/*
 			 * Do it for the server specified.
@@ -223,7 +223,7 @@ main(int argc, char *argv[])
 		if (newres != NULL) {
 			if (geteuid() != 0)
 				errx(1, "Must be root/su to replace the host"
-				    " addr\n");
+				    " addr");
 	
 			/*
 			 * Check that the old host address matches.
@@ -261,7 +261,7 @@ main(int argc, char *argv[])
 					newres = newres->ai_next;
 					if (newres == NULL)
 						errx(1, "Hostname %s has no"
-						    " IP#\n", cp);
+						    " IP#", cp);
 				}
 				if (newres->ai_addr->sa_family == AF_INET) {
 					memcpy(sin, newres->ai_addr,
@@ -282,7 +282,7 @@ main(int argc, char *argv[])
 			if (getnameinfo((struct sockaddr *)&dsfile[i].dsf_sin,
 			    dsfile[i].dsf_sin.sin_len, hostn, sizeof(hostn),
 			    NULL, 0, 0) < 0)
-				err(1, "Can't get hostname\n");
+				err(1, "Can't get hostname");
 			printf("%s\tds%d/%s", hostn, dsfile[i].dsf_dir,
 			    dsfile[i].dsf_filename);
 		}
@@ -291,7 +291,7 @@ main(int argc, char *argv[])
 		printf("\n");
 	if (dosetxattr != 0 && extattr_set_file(*argv, EXTATTR_NAMESPACE_SYSTEM,
 	    "pnfsd.dsfile", dsfile, xattrsize) != xattrsize)
-		err(1, "Can't set pnfsd.dsfile\n");
+		err(1, "Can't set pnfsd.dsfile");
 }
 
 static void
