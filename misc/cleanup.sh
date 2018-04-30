@@ -32,39 +32,53 @@
 
 . ../default.cfg
 
-MOUNTS=31
-mount | grep -q "on $mntpoint " && umount -f $mntpoint
-rm -rf $mntpoint/stressX*
+bname=`basename $mntpoint`
+mounts=`mount | awk "/$bname/{print \\$3}"`
+nmounts=`sysctl -n hw.ncpu`		# Max number of mounts in use
+[ $nmounts -lt 31 ] && nmounts=31	# Arbitrary value
+s=0
+# Unmount the test mount points: /mnt, /mnt10 .. mnt31
+for i in $mounts; do
+	u=`echo $i | sed "s/\/$bname//"`
+	[ -z "$u" ] && u=$mdstart
+	echo "$u" | grep -Eq '^[0-9]+$' || continue
+	[ $u -lt $mdstart -o $u -gt $((mdstart + nmounts)) ] && continue
+	while mount | grep -q "on $i "; do
+		fstat -mf $i 2>/dev/null | sed 1d | awk '{print $3}' | \
+		    xargs kill
+		echo "cleanup.sh: umount -f $i"
+		umount -f $i > /dev/null 2>&1 || s=1
+	done
+done
+
+# Delete the test mount points /mnt10 .. /mnt31
+for i in `ls -d $mntpoint* 2>/dev/null | grep -Ev '^$mntpoint$'`; do
+	u=`echo $i | sed "s/\/$bname//"`
+	echo "$u" | grep -Eq '^[0-9]+$' || continue
+	[ $u -lt $mdstart -o $u -gt $((mdstart + nmounts)) ] && continue
+	if ! mount | grep -q "on $i "; then
+		[ -d $i ] && find $i -delete \
+			2>/dev/null
+		rm -rf $i > /dev/null 2>&1
+	fi
+done
+
+# Delete the memory disks
+units=`mdconfig -l | sed 's/md//g'`
+for u in $units; do
+	if [ $u -ge $mdstart -a $u -lt $((mdstart + nmounts)) ]; then
+		echo "cleanup.sh: mdconfig -d -u $u"
+		mdconfig -d -u $u || s=1
+		[ -c /dev/md$u ] && sleep .1
+	fi
+done
+
+[ -d "$mntpoint" ] && (cd $mntpoint && find . -delete)
 rm -f /tmp/.snap/stress2* /var/.snap/stress2*
 rm -rf /tmp/stressX.control $RUNDIR
 [ -d `dirname "$diskimage"` ] || mkdir -p `dirname "$diskimage"`
 mkdir -p $RUNDIR
 chmod 0777 $RUNDIR
-
-s=0
-for i in `jot $MOUNTS 0 | sort -nr` ""; do
-	while mount | grep -q "on ${mntpoint}$i "; do
-		fstat -mf ${mntpoint}$i | sed 1d | awk '{print $3}' | \
-		    xargs kill
-		umount -f ${mntpoint}$i > /dev/null 2>&1 || s=1
-	done
-done
-# Delete the test mount points /mnt0 .. /mnt31
-for i in `jot $MOUNTS 0`; do
-	if ! mount | grep -q "on ${mntpoint}$i "; then
-		[ -d ${mntpoint}$i ] && find ${mntpoint}$i -delete \
-			2>/dev/null
-		rm -rf ${mntpoint}$i > /dev/null 2>&1
-	fi
-done
-[ -d "$mntpoint" ] && (cd $mntpoint && find . -delete)
-units=`mdconfig -l | sed 's/md//g'`
-for u in $units; do
-	if [ $u -ge $mdstart -a $u -lt $((mdstart + MOUNTS)) ]; then
-	    mdconfig -d -u $u || s=1
-	    [ -c /dev/md$u ] && sleep .1
-	fi
-done
 
 # Delete $testuser's ipcs
 ipcs | awk "\$5 ~/$testuser/ && \$6 ~/$testuser/ {print \"-\" \$1,\$2}" | \
