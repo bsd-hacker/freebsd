@@ -37,8 +37,8 @@
 #include <net/if.h>
 #include <netinet/in.h>
 
-#define	NETDUMP_PORT		20023	/* Server udp port number for data. */
-#define	NETDUMP_ACKPORT		20024	/* Client udp port number for acks. */
+#define	NETDUMP_PORT		20023	/* Server UDP port for heralds. */
+#define	NETDUMP_ACKPORT		20024	/* Client UDP port for acks. */
 
 #define	NETDUMP_HERALD		1	/* Broadcast before starting a dump. */
 #define	NETDUMP_FINISHED	2	/* Send after finishing a dump. */
