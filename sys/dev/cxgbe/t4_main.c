@@ -617,8 +617,6 @@ static int del_filter(struct adapter *, struct t4_filter *);
 static void clear_filter(struct filter_entry *);
 static int set_filter_wr(struct adapter *, int);
 static int del_filter_wr(struct adapter *, int);
-static int set_tcb_rpl(struct sge_iq *, const struct rss_header *,
-    struct mbuf *);
 static int get_sge_context(struct adapter *, struct t4_sge_context *);
 static int load_fw(struct adapter *, struct t4_data *);
 static int load_cfg(struct adapter *, struct t4_data *);
@@ -2458,6 +2456,106 @@ rw_via_memwin(struct adapter *sc, int idx, uint32_t addr, uint32_t *val,
 	}
 
 	return (0);
+}
+
+int
+alloc_atid_tab(struct tid_info *t, int flags)
+{
+	int i;
+
+	MPASS(t->natids > 0);
+	MPASS(t->atid_tab == NULL);
+
+	t->atid_tab = malloc(t->natids * sizeof(*t->atid_tab), M_CXGBE,
+	    M_ZERO | flags);
+	if (t->atid_tab == NULL)
+		return (ENOMEM);
+	mtx_init(&t->atid_lock, "atid lock", NULL, MTX_DEF);
+	t->afree = t->atid_tab;
+	t->atids_in_use = 0;
+	for (i = 1; i < t->natids; i++)
+		t->atid_tab[i - 1].next = &t->atid_tab[i];
+	t->atid_tab[t->natids - 1].next = NULL;
+
+	return (0);
+}
+
+void
+free_atid_tab(struct tid_info *t)
+{
+
+	KASSERT(t->atids_in_use == 0,
+	    ("%s: %d atids still in use.", __func__, t->atids_in_use));
+
+	if (mtx_initialized(&t->atid_lock))
+		mtx_destroy(&t->atid_lock);
+	free(t->atid_tab, M_CXGBE);
+	t->atid_tab = NULL;
+}
+
+int
+alloc_atid(struct adapter *sc, void *ctx)
+{
+	struct tid_info *t = &sc->tids;
+	int atid = -1;
+
+	mtx_lock(&t->atid_lock);
+	if (t->afree) {
+		union aopen_entry *p = t->afree;
+
+		atid = p - t->atid_tab;
+		t->afree = p->next;
+		p->data = ctx;
+		t->atids_in_use++;
+	}
+	mtx_unlock(&t->atid_lock);
+	return (atid);
+}
+
+void *
+lookup_atid(struct adapter *sc, int atid)
+{
+	struct tid_info *t = &sc->tids;
+
+	return (t->atid_tab[atid].data);
+}
+
+void
+free_atid(struct adapter *sc, int atid)
+{
+	struct tid_info *t = &sc->tids;
+	union aopen_entry *p = &t->atid_tab[atid];
+
+	mtx_lock(&t->atid_lock);
+	p->next = t->afree;
+	t->afree = p;
+	t->atids_in_use--;
+	mtx_unlock(&t->atid_lock);
+}
+
+static void
+queue_tid_release(struct adapter *sc, int tid)
+{
+
+	CXGBE_UNIMPLEMENTED("deferred tid release");
+}
+
+void
+release_tid(struct adapter *sc, int tid, struct sge_wrq *ctrlq)
+{
+	struct wrqe *wr;
+	struct cpl_tid_release *req;
+
+	wr = alloc_wrqe(sizeof(*req), ctrlq);
+	if (wr == NULL) {
+		queue_tid_release(sc, tid);	/* defer */
+		return;
+	}
+	req = wrtod(wr);
+
+	INIT_TP_WR_MIT_CPL(req, CPL_TID_RELEASE, tid);
+
+	t4_wrq_tx(sc, wr);
 }
 
 static int
@@ -9170,22 +9268,6 @@ t4_filter_rpl(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 }
 
 static int
-set_tcb_rpl(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
-{
-
-	MPASS(iq->set_tcb_rpl != NULL);
-	return (iq->set_tcb_rpl(iq, rss, m));
-}
-
-static int
-l2t_write_rpl(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
-{
-
-	MPASS(iq->l2t_write_rpl != NULL);
-	return (iq->l2t_write_rpl(iq, rss, m));
-}
-
-static int
 get_sge_context(struct adapter *sc, struct t4_sge_context *cntxt)
 {
 	int rc;
@@ -10456,8 +10538,10 @@ mod_event(module_t mod, int cmd, void *arg)
 		sx_xlock(&mlu);
 		if (loaded++ == 0) {
 			t4_sge_modload();
-			t4_register_cpl_handler(CPL_SET_TCB_RPL, set_tcb_rpl);
-			t4_register_cpl_handler(CPL_L2T_WRITE_RPL, l2t_write_rpl);
+			t4_register_shared_cpl_handler(CPL_SET_TCB_RPL,
+			    t4_filter_rpl, CPL_COOKIE_FILTER);
+			t4_register_shared_cpl_handler(CPL_L2T_WRITE_RPL,
+			    do_l2t_write_rpl, CPL_COOKIE_FILTER);
 			t4_register_cpl_handler(CPL_TRACE_PKT, t4_trace_pkt);
 			t4_register_cpl_handler(CPL_T5_TRACE_PKT, t5_trace_pkt);
 			sx_init(&t4_list_lock, "T4/T5 adapters");
