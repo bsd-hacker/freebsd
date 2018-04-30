@@ -34,8 +34,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include "opt_netdump.h"
-
 #include <sys/param.h>
 #include <sys/conf.h>
 #include <sys/disk.h>
@@ -1114,8 +1112,10 @@ static int
 netdump_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
     int flags __unused, struct thread *td)
 {
+	struct diocskerneldump_arg *kda;
 	struct dumperinfo dumper;
 	struct netdump_conf *conf;
+	uint8_t *encryptedkey;
 	int error;
 	u_int u;
 
@@ -1148,7 +1148,11 @@ netdump_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 		break;
 	case NETDUMPSCONF:
 		conf = (struct netdump_conf *)addr;
-		if (conf->ndc_kda.kda_enable == 0) {
+		encryptedkey = NULL;
+		kda = &conf->ndc_kda;
+
+		conf->ndc_iface[sizeof(conf->ndc_iface) - 1] = '\0';
+		if (kda->kda_enable == 0) {
 			if (nd_enabled) {
 				error = clear_dumper(td);
 				if (error == 0)
@@ -1161,6 +1165,21 @@ netdump_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 		if (error != 0)
 			break;
 
+		if (kda->kda_encryption != KERNELDUMP_ENC_NONE) {
+			if (kda->kda_encryptedkeysize <= 0 ||
+			    kda->kda_encryptedkeysize >
+			    KERNELDUMP_ENCKEY_MAX_SIZE)
+				return (EINVAL);
+			encryptedkey = malloc(kda->kda_encryptedkeysize, M_TEMP,
+			    M_WAITOK);
+			error = copyin(kda->kda_encryptedkey, encryptedkey,
+			    kda->kda_encryptedkeysize);
+			if (error != 0) {
+				free(encryptedkey, M_TEMP);
+				return (error);
+			}
+		}
+
 		dumper.dumper_start = netdump_start;
 		dumper.dumper_hdr = netdump_write_headers;
 		dumper.dumper = netdump_dumper;
@@ -1169,10 +1188,15 @@ netdump_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t addr,
 		dumper.maxiosize = MAXDUMPPGS * PAGE_SIZE;
 		dumper.mediaoffset = 0;
 		dumper.mediasize = 0;
+
 		error = set_dumper(&dumper, conf->ndc_iface, td,
-		    conf->ndc_kda.kda_compression, conf->ndc_kda.kda_encryption,
-		    conf->ndc_kda.kda_key, conf->ndc_kda.kda_encryptedkeysize,
-		    conf->ndc_kda.kda_encryptedkey);
+		    kda->kda_compression, kda->kda_encryption,
+		    kda->kda_key, kda->kda_encryptedkeysize,
+		    encryptedkey);
+		if (encryptedkey != NULL) {
+			explicit_bzero(encryptedkey, kda->kda_encryptedkeysize);
+			free(encryptedkey, M_TEMP);
+		}
 		if (error != 0)
 			nd_enabled = 0;
 		break;
