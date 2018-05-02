@@ -4392,9 +4392,11 @@ errout:
 		if (clp->lc_flags & LCL_CBDOWN)
 			clp->lc_flags &= ~(LCL_CBDOWN | LCL_CALLBACKSON);
 		NFSUNLOCKSTATE();
-		if (nd->nd_repstat)
+		if (nd->nd_repstat) {
 			error = nd->nd_repstat;
-		else if (error == 0 && procnum == NFSV4OP_CBGETATTR)
+			NFSD_DEBUG(1, "nfsrv_docallback op=%d err=%d\n",
+			    procnum, error);
+		} else if (error == 0 && procnum == NFSV4OP_CBGETATTR)
 			error = nfsv4_loadattr(nd, NULL, nap, NULL, NULL, 0,
 			    NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL,
 			    p, NULL);
@@ -6592,6 +6594,12 @@ nfsrv_flexmirrordel(char *devid, NFSPROC_T *p)
 	/* Now, try to do a Layout recall for each one found. */
 	LIST_FOREACH_SAFE(lyp, &loclyp, lay_list, nlyp) {
 		NFSD_DEBUG(4, "do layout recall\n");
+		/*
+		 * The layout stateid.seqid needs to be incremented
+		 * before doing a LAYOUT_RECALL callback.
+		 */
+		if (++lyp->lay_stateid.seqid == 0)
+			lyp->lay_stateid.seqid = 1;
 		nfsrv_recalllayout(lyp, p);
 		nfsrv_freelayout(lyp);
 	}
@@ -6612,10 +6620,18 @@ nfsrv_recalllayout(struct nfslayout *lyp, NFSPROC_T *p)
 	NFSD_DEBUG(4, "aft nfsrv_getclient=%d\n", error);
 	if (error != 0)
 		return;
-	if ((clp->lc_flags & LCL_NFSV41) != 0)
-		nfsrv_docallback(clp, NFSV4OP_CBLAYOUTRECALL, NULL, 0, NULL,
-		    NULL, NULL, lyp, p);
-	else
+	if ((clp->lc_flags & LCL_NFSV41) != 0) {
+		error = nfsrv_docallback(clp, NFSV4OP_CBLAYOUTRECALL, NULL, 0,
+		    NULL, NULL, NULL, lyp, p);
+		if (error == NFSERR_NOMATCHLAYOUT) {
+			NFSDRECALLLOCK();
+			if ((lyp->lay_flags & NFSLAY_RECALL) != 0) {
+				lyp->lay_flags |= NFSLAY_RETURNED;
+				wakeup(lyp);
+			}
+			NFSDRECALLUNLOCK();
+		}
+	} else
 		printf("nfsrv_recalllayout: clp not NFSv4.1\n");
 }
 
@@ -6645,10 +6661,14 @@ nfsrv_layoutreturn(struct nfsrv_descript *nd, vnode_t vp,
 		}
 		if (error == 0) {
 			lhyp = NFSLAYOUTHASH(&fh);
+			NFSDRECALLLOCK();
 			NFSLOCKLAYOUT(lhyp);
 			error = nfsrv_findlayout(nd, &fh, layouttype, p, &lyp);
 			NFSD_DEBUG(4, "layoutret findlay=%d\n", error);
-			if (error == 0) {
+			if (error == 0 &&
+			    stateidp->other[0] == lyp->lay_stateid.other[0] &&
+			    stateidp->other[1] == lyp->lay_stateid.other[1] &&
+			    stateidp->other[2] == lyp->lay_stateid.other[2]) {
 				NFSD_DEBUG(4, "nfsrv_layoutreturn: stateid %d"
 				    " %x %x %x laystateid %d %x %x %x"
 				    " off=%ju len=%ju flgs=0x%x\n",
@@ -6660,15 +6680,6 @@ nfsrv_layoutreturn(struct nfsrv_descript *nd, vnode_t vp,
 				    lyp->lay_stateid.other[2],
 				    (uintmax_t)offset, (uintmax_t)len,
 				    lyp->lay_flags);
-				if (stateidp->other[0] !=
-				    lyp->lay_stateid.other[0] ||
-				    stateidp->other[1] !=
-				    lyp->lay_stateid.other[1] ||
-				    stateidp->other[2] !=
-				    lyp->lay_stateid.other[2])
-					error = NFSERR_BADSTATEID;
-			}
-			if (error == 0) {
 				if (++lyp->lay_stateid.seqid == 0)
 					lyp->lay_stateid.seqid = 1;
 				stateidp->seqid = lyp->lay_stateid.seqid;
@@ -6685,23 +6696,18 @@ nfsrv_layoutreturn(struct nfsrv_descript *nd, vnode_t vp,
 				}
 			}
 			NFSUNLOCKLAYOUT(lhyp);
-			if (error != 0) {
-				/* Search the nfsrv_recalllist for a match. */
-				NFSDDSLOCK();
-				LIST_FOREACH(lyp, &nfsrv_recalllisthead,
-				    lay_list) {
-					if (NFSBCMP(&lyp->lay_fh, &fh,
-					    sizeof(fh)) == 0 &&
-					    lyp->lay_clientid.qval ==
-					    nd->nd_clientid.qval) {
-						lyp->lay_flags |=
-						    NFSLAY_RETURNED;
-						wakeup(lyp);
-						error = 0;
-					}
+			/* Search the nfsrv_recalllist for a match. */
+			LIST_FOREACH(lyp, &nfsrv_recalllisthead, lay_list) {
+				if (NFSBCMP(&lyp->lay_fh, &fh,
+				    sizeof(fh)) == 0 &&
+				    lyp->lay_clientid.qval ==
+				    nd->nd_clientid.qval) {
+					lyp->lay_flags |= NFSLAY_RETURNED;
+					wakeup(lyp);
+					error = 0;
 				}
-				NFSDDSUNLOCK();
 			}
+			NFSDRECALLUNLOCK();
 		}
 		if (layouttype == NFSLAYOUT_FLEXFILE)
 			nfsrv_flexlayouterr(nd, layp, maxcnt, p);
@@ -7602,7 +7608,7 @@ nfsrv_copymr(vnode_t vp, vnode_t fvp, vnode_t dvp, struct nfsdevice *ds,
 	off_t rdpos, wrpos;
 	ssize_t aresid;
 	char *dat;
-	int ret, retacl, xfer;
+	int didprintf, ret, retacl, xfer;
 
 	ASSERT_VOP_LOCKED(fvp, "nfsrv_copymr fvp");
 	ASSERT_VOP_LOCKED(vp, "nfsrv_copymr vp");
@@ -7639,7 +7645,7 @@ nfsrv_copymr(vnode_t vp, vnode_t fvp, vnode_t dvp, struct nfsdevice *ds,
 
 	/*
 	 * Search for all RW layouts for this file.  Move them to the
-	 * recall list, so they can be recalled and  their return noted.
+	 * recall list, so they can be recalled and their return noted.
 	 */
 	lhyp = NFSLAYOUTHASH(&fh);
 	NFSDRECALLLOCK();
@@ -7655,6 +7661,7 @@ nfsrv_copymr(vnode_t vp, vnode_t fvp, vnode_t dvp, struct nfsdevice *ds,
 	NFSDRECALLUNLOCK();
 
 	ret = 0;
+	didprintf = 0;
 	LIST_INIT(&thl);
 	/* Unlock the MDS vp, so that a LayoutReturn can be done on it. */
 	NFSVOPUNLOCK(vp, 0);
@@ -7665,6 +7672,12 @@ tryagain:
 		if (NFSBCMP(&lyp->lay_fh, &fh, sizeof(fh)) == 0 &&
 		    (lyp->lay_flags & NFSLAY_RECALL) == 0) {
 			lyp->lay_flags |= NFSLAY_RECALL;
+			/*
+			 * The layout stateid.seqid needs to be incremented
+			 * before doing a LAYOUT_RECALL callback.
+			 */
+			if (++lyp->lay_stateid.seqid == 0)
+				lyp->lay_stateid.seqid = 1;
 			NFSDRECALLUNLOCK();
 			nfsrv_recalllayout(lyp, p);
 			NFSD_DEBUG(4, "nfsrv_copymr: recalled layout\n");
@@ -7683,11 +7696,17 @@ tryagain2:
 				    "nfsrv_copymr: layout returned\n");
 			} else {
 				ret = mtx_sleep(lyp, NFSDRECALLMUTEXPTR,
-				    PVFS | PCATCH, "nfsmrl", 0);
+				    PVFS | PCATCH, "nfsmrl", hz);
 				NFSD_DEBUG(4, "nfsrv_copymr: aft sleep=%d\n",
 				    ret);
 				if (ret == EINTR || ret == ERESTART)
 					break;
+				if ((lyp->lay_flags & NFSLAY_RETURNED) == 0 &&
+				    didprintf == 0) {
+					printf("nfsrv_copymr: layout not "
+					    "returned\n");
+					didprintf = 1;
+				}
 			}
 			goto tryagain2;
 		}
