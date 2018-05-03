@@ -6701,7 +6701,13 @@ nfsrv_layoutreturn(struct nfsrv_descript *nd, vnode_t vp,
 				if (NFSBCMP(&lyp->lay_fh, &fh,
 				    sizeof(fh)) == 0 &&
 				    lyp->lay_clientid.qval ==
-				    nd->nd_clientid.qval) {
+				    nd->nd_clientid.qval &&
+				    stateidp->other[0] ==
+				    lyp->lay_stateid.other[0] &&
+				    stateidp->other[1] ==
+				    lyp->lay_stateid.other[1] &&
+				    stateidp->other[2] ==
+				    lyp->lay_stateid.other[2]) {
 					lyp->lay_flags |= NFSLAY_RETURNED;
 					wakeup(lyp);
 					error = 0;
