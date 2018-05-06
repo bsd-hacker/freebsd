@@ -241,6 +241,17 @@ sub check_password($$) {
 }
 
 #
+# Reset the password.
+#
+sub reset_password($) {
+    my ($self) = @_;
+
+    $self->set_column(password => '*');
+    $self->update()
+	if $self->in_storage();
+}
+
+#
 # Pretty name
 #
 sub name($) {
