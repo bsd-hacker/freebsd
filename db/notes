@@ -34,13 +34,16 @@ psql -f db/fbce.sql fbce fbce
 # One-liner to set a user's password
 perl -Ilib -MFBCE -e 'FBCE->model("FBCE::Person")->find({ login => "kenneth36" })->set_password("4ltInn!?")'
 
+# One-liner to reset everybody's passwords
+perl -Ilib -MFBCE -e 'map { $_->reset_password() } FBCE->model("FBCE::Person")->all();'
+
 #
 # The list of users is generated on freefall using scripts written for
 # that purpose by gjb:
 #
-# des@freefall ~% ~gjb/bin/genuserlist.sh                          
-# des@freefall ~% sort users.txt >users-20180516.txt
-# des@freefall ~% getent passwd >gecos-20180516.txt
+# % ./genuserlist.sh
+# % sort users.txt >users-20180516.txt
+# % getent passwd | sort >gecos-20180516.txt
 #
 ./script/fbce_user.pl import users-20180516.txt
 ./script/fbce_user.pl gecos gecos-20180516.txt
@@ -56,7 +59,7 @@ perl -Ilib -MFBCE -e 'FBCE->model("FBCE::Person")->find({ login => "kenneth36" }
 # fst3k=# \t on
 # Showing only tuples.
 # fst3k=# \o active-20180516.txt
-# fst3k=# select p.login from persons p join revisions r on p.id = r.author where r.datetime >= '2017-05-16' group by p.login;
+# fst3k=# select p.login from persons p join revisions r on p.id = r.author where r.datetime >= '2017-05-16' group by p.login order by p.login;
 # fst3k=# \o
 #
 ./script/fbce_user.pl activate active-20180516.txt
@@ -72,6 +75,11 @@ perl -Ilib -MFBCE -e 'FBCE->model("FBCE::Person")->find({ login => "kenneth36" }
 # Finally, generate passwords
 #
 ./script/fbce_user.pl pwgen
+
+#
+# The resulting fbce-passwords.tgz can now be sent to clusteradm who
+# will untar it in /home on freefall.
+#
 
 # Print the logins of active users who haven't voted
 perl -Ilib -MFBCE -e 'map { print $_->login, "\n" } grep { $_->active && $_->votes_voters->count == 0 } FBCE->model("FBCE::Person")->all'
