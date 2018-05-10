@@ -31,6 +31,7 @@ sub auto :Private {
 
     # Stash schedule information etc.
     $c->stash(title => $c->config->{'title'});
+    $c->stash(descr => $c->config->{'descr'});
     my $now = DateTime->now();
     $c->stash(now => $now);
     my $schedule = $c->model('Schedule');
