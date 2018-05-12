@@ -1,4 +1,4 @@
-.TH "unbound.conf" "5" "Dec 15, 2016" "NLnet Labs" "unbound 1.6.0"
+.TH "unbound.conf" "5" "Jun 13, 2017" "NLnet Labs" "unbound 1.6.3"
 .\"
 .\" unbound.conf.5 -- unbound.conf manual
 .\"
@@ -413,9 +413,14 @@ turned off.
 The port number on which to provide TCP SSL service, default 853, only
 interfaces configured with that port number as @number get the SSL service.
 .TP
+.B use\-systemd: \fI<yes or no>
+Enable or disable systemd socket activation.
+Default is no.
+.TP
 .B do\-daemonize: \fI<yes or no>
 Enable or disable whether the unbound server forks into the background as
-a daemon. Default is yes.
+a daemon.  Set the value to \fIno\fR when unbound runs as systemd service.
+Default is yes.
 .TP
 .B access\-control: \fI<IP netblock> <action>
 The netblock is given as an IP4 or IP6 address with /size appended for a 
@@ -552,6 +557,13 @@ name, type and class.  Default is no.  Note that it takes time to print these
 lines which makes the server (significantly) slower.  Odd (nonprintable)
 characters in names are printed as '?'.
 .TP
+.B log\-replies: \fI<yes or no>
+Prints one line per reply to the log, with the log timestamp and IP address,
+name, type, class, return code, time to resolve, from cache and response size.
+Default is no.  Note that it takes time to print these
+lines which makes the server (significantly) slower.  Odd (nonprintable)
+characters in names are printed as '?'.
+.TP
 .B pidfile: \fI<filename>
 The process id is written to the file. Default is "@UNBOUND_PIDFILE@". 
 So,
@@ -583,6 +595,9 @@ If enabled version.server and version.bind queries are refused.
 .B version: \fI<string>
 Set the version to report. If set to "", the default, then the package
 version is returned.
+.TP
+.B hide\-trustanchor: \fI<yes or no>
+If enabled trustanchor.unbound queries are refused.
 .TP
 .B target\-fetch\-policy: \fI<"list of numbers">
 Set the target fetch policy used by unbound to determine if it should fetch
@@ -770,7 +785,8 @@ frequently.  The initial file can be one with contents as described in
 \fBtrust\-anchor\-file\fR.  The file is written to when the anchor is updated,
 so the unbound user must have write permission.  Write permission to the file,
 but also to the directory it is in (to create a temporary file, which is
-necessary to deal with filesystem full events).
+necessary to deal with filesystem full events), it must also be inside the
+chroot (if that is used).
 .TP
 .B trust\-anchor: \fI<"Resource Record">
 A DS or DNSKEY RR for a key to use for validation. Multiple entries can be
@@ -1193,6 +1209,34 @@ in different parts of the namespace.  The closest matching suffix is used
 to determine the qps limit.  The rate for the exact matching domain name
 is not changed, use ratelimit\-for\-domain to set that, you might want
 to use different settings for a top\-level\-domain and subdomains.
+.TP 5
+.B ip\-ratelimit: \fI<number or 0>
+Enable global ratelimiting of queries accepted per ip address.
+If 0, the default, it is disabled.  This option is experimental at this time.
+The ratelimit is in queries per second that are allowed.  More queries are
+completely dropped and will not receive a reply, SERVFAIL or otherwise.
+IP ratelimiting happens before looking in the cache. This may be useful for
+mitigating amplification attacks.
+.TP 5
+.B ip\-ratelimit\-size: \fI<memory size>
+Give the size of the data structure in which the current ongoing rates are
+kept track in.  Default 4m.  In bytes or use m(mega), k(kilo), g(giga).
+The ip ratelimit structure is small, so this data structure likely does
+not need to be large.
+.TP 5
+.B ip\-ratelimit\-slabs: \fI<number>
+Give power of 2 number of slabs, this is used to reduce lock contention
+in the ip ratelimit tracking data structure.  Close to the number of cpus is
+a fairly good setting.
+.TP 5
+.B ip\-ratelimit\-factor: \fI<number>
+Set the amount of queries to rate limit when the limit is exceeded.
+If set to 0, all queries are dropped for addresses where the limit is
+exceeded.  If set to another value, 1 in that number is allowed through
+to complete.  Default is 10, allowing 1/10 traffic to flow normally.
+This can make ordinary queries complete (if repeatedly queried for),
+and enter the cache, whilst also mitigating the traffic flow by the
+factor given.
 .SS "Remote Control Options"
 In the
 .B remote\-control:
@@ -1363,6 +1407,10 @@ global local\-zone elements.
 View specific local\-data elements. Has the same behaviour as the global
 local\-data elements.
 .TP
+.B local\-data\-ptr: \fI"IPaddr name"
+View specific local\-data\-ptr elements. Has the same behaviour as the global
+local\-data\-ptr elements.
+.TP
 .B view\-first: \fI<yes or no>
 If enabled, it attempts to use the global local\-zone and local\-data if there
 is no match in the view specific options.
@@ -1376,9 +1424,15 @@ acts like the iterator and validator modules do, on queries and answers.
 To enable the script module it has to be compiled into the daemon,
 and the word "python" has to be put in the \fBmodule\-config:\fR option
 (usually first, or between the validator and iterator).
+.LP
+If the \fBchroot:\fR option is enabled, you should make sure Python's
+library directory structure is bind mounted in the new root environment, see
+\fImount\fR(8).  Also the \fBpython\-script:\fR path should be specified as an
+absolute path relative to the new root, or as a relative path to the working
+directory.
 .TP
 .B python\-script: \fI<python file>\fR
-The script file to load. 
+The script file to load.
 .SS "DNS64 Module Options"
 .LP
 The dns64 module must be configured in the \fBmodule\-config:\fR "dns64
@@ -1392,6 +1446,79 @@ It must be /96 or shorter.  The default prefix is 64:ff9b::/96.
 .B dns64\-synthall: \fI<yes or no>\fR
 Debug option, default no.  If enabled, synthesize all AAAA records
 despite the presence of actual AAAA records.
+.SS "DNSCrypt Options"
+.LP
+The
+.B dnscrypt:
+clause give the settings of the dnscrypt channel. While those options are
+available, they are only meaningful if unbound was compiled with
+\fB\-\-enable\-dnscrypt\fR.
+Currently certificate and secret/public keys cannot be generated by unbound.
+You can use dnscrypt-wrapper to generate those: https://github.com/cofyc/dnscrypt-wrapper/blob/master/README.md#usage
+.TP
+.B dnscrypt\-enable: \fI<yes or no>\fR
+Whether or not the \fBdnscrypt\fR config should be enabled. You may define
+configuration but not activate it.
+The default is no.
+.TP
+.B dnscrypt\-port: \fI<port number>
+On which port should \fBdnscrypt\fR should be activated. Note that you should
+have a matching \fBinterface\fR option defined in the \fBserver\fR section for
+this port.
+.TP
+.B dnscrypt\-provider: \fI<provider name>\fR
+The provider name to use to distribute certificates. This is of the form:
+\fB2.dnscrypt-cert.example.com.\fR. The name \fIMUST\fR end with a dot.
+.TP
+.B dnscrypt\-secret\-key: \fI<path to secret key file>\fR
+Path to the time limited secret key file. This option may be specified multiple
+times.
+.TP
+.B dnscrypt\-provider\-cert: \fI<path to cert file>\fR
+Path to the certificate related to the \fBdnscrypt\-secret\-key\fRs. This option
+may be specified multiple times.
+.SS "EDNS Client Subnet Module Options"
+.LP
+The ECS module must be configured in the \fBmodule\-config:\fR "subnetcache
+validator iterator" directive and be compiled into the daemon to be
+enabled.  These settings go in the \fBserver:\fR section.
+.LP
+If the destination address is whitelisted with Unbound will add the EDNS0 option
+to the query containing the relevant part of the client's address. When an
+answer contains the ECS option the response and the option are placed in a
+specialized cache. If the authority indicated no support, the response is stored
+in the regular cache.
+.LP
+Additionally, when a client includes the option in its queries, Unbound will
+forward the option to the authority regardless of the authorities presence in
+the whitelist. In this case the lookup in the regular cache is skipped.
+.LP
+The maximum size of the ECS cache is controlled by 'msg-cache-size' in the
+configuration file. On top of that, for each query only 100 different subnets
+are allowed to be stored for each address family. Exceeding that number, older
+entries will be purged from cache.
+.TP
+.B send\-client\-subnet: \fI<IP address>\fR
+Send client source address to this authority. Append /num to indicate a
+classless delegation netblock, for example like 10.2.3.4/24 or 2001::11/64. Can
+be given multiple times. Authorities not listed will not receive edns-subnet
+information.
+.TP
+.B client\-subnet\-always\-forward: \fI<yes or no>\fR
+Specify whether the ECS whitelist check (configured using
+\fBsend\-client\-subnet\fR) is applied for all queries, even if the triggering
+query contains an ECS record, or only for queries for which the ECS record is
+generated using the querier address (and therefore did not contain ECS data in
+the client query). If enabled, the whitelist check is skipped when the client
+query contains an ECS record. Default is no.
+.TP
+.B max\-client\-subnet\-ipv6: \fI<number>\fR
+Specifies the maximum prefix length of the client source address we are willing
+to expose to third parties for IPv6.  Defaults to 56.
+.TP
+.B max\-client\-subnet\-ipv4: \fI<number>\fR
+Specifies the maximum prefix length of the client source address we are willing
+to expose to third parties for IPv4. Defaults to 24.
 .SH "MEMORY CONTROL EXAMPLE"
 In the example config settings below memory usage is reduced. Some service
 levels are lower, notable very large data and a high TCP load are no longer

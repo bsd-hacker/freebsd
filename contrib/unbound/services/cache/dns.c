@@ -106,7 +106,7 @@ store_rrsets(struct module_env* env, struct reply_info* rep, time_t now,
 
 void 
 dns_cache_store_msg(struct module_env* env, struct query_info* qinfo,
-	hashvalue_t hash, struct reply_info* rep, time_t leeway, int pside,
+	hashvalue_type hash, struct reply_info* rep, time_t leeway, int pside,
 	struct reply_info* qrep, struct regional* region)
 {
 	struct msgreply_entry* e;
@@ -188,7 +188,7 @@ msg_cache_lookup(struct module_env* env, uint8_t* qname, size_t qnamelen,
 {
 	struct lruhash_entry* e;
 	struct query_info k;
-	hashvalue_t h;
+	hashvalue_type h;
 
 	k.qname = qname;
 	k.qname_len = qnamelen;
@@ -479,8 +479,7 @@ gen_dns_msg(struct regional* region, struct query_info* q, size_t num)
 	return msg;
 }
 
-/** generate dns_msg from cached message */
-static struct dns_msg*
+struct dns_msg*
 tomsg(struct module_env* env, struct query_info* q, struct reply_info* r, 
 	struct regional* region, time_t now, struct regional* scratch)
 {
@@ -525,8 +524,11 @@ tomsg(struct module_env* env, struct query_info* q, struct reply_info* r,
 			return NULL;
 		}
 	}
-	rrset_array_unlock_touch(env->rrset_cache, scratch, r->ref, 
+	if(env)
+		rrset_array_unlock_touch(env->rrset_cache, scratch, r->ref, 
 		r->rrset_count);
+	else
+		rrset_array_unlock(r->ref, r->rrset_count);
 	return msg;
 }
 
@@ -709,7 +711,7 @@ dns_cache_lookup(struct module_env* env,
 {
 	struct lruhash_entry* e;
 	struct query_info k;
-	hashvalue_t h;
+	hashvalue_type h;
 	time_t now = *env->now;
 	struct ub_packed_rrset_key* rrset;
 
@@ -865,7 +867,7 @@ dns_cache_store(struct module_env* env, struct query_info* msgqinf,
 	} else {
 		/* store msg, and rrsets */
 		struct query_info qinf;
-		hashvalue_t h;
+		hashvalue_type h;
 
 		qinf = *msgqinf;
 		qinf.qname = memdup(msgqinf->qname, msgqinf->qname_len);

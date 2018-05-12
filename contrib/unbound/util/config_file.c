@@ -62,6 +62,9 @@
 #ifdef HAVE_GLOB_H
 # include <glob.h>
 #endif
+#ifdef CLIENT_SUBNET
+#include "edns-subnet/edns-subnet.h"
+#endif
 #ifdef HAVE_PWD_H
 #include <pwd.h>
 #endif
@@ -108,6 +111,7 @@ config_create(void)
 	cfg->log_identity = NULL; /* changed later with argv[0] */
 	cfg->log_time_ascii = 0;
 	cfg->log_queries = 0;
+	cfg->log_replies = 0;
 #ifndef USE_WINSOCK
 #  ifdef USE_MINI_EVENT
 	/* select max 1024 sockets */
@@ -158,6 +162,7 @@ config_create(void)
 	cfg->donotqueryaddrs = NULL;
 	cfg->donotquery_localhost = 1;
 	cfg->root_hints = NULL;
+	cfg->use_systemd = 0;
 	cfg->do_daemonize = 1;
 	cfg->if_automatic = 0;
 	cfg->so_rcvbuf = 0;
@@ -171,6 +176,13 @@ config_create(void)
 	cfg->out_ifs = NULL;
 	cfg->stubs = NULL;
 	cfg->forwards = NULL;
+#ifdef CLIENT_SUBNET
+	cfg->client_subnet = NULL;
+	cfg->client_subnet_opcode = LDNS_EDNS_CLIENT_SUBNET;
+	cfg->client_subnet_always_forward = 0;
+	cfg->max_client_subnet_ipv4 = 24;
+	cfg->max_client_subnet_ipv6 = 56;
+#endif
 	cfg->views = NULL;
 	cfg->acls = NULL;
 	cfg->harden_short_bufsize = 0;
@@ -187,6 +199,7 @@ config_create(void)
 	cfg->unwanted_threshold = 0;
 	cfg->hide_identity = 0;
 	cfg->hide_version = 0;
+	cfg->hide_trustanchor = 0;
 	cfg->identity = NULL;
 	cfg->version = NULL;
 	cfg->auto_trust_anchor_file_list = NULL;
@@ -235,7 +248,11 @@ config_create(void)
 	if(!(cfg->control_cert_file = strdup(RUN_DIR"/unbound_control.pem"))) 
 		goto error_exit;
 
+#ifdef CLIENT_SUBNET
+	if(!(cfg->module_conf = strdup("subnetcache validator iterator"))) goto error_exit;
+#else
 	if(!(cfg->module_conf = strdup("validator iterator"))) goto error_exit;
+#endif
 	if(!(cfg->val_nsec3_key_iterations = 
 		strdup("1024 150 2048 500 4096 2500"))) goto error_exit;
 #if defined(DNSTAP_SOCKET_PATH)
@@ -243,14 +260,25 @@ config_create(void)
 		goto error_exit;
 #endif
 	cfg->disable_dnssec_lame_check = 0;
+	cfg->ip_ratelimit = 0;
 	cfg->ratelimit = 0;
+	cfg->ip_ratelimit_slabs = 4;
 	cfg->ratelimit_slabs = 4;
+	cfg->ip_ratelimit_size = 4*1024*1024;
 	cfg->ratelimit_size = 4*1024*1024;
 	cfg->ratelimit_for_domain = NULL;
 	cfg->ratelimit_below_domain = NULL;
+	cfg->ip_ratelimit_factor = 10;
 	cfg->ratelimit_factor = 10;
 	cfg->qname_minimisation = 0;
 	cfg->qname_minimisation_strict = 0;
+	cfg->shm_enable = 0;
+	cfg->shm_key = 11777;
+	cfg->dnscrypt = 0;
+	cfg->dnscrypt_port = 0;
+	cfg->dnscrypt_provider = NULL;
+	cfg->dnscrypt_provider_cert = NULL;
+	cfg->dnscrypt_secret_key = NULL;
 	return cfg;
 error_exit:
 	config_delete(cfg); 
@@ -374,6 +402,8 @@ int config_set_option(struct config_file* cfg, const char* opt,
 	else S_STR("log-identity:", log_identity)
 	else S_YNO("extended-statistics:", stat_extended)
 	else S_YNO("statistics-cumulative:", stat_cumulative)
+	else S_YNO("shm-enable:", shm_enable)
+	else S_NUMBER_OR_ZERO("shm-key:", shm_key)
 	else S_YNO("do-ip4:", do_ip4)
 	else S_YNO("do-ip6:", do_ip6)
 	else S_YNO("do-udp:", do_udp)
@@ -386,6 +416,7 @@ int config_set_option(struct config_file* cfg, const char* opt,
 	else S_STR("ssl-service-pem:", ssl_service_pem)
 	else S_NUMBER_NONZERO("ssl-port:", ssl_port)
 	else S_YNO("interface-automatic:", if_automatic)
+	else S_YNO("use-systemd:", use_systemd)
 	else S_YNO("do-daemonize:", do_daemonize)
 	else S_NUMBER_NONZERO("port:", port)
 	else S_NUMBER_NONZERO("outgoing-range:", outgoing_num_ports)
@@ -426,6 +457,7 @@ int config_set_option(struct config_file* cfg, const char* opt,
 	else S_STR("pidfile:", pidfile)
 	else S_YNO("hide-identity:", hide_identity)
 	else S_YNO("hide-version:", hide_version)
+	else S_YNO("hide-trustanchor:", hide_trustanchor)
 	else S_STR("identity:", identity)
 	else S_STR("version:", version)
 	else S_STRLIST("root-hints:", root_hints)
@@ -456,6 +488,7 @@ int config_set_option(struct config_file* cfg, const char* opt,
 	else S_NUMBER_OR_ZERO("val-log-level:", val_log_level)
 	else S_YNO("val-log-squelch:", val_log_squelch)
 	else S_YNO("log-queries:", log_queries)
+	else S_YNO("log-replies:", log_replies)
 	else S_YNO("val-permissive-mode:", val_permissive_mode)
 	else S_YNO("ignore-cd-flag:", ignore_cd)
 	else S_YNO("serve-expired:", serve_expired)
@@ -484,12 +517,25 @@ int config_set_option(struct config_file* cfg, const char* opt,
 	else S_STR("module-config:", module_conf)
 	else S_STR("python-script:", python_script)
 	else S_YNO("disable-dnssec-lame-check:", disable_dnssec_lame_check)
+#ifdef CLIENT_SUBNET
+	/* Can't set max subnet prefix here, since that value is used when
+	 * generating the address tree. */
+	/* No client-subnet-always-forward here, module registration depends on
+	 * this option. */
+#endif
+	else if(strcmp(opt, "ip-ratelimit:") == 0) {
+	    IS_NUMBER_OR_ZERO; cfg->ip_ratelimit = atoi(val);
+	    infra_ip_ratelimit=cfg->ip_ratelimit;
+	}
 	else if(strcmp(opt, "ratelimit:") == 0) {
 	    IS_NUMBER_OR_ZERO; cfg->ratelimit = atoi(val);
 	    infra_dp_ratelimit=cfg->ratelimit;
 	}
+	else S_MEMSIZE("ip-ratelimit-size:", ip_ratelimit_size)
 	else S_MEMSIZE("ratelimit-size:", ratelimit_size)
+	else S_POW2("ip-ratelimit-slabs:", ip_ratelimit_slabs)
 	else S_POW2("ratelimit-slabs:", ratelimit_slabs)
+	else S_NUMBER_OR_ZERO("ip-ratelimit-factor:", ip_ratelimit_factor)
 	else S_NUMBER_OR_ZERO("ratelimit-factor:", ratelimit_factor)
 	else S_YNO("qname-minimisation:", qname_minimisation)
 	else S_YNO("qname-minimisation-strict:", qname_minimisation_strict)
@@ -520,7 +566,9 @@ int config_set_option(struct config_file* cfg, const char* opt,
 		 * stub-ssl-upstream, forward-zone,
 		 * name, forward-addr, forward-host,
 		 * ratelimit-for-domain, ratelimit-below-domain,
-		 * local-zone-tag, access-control-view */
+		 * local-zone-tag, access-control-view 
+		 * send-client-subnet client-subnet-always-forward
+		 * max-client-subnet-ipv4 max-client-subnet-ipv6 */
 		return 0;
 	}
 	return 1;
@@ -682,6 +730,8 @@ config_get_option(struct config_file* cfg, const char* opt,
 	else O_DEC(opt, "statistics-interval", stat_interval)
 	else O_YNO(opt, "statistics-cumulative", stat_cumulative)
 	else O_YNO(opt, "extended-statistics", stat_extended)
+	else O_YNO(opt, "shm-enable", shm_enable)
+	else O_DEC(opt, "shm-key", shm_key)
 	else O_YNO(opt, "use-syslog", use_syslog)
 	else O_STR(opt, "log-identity", log_identity)
 	else O_YNO(opt, "log-time-ascii", log_time_ascii)
@@ -727,15 +777,18 @@ config_get_option(struct config_file* cfg, const char* opt,
 	else O_STR(opt, "ssl-service-key", ssl_service_key)
 	else O_STR(opt, "ssl-service-pem", ssl_service_pem)
 	else O_DEC(opt, "ssl-port", ssl_port)
+	else O_YNO(opt, "use-systemd", use_systemd)
 	else O_YNO(opt, "do-daemonize", do_daemonize)
 	else O_STR(opt, "chroot", chrootdir)
 	else O_STR(opt, "username", username)
 	else O_STR(opt, "directory", directory)
 	else O_STR(opt, "logfile", logfile)
 	else O_YNO(opt, "log-queries", log_queries)
+	else O_YNO(opt, "log-replies", log_replies)
 	else O_STR(opt, "pidfile", pidfile)
 	else O_YNO(opt, "hide-identity", hide_identity)
 	else O_YNO(opt, "hide-version", hide_version)
+	else O_YNO(opt, "hide-trustanchor", hide_trustanchor)
 	else O_STR(opt, "identity", identity)
 	else O_STR(opt, "version", version)
 	else O_STR(opt, "target-fetch-policy", target_fetch_policy)
@@ -787,16 +840,27 @@ config_get_option(struct config_file* cfg, const char* opt,
 	else O_UNS(opt, "val-override-date", val_date_override)
 	else O_YNO(opt, "minimal-responses", minimal_responses)
 	else O_YNO(opt, "rrset-roundrobin", rrset_roundrobin)
+#ifdef CLIENT_SUBNET
+	else O_LST(opt, "send-client-subnet", client_subnet)
+	else O_DEC(opt, "max-client-subnet-ipv4", max_client_subnet_ipv4)
+	else O_DEC(opt, "max-client-subnet-ipv6", max_client_subnet_ipv6)
+	else O_YNO(opt, "client-subnet-always-forward:",
+		client_subnet_always_forward)
+#endif
 	else O_YNO(opt, "unblock-lan-zones", unblock_lan_zones)
 	else O_YNO(opt, "insecure-lan-zones", insecure_lan_zones)
 	else O_DEC(opt, "max-udp-size", max_udp_size)
 	else O_STR(opt, "python-script", python_script)
 	else O_YNO(opt, "disable-dnssec-lame-check", disable_dnssec_lame_check)
+	else O_DEC(opt, "ip-ratelimit", ip_ratelimit)
 	else O_DEC(opt, "ratelimit", ratelimit)
+	else O_MEM(opt, "ip-ratelimit-size", ip_ratelimit_size)
 	else O_MEM(opt, "ratelimit-size", ratelimit_size)
+	else O_DEC(opt, "ip-ratelimit-slabs", ip_ratelimit_slabs)
 	else O_DEC(opt, "ratelimit-slabs", ratelimit_slabs)
 	else O_LS2(opt, "ratelimit-for-domain", ratelimit_for_domain)
 	else O_LS2(opt, "ratelimit-below-domain", ratelimit_below_domain)
+	else O_DEC(opt, "ip-ratelimit-factor", ip_ratelimit_factor)
 	else O_DEC(opt, "ratelimit-factor", ratelimit_factor)
 	else O_DEC(opt, "val-sig-skew-min", val_sig_skew_min)
 	else O_DEC(opt, "val-sig-skew-max", val_sig_skew_max)
@@ -805,6 +869,7 @@ config_get_option(struct config_file* cfg, const char* opt,
 	else O_IFC(opt, "define-tag", num_tags, tagname)
 	else O_LTG(opt, "local-zone-tag", local_zone_tags)
 	else O_LTG(opt, "access-control-tag", acl_tags)
+	else O_LTG(opt, "response-ip-tag", respip_tags)
 	else O_LS3(opt, "local-zone-override", local_zone_overrides)
 	else O_LS3(opt, "access-control-tag-action", acl_tag_actions)
 	else O_LS3(opt, "access-control-tag-data", acl_tag_datas)
@@ -912,6 +977,8 @@ config_read(struct config_file* cfg, const char* filename, const char* chroot)
 	ub_c_in = in;
 	ub_c_parse();
 	fclose(in);
+
+	if(!cfg->dnscrypt) cfg->dnscrypt_port = 0;
 
 	if(cfg_parser->errors != 0) {
 		fprintf(stderr, "read %s failed: %d errors in configuration file\n",
@@ -1062,6 +1129,9 @@ config_delete(struct config_file* cfg)
 	config_delviews(cfg->views);
 	config_delstrlist(cfg->donotqueryaddrs);
 	config_delstrlist(cfg->root_hints);
+#ifdef CLIENT_SUBNET
+	config_delstrlist(cfg->client_subnet);
+#endif
 	free(cfg->identity);
 	free(cfg->version);
 	free(cfg->module_conf);
@@ -1085,6 +1155,7 @@ config_delete(struct config_file* cfg)
 	config_del_strarray(cfg->tagname, cfg->num_tags);
 	config_del_strbytelist(cfg->local_zone_tags);
 	config_del_strbytelist(cfg->acl_tags);
+	config_del_strbytelist(cfg->respip_tags);
 	config_deltrplstrlist(cfg->acl_tag_actions);
 	config_deltrplstrlist(cfg->acl_tag_datas);
 	config_delstrlist(cfg->control_ifs);

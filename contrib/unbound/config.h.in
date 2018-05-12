@@ -3,6 +3,9 @@
 /* Directory to chroot to */
 #undef CHROOT_DIR
 
+/* Define this to enable client subnet option. */
+#undef CLIENT_SUBNET
+
 /* Do sha512 definitions in config.h */
 #undef COMPAT_SHA512
 
@@ -67,6 +70,14 @@
 /* Define to 1 if you have the declaration of `arc4random_uniform', and to 0
    if you don't. */
 #undef HAVE_DECL_ARC4RANDOM_UNIFORM
+
+/* Define to 1 if you have the declaration of `inet_ntop', and to 0 if you
+   don't. */
+#undef HAVE_DECL_INET_NTOP
+
+/* Define to 1 if you have the declaration of `inet_pton', and to 0 if you
+   don't. */
+#undef HAVE_DECL_INET_PTON
 
 /* Define to 1 if you have the declaration of `NID_secp384r1', and to 0 if you
    don't. */
@@ -377,6 +388,9 @@
 /* Define to 1 if you have the `SHA512_Update' function. */
 #undef HAVE_SHA512_UPDATE
 
+/* Define to 1 if you have the `shmget' function. */
+#undef HAVE_SHMGET
+
 /* Define to 1 if you have the `sigprocmask' function. */
 #undef HAVE_SIGPROCMASK
 
@@ -446,6 +460,12 @@
 /* Define to 1 if you have the <syslog.h> header file. */
 #undef HAVE_SYSLOG_H
 
+/* Define to 1 if systemd should be used */
+#undef HAVE_SYSTEMD
+
+/* Define to 1 if you have the <sys/ipc.h> header file. */
+#undef HAVE_SYS_IPC_H
+
 /* Define to 1 if you have the <sys/param.h> header file. */
 #undef HAVE_SYS_PARAM_H
 
@@ -454,6 +474,9 @@
 
 /* Define to 1 if you have the <sys/sha2.h> header file. */
 #undef HAVE_SYS_SHA2_H
+
+/* Define to 1 if you have the <sys/shm.h> header file. */
+#undef HAVE_SYS_SHM_H
 
 /* Define to 1 if you have the <sys/socket.h> header file. */
 #undef HAVE_SYS_SOCKET_H
@@ -640,6 +663,9 @@
 /* Define to 1 to use cachedb support */
 #undef USE_CACHEDB
 
+/* Define to 1 to enable dnscrypt support */
+#undef USE_DNSCRYPT
+
 /* Define to 1 to enable dnstap support */
 #undef USE_DNSTAP
 
@@ -663,6 +689,9 @@
 
 /* Define this to enable client TCP Fast Open. */
 #undef USE_OSX_MSG_FASTOPEN
+
+/* Define this to enable SHA1 support. */
+#undef USE_SHA1
 
 /* Define this to enable SHA256 and SHA512 support. */
 #undef USE_SHA2
@@ -1059,6 +1088,14 @@ char *strsep(char **stringp, const char *delim);
 #ifndef HAVE_ISBLANK
 #define isblank unbound_isblank
 int isblank(int c);
+#endif
+
+#if defined(HAVE_INET_NTOP) && !HAVE_DECL_INET_NTOP
+const char *inet_ntop(int af, const void *src, char *dst, size_t size);
+#endif
+
+#if defined(HAVE_INET_PTON) && !HAVE_DECL_INET_PTON
+int inet_pton(int af, const char* src, void* dst);
 #endif
 
 #if !defined(HAVE_STRPTIME) || !defined(STRPTIME_WORKS)

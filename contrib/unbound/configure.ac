@@ -6,19 +6,20 @@ sinclude(ax_pthread.m4)
 sinclude(acx_python.m4)
 sinclude(ac_pkg_swig.m4)
 sinclude(dnstap/dnstap.m4)
+sinclude(dnscrypt/dnscrypt.m4)
 
 # must be numbers. ac_defun because of later processing
 m4_define([VERSION_MAJOR],[1])
 m4_define([VERSION_MINOR],[6])
-m4_define([VERSION_MICRO],[0])
+m4_define([VERSION_MICRO],[3])
 AC_INIT(unbound, m4_defn([VERSION_MAJOR]).m4_defn([VERSION_MINOR]).m4_defn([VERSION_MICRO]), unbound-bugs@nlnetlabs.nl, unbound)
 AC_SUBST(UNBOUND_VERSION_MAJOR, [VERSION_MAJOR])
 AC_SUBST(UNBOUND_VERSION_MINOR, [VERSION_MINOR])
 AC_SUBST(UNBOUND_VERSION_MICRO, [VERSION_MICRO])
 
-LIBUNBOUND_CURRENT=6
-LIBUNBOUND_REVISION=3
-LIBUNBOUND_AGE=4
+LIBUNBOUND_CURRENT=7
+LIBUNBOUND_REVISION=2
+LIBUNBOUND_AGE=5
 # 1.0.0 had 0:12:0
 # 1.0.1 had 0:13:0
 # 1.0.2 had 0:14:0
@@ -68,6 +69,9 @@ LIBUNBOUND_AGE=4
 # 1.5.9 had 6:1:4
 # 1.5.10 had 6:2:4
 # 1.6.0 had 6:3:4
+# 1.6.1 had 7:0:5 # ub_callback_t typedef renamed to ub_callback_type
+# 1.6.2 had 7:1:5
+# 1.6.3 had 7:2:5
 
 #   Current  -- the number of the binary API that we're implementing
 #   Revision -- which iteration of the implementation of the binary
@@ -119,7 +123,7 @@ fi
 if test $on_mingw = "no"; then
   ub_conf_file=`eval echo "${sysconfdir}/unbound/unbound.conf"`
 else
-  ub_conf_file="C:\\Program Files (x86)\\Unbound\\service.conf"
+  ub_conf_file="C:\\Program Files\\Unbound\\service.conf"
 fi
 AC_ARG_WITH([conf_file],
         AC_HELP_STRING([--with-conf-file=path], 
@@ -189,7 +193,7 @@ AC_ARG_WITH(rootkey-file,
 if test $on_mingw = no; then
     UNBOUND_ROOTKEY_FILE="$UNBOUND_RUN_DIR/root.key"
 else
-    UNBOUND_ROOTKEY_FILE="C:\\Program Files (x86)\\Unbound\\root.key"
+    UNBOUND_ROOTKEY_FILE="C:\\Program Files\\Unbound\\root.key"
 fi
 )
 AC_SUBST(UNBOUND_ROOTKEY_FILE)
@@ -203,7 +207,7 @@ AC_ARG_WITH(rootcert-file,
 if test $on_mingw = no; then
     UNBOUND_ROOTCERT_FILE="$UNBOUND_RUN_DIR/icannbundle.pem"
 else
-    UNBOUND_ROOTCERT_FILE="C:\\Program Files (x86)\\Unbound\\icannbundle.pem"
+    UNBOUND_ROOTCERT_FILE="C:\\Program Files\\Unbound\\icannbundle.pem"
 fi
 )
 AC_SUBST(UNBOUND_ROOTCERT_FILE)
@@ -303,7 +307,7 @@ AC_CHECK_TOOL(STRIP, strip)
 ACX_LIBTOOL_C_ONLY
 
 # Checks for header files.
-AC_CHECK_HEADERS([stdarg.h stdbool.h netinet/in.h netinet/tcp.h sys/param.h sys/socket.h sys/un.h sys/uio.h sys/resource.h arpa/inet.h syslog.h netdb.h sys/wait.h pwd.h glob.h grp.h login_cap.h winsock2.h ws2tcpip.h endian.h],,, [AC_INCLUDES_DEFAULT])
+AC_CHECK_HEADERS([stdarg.h stdbool.h netinet/in.h netinet/tcp.h sys/param.h sys/socket.h sys/un.h sys/uio.h sys/resource.h arpa/inet.h syslog.h netdb.h sys/wait.h pwd.h glob.h grp.h login_cap.h winsock2.h ws2tcpip.h endian.h sys/ipc.h sys/shm.h],,, [AC_INCLUDES_DEFAULT])
 
 # check for types.  
 # Using own tests for int64* because autoconf builtin only give 32bit.
@@ -549,7 +553,7 @@ if test x_$ub_test_python != x_no; then
 
       # Check for SWIG
       ub_have_swig=no
-      AC_PROG_SWIG
+      AC_PROG_SWIG(2.0.1)
       AC_MSG_CHECKING(SWIG)
       if test ! -x "$SWIG"; then
          AC_ERROR([failed to find swig tool, install it, or do not build Python module and PyUnbound])
@@ -708,12 +712,35 @@ fi
 AC_SUBST(SSLLIB)
 
 
+AC_ARG_ENABLE(sha1, AC_HELP_STRING([--disable-sha1], [Disable SHA1 RRSIG support, does not disable nsec3 support]))
+case "$enable_sha1" in
+	no)
+	;;
+	yes|*)
+	AC_DEFINE([USE_SHA1], [1], [Define this to enable SHA1 support.])
+	;;
+esac
+
+
 AC_ARG_ENABLE(sha2, AC_HELP_STRING([--disable-sha2], [Disable SHA256 and SHA512 RRSIG support]))
 case "$enable_sha2" in
 	no)
 	;;
 	yes|*)
 	AC_DEFINE([USE_SHA2], [1], [Define this to enable SHA256 and SHA512 support.])
+	;;
+esac
+
+AC_ARG_ENABLE(subnet, AC_HELP_STRING([--enable-subnet], [Enable client subnet]))
+case "$enable_subnet" in
+	yes)
+	AC_DEFINE([CLIENT_SUBNET], [1], [Define this to enable client subnet option.])
+	SUBNET_OBJ="edns-subnet.lo subnetmod.lo addrtree.lo subnet-whitelist.lo"
+	AC_SUBST(SUBNET_OBJ)
+	SUBNET_HEADER='$(srcdir)/edns-subnet/subnetmod.h $(srcdir)/edns-subnet/edns-subnet.h $(srcdir)/edns-subnet/subnet-whitelist.h $(srcdir)/edns-subnet/addrtree.h'
+	AC_SUBST(SUBNET_HEADER)
+	;;
+	no|*)
 	;;
 esac
 
@@ -1053,6 +1080,10 @@ if test x_$enable_static_exe = x_yes; then
 	fi
 fi
 
+# Include systemd.m4 - begin
+sinclude(systemd.m4)
+# Include systemd.m4 - end
+
 # set lock checking if requested
 AC_ARG_ENABLE(lock_checks, AC_HELP_STRING([--enable-lock-checks],
 	[ enable to check lock and unlock calls, for debug purposes ]), 
@@ -1143,7 +1174,7 @@ AC_INCLUDES_DEFAULT
 #endif
 ])
 AC_SEARCH_LIBS([setusercontext], [util])
-AC_CHECK_FUNCS([tzset sigprocmask fcntl getpwnam endpwent getrlimit setrlimit setsid chroot kill chown sleep usleep random srandom recvmsg sendmsg writev socketpair glob initgroups strftime localtime_r setusercontext _beginthreadex endservent endprotoent fsync])
+AC_CHECK_FUNCS([tzset sigprocmask fcntl getpwnam endpwent getrlimit setrlimit setsid chroot kill chown sleep usleep random srandom recvmsg sendmsg writev socketpair glob initgroups strftime localtime_r setusercontext _beginthreadex endservent endprotoent fsync shmget])
 AC_CHECK_FUNCS([setresuid],,[AC_CHECK_FUNCS([setreuid])])
 AC_CHECK_FUNCS([setresgid],,[AC_CHECK_FUNCS([setregid])])
 
@@ -1151,6 +1182,28 @@ AC_CHECK_FUNCS([setresgid],,[AC_CHECK_FUNCS([setregid])])
 if echo $build_os | grep darwin8 > /dev/null; then
 	AC_DEFINE(DARWIN_BROKEN_SETREUID, 1, [Define this if on macOSX10.4-darwin8 and setreuid and setregid do not work])
 fi
+AC_CHECK_DECLS([inet_pton,inet_ntop], [], [], [
+AC_INCLUDES_DEFAULT
+#ifdef HAVE_NETINET_IN_H
+#include <netinet/in.h>
+#endif
+
+#ifdef HAVE_NETINET_TCP_H
+#include <netinet/tcp.h>
+#endif
+
+#ifdef HAVE_ARPA_INET_H
+#include <arpa/inet.h>
+#endif
+
+#ifdef HAVE_WINSOCK2_H
+#include <winsock2.h>
+#endif
+
+#ifdef HAVE_WS2TCPIP_H
+#include <ws2tcpip.h>
+#endif
+])
 AC_REPLACE_FUNCS(inet_aton)
 AC_REPLACE_FUNCS(inet_pton)
 AC_REPLACE_FUNCS(inet_ntop)
@@ -1188,11 +1241,11 @@ if test "$USE_NSS" = "no"; then
 		    if test "$USE_WINSOCK" = 1; then
 			AC_LIBOBJ(getentropy_win)
 		    else
-			case `uname` in
-			Darwin)
+			case "$host" in
+			Darwin|*darwin*)
 				AC_LIBOBJ(getentropy_osx)
 			;;
-			SunOS)
+			*solaris*|*sunos*|SunOS)
 				AC_LIBOBJ(getentropy_solaris)
 				AC_CHECK_HEADERS([sys/sha2.h],, [
 					AC_CHECK_FUNCS([SHA512_Update],,[
@@ -1205,7 +1258,7 @@ if test "$USE_NSS" = "no"; then
 				fi
 				AC_SEARCH_LIBS([clock_gettime], [rt])
 			;;
-			Linux|*)
+			*linux*|Linux|*)
 				AC_LIBOBJ(getentropy_linux)
 				AC_CHECK_FUNCS([SHA512_Update],,[
 					AC_DEFINE([COMPAT_SHA512], [1], [Do sha512 definitions in config.h])
@@ -1273,6 +1326,19 @@ dt_DNSTAP([$UNBOUND_RUN_DIR/dnstap.sock],
     ],
     [
         AC_SUBST([ENABLE_DNSTAP], [0])
+    ]
+)
+
+# check for dnscrypt if requested
+dnsc_DNSCRYPT([
+        AC_DEFINE([USE_DNSCRYPT], [1], [Define to 1 to enable dnscrypt support])
+        AC_SUBST([ENABLE_DNSCRYPT], [1])
+
+        AC_SUBST([DNSCRYPT_SRC], ["dnscrypt/dnscrypt.c"])
+        AC_SUBST([DNSCRYPT_OBJ], ["dnscrypt.lo"])
+    ],
+    [
+        AC_SUBST([ENABLE_DNSCRYPT], [0])
     ]
 )
 
@@ -1463,6 +1529,14 @@ char *strsep(char **stringp, const char *delim);
 int isblank(int c);
 #endif
 
+#if defined(HAVE_INET_NTOP) && !HAVE_DECL_INET_NTOP
+const char *inet_ntop(int af, const void *src, char *dst, size_t size);
+#endif
+
+#if defined(HAVE_INET_PTON) && !HAVE_DECL_INET_PTON
+int inet_pton(int af, const char* src, void* dst);
+#endif
+
 #if !defined(HAVE_STRPTIME) || !defined(STRPTIME_WORKS)
 #define strptime unbound_strptime
 struct tm;
@@ -1571,6 +1645,6 @@ dnl if this is a distro tarball, that was already done by makedist.sh
 AC_SUBST(version, [VERSION_MAJOR.VERSION_MINOR.VERSION_MICRO])
 AC_SUBST(date, [`date +'%b %e, %Y'`])
 
-AC_CONFIG_FILES([Makefile doc/example.conf doc/libunbound.3 doc/unbound.8 doc/unbound-anchor.8 doc/unbound-checkconf.8 doc/unbound.conf.5 doc/unbound-control.8 doc/unbound-host.1 smallapp/unbound-control-setup.sh dnstap/dnstap_config.h contrib/libunbound.pc])
+AC_CONFIG_FILES([Makefile doc/example.conf doc/libunbound.3 doc/unbound.8 doc/unbound-anchor.8 doc/unbound-checkconf.8 doc/unbound.conf.5 doc/unbound-control.8 doc/unbound-host.1 smallapp/unbound-control-setup.sh dnstap/dnstap_config.h dnscrypt/dnscrypt_config.h contrib/libunbound.pc contrib/unbound.socket contrib/unbound.service])
 AC_CONFIG_HEADER([config.h])
 AC_OUTPUT

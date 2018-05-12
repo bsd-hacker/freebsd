@@ -133,9 +133,8 @@ parse_create_repinfo(struct msg_parse* msg, struct reply_info** rep,
 	return 1;
 }
 
-/** allocate (special) rrset keys, return 0 on error */
-static int
-repinfo_alloc_rrset_keys(struct reply_info* rep, struct alloc_cache* alloc, 
+int
+reply_info_alloc_rrset_keys(struct reply_info* rep, struct alloc_cache* alloc,
 	struct regional* region)
 {
 	size_t i;
@@ -438,7 +437,7 @@ parse_create_msg(sldns_buffer* pkt, struct msg_parse* msg,
 		return 0;
 	if(!parse_create_repinfo(msg, rep, region))
 		return 0;
-	if(!repinfo_alloc_rrset_keys(*rep, alloc, region))
+	if(!reply_info_alloc_rrset_keys(*rep, alloc, region))
 		return 0;
 	if(!parse_copy_decompress(pkt, msg, *rep, region))
 		return 0;
@@ -608,10 +607,10 @@ reply_info_delete(void* d, void* ATTR_UNUSED(arg))
 	free(r);
 }
 
-hashvalue_t 
+hashvalue_type
 query_info_hash(struct query_info *q, uint16_t flags)
 {
-	hashvalue_t h = 0xab;
+	hashvalue_type h = 0xab;
 	h = hashlittle(&q->qtype, sizeof(q->qtype), h);
 	if(q->qtype == LDNS_RR_TYPE_AAAA && (flags&BIT_CD))
 		h++;
@@ -622,7 +621,7 @@ query_info_hash(struct query_info *q, uint16_t flags)
 
 struct msgreply_entry* 
 query_info_entrysetup(struct query_info* q, struct reply_info* r, 
-	hashvalue_t h)
+	hashvalue_type h)
 {
 	struct msgreply_entry* e = (struct msgreply_entry*)malloc( 
 		sizeof(struct msgreply_entry));
@@ -688,7 +687,7 @@ reply_info_copy(struct reply_info* rep, struct alloc_cache* alloc,
 	if(!cp)
 		return NULL;
 	/* allocate ub_key structures special or not */
-	if(!repinfo_alloc_rrset_keys(cp, alloc, region)) {
+	if(!reply_info_alloc_rrset_keys(cp, alloc, region)) {
 		if(!region)
 			reply_info_parsedelete(cp, alloc);
 		return NULL;
@@ -819,7 +818,39 @@ log_dns_msg(const char* str, struct query_info* qinfo, struct reply_info* rep)
 	regional_destroy(region);
 }
 
-void 
+void
+log_reply_info(enum verbosity_value v, struct query_info *qinf,
+	struct sockaddr_storage *addr, socklen_t addrlen, struct timeval dur,
+	int cached, struct sldns_buffer *rmsg)
+{
+	char qname_buf[LDNS_MAX_DOMAINLEN+1];
+	char clientip_buf[128];
+	char rcode_buf[16];
+	char type_buf[16];
+	char class_buf[16];
+	size_t pktlen;
+	uint16_t rcode = FLAGS_GET_RCODE(sldns_buffer_read_u16_at(rmsg, 2));
+
+	if(verbosity < v)
+	  return;
+
+	sldns_wire2str_rcode_buf((int)rcode, rcode_buf, sizeof(rcode_buf));
+	addr_to_str(addr, addrlen, clientip_buf, sizeof(clientip_buf));
+	if(rcode == LDNS_RCODE_FORMERR)
+	{
+		log_info("%s - - - %s - - - ", clientip_buf, rcode_buf);
+	} else {
+		dname_str(qinf->qname, qname_buf);
+		pktlen = sldns_buffer_limit(rmsg);
+		sldns_wire2str_type_buf(qinf->qtype, type_buf, sizeof(type_buf));
+		sldns_wire2str_class_buf(qinf->qclass, class_buf, sizeof(class_buf));
+		log_info("%s %s %s %s %s " ARG_LL "d.%6.6d %d %d",
+			clientip_buf, qname_buf, type_buf, class_buf,
+			rcode_buf, (long long)dur.tv_sec, (int)dur.tv_usec, cached, (int)pktlen);
+	}
+}
+
+void
 log_query_info(enum verbosity_value v, const char* str, 
 	struct query_info* qinf)
 {
@@ -952,19 +983,20 @@ int edns_opt_list_remove(struct edns_option** list, uint16_t code)
 }
 
 static int inplace_cb_reply_call_generic(
-    struct inplace_cb_reply* callback_list, enum inplace_cb_list_type type,
+    struct inplace_cb* callback_list, enum inplace_cb_list_type type,
 	struct query_info* qinfo, struct module_qstate* qstate,
 	struct reply_info* rep, int rcode, struct edns_data* edns,
 	struct regional* region)
 {
-	struct inplace_cb_reply* cb;
+	struct inplace_cb* cb;
 	struct edns_option* opt_list_out = NULL;
 	if(qstate)
 		opt_list_out = qstate->edns_opts_front_out;
 	for(cb=callback_list; cb; cb=cb->next) {
-		fptr_ok(fptr_whitelist_inplace_cb_reply_generic(cb->cb, type));
-		(void)(*cb->cb)(qinfo, qstate, rep, rcode, edns, &opt_list_out, region,
-			cb->cb_arg);
+		fptr_ok(fptr_whitelist_inplace_cb_reply_generic(
+			(inplace_cb_reply_func_type*)cb->cb, type));
+		(void)(*(inplace_cb_reply_func_type*)cb->cb)(qinfo, qstate, rep,
+			rcode, edns, &opt_list_out, region, cb->id, cb->cb_arg);
 	}
 	edns->opt_list = opt_list_out;
 	return 1;
@@ -1017,11 +1049,40 @@ int inplace_cb_query_call(struct module_env* env, struct query_info* qinfo,
 	uint8_t* zone, size_t zonelen, struct module_qstate* qstate,
 	struct regional* region)
 {
-	struct inplace_cb_query* cb = env->inplace_cb_lists[inplace_cb_query];
+	struct inplace_cb* cb = env->inplace_cb_lists[inplace_cb_query];
 	for(; cb; cb=cb->next) {
-		fptr_ok(fptr_whitelist_inplace_cb_query(cb->cb));
-		(void)(*cb->cb)(qinfo, flags, qstate, addr, addrlen, zone, zonelen,
-			region, cb->cb_arg);
+		fptr_ok(fptr_whitelist_inplace_cb_query(
+			(inplace_cb_query_func_type*)cb->cb));
+		(void)(*(inplace_cb_query_func_type*)cb->cb)(qinfo, flags,
+			qstate, addr, addrlen, zone, zonelen, region,
+			cb->id, cb->cb_arg);
+	}
+	return 1;
+}
+
+int inplace_cb_edns_back_parsed_call(struct module_env* env, 
+	struct module_qstate* qstate)
+{
+	struct inplace_cb* cb =
+		env->inplace_cb_lists[inplace_cb_edns_back_parsed];
+	for(; cb; cb=cb->next) {
+		fptr_ok(fptr_whitelist_inplace_cb_edns_back_parsed(
+			(inplace_cb_edns_back_parsed_func_type*)cb->cb));
+		(void)(*(inplace_cb_edns_back_parsed_func_type*)cb->cb)(qstate,
+			cb->id, cb->cb_arg);
+	}
+	return 1;
+}
+
+int inplace_cb_query_response_call(struct module_env* env,
+	struct module_qstate* qstate, struct dns_msg* response) {
+	struct inplace_cb* cb =
+		env->inplace_cb_lists[inplace_cb_query_response];
+	for(; cb; cb=cb->next) {
+		fptr_ok(fptr_whitelist_inplace_cb_query_response(
+			(inplace_cb_query_response_func_type*)cb->cb));
+		(void)(*(inplace_cb_query_response_func_type*)cb->cb)(qstate,
+			response, cb->id, cb->cb_arg);
 	}
 	return 1;
 }
@@ -1116,6 +1177,7 @@ struct edns_option* edns_opt_copy_alloc(struct edns_option* list)
 		if(s->opt_data) {
 			s->opt_data = memdup(s->opt_data, s->opt_len);
 			if(!s->opt_data) {
+				free(s);
 				edns_opt_list_free(result);
 				return NULL;
 			}

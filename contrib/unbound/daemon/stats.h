@@ -43,6 +43,7 @@
 #ifndef DAEMON_STATS_H
 #define DAEMON_STATS_H
 #include "util/timehist.h"
+#include "dnscrypt/dnscrypt_config.h"
 struct worker;
 struct config_file;
 struct comm_point;
@@ -63,6 +64,8 @@ struct sldns_buffer;
 struct server_stats {
 	/** number of queries from clients received. */
 	size_t num_queries;
+	/** number of queries that have been dropped/ratelimited by ip. */
+	size_t num_queries_ip_ratelimited;
 	/** number of queries that had a cache-miss. */
 	size_t num_queries_missed_cache;
 	/** number of prefetch queries - cachehits with prefetch */
@@ -147,6 +150,16 @@ struct server_stats {
 	size_t infra_cache_count;
 	/** number of key cache entries */
 	size_t key_cache_count;
+#ifdef USE_DNSCRYPT
+    /** number of queries that used dnscrypt */
+    size_t num_query_dnscrypt_crypted;
+    /** number of queries that queried dnscrypt certificates */
+    size_t num_query_dnscrypt_cert;
+    /** number of queries in clear text and not asking for the certificates */
+    size_t num_query_dnscrypt_cleartext;
+    /** number of malformed encrypted queries */
+    size_t num_query_dnscrypt_crypted_malformed;
+#endif
 };
 
 /** 

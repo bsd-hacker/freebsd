@@ -66,6 +66,10 @@ views_create(void)
 	return v;
 }
 
+/** This prototype is defined in in respip.h, but we want to avoid
+  * unnecessary dependencies */
+void respip_set_delete(struct respip_set *set);
+
 void 
 view_delete(struct view* v)
 {
@@ -73,12 +77,13 @@ view_delete(struct view* v)
 		return;
 	lock_rw_destroy(&v->lock);
 	local_zones_delete(v->local_zones);
+	respip_set_delete(v->respip_set);
 	free(v->name);
 	free(v);
 }
 
 static void
-delviewnode(rbnode_t* n, void* ATTR_UNUSED(arg))
+delviewnode(rbnode_type* n, void* ATTR_UNUSED(arg))
 {
 	struct view* v = (struct view*)n;
 	view_delete(v);
@@ -107,7 +112,7 @@ view_create(char* name)
 		return NULL;
 	}
 	lock_rw_init(&v->lock);
-	lock_protect(&v->lock, &v->name, sizeof(*v)-sizeof(rbnode_t));
+	lock_protect(&v->lock, &v->name, sizeof(*v)-sizeof(rbnode_type));
 	return v;
 }
 

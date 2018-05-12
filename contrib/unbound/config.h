@@ -4,6 +4,9 @@
 /* Directory to chroot to */
 #define CHROOT_DIR "/var/unbound"
 
+/* Define this to enable client subnet option. */
+/* #undef CLIENT_SUBNET */
+
 /* Do sha512 definitions in config.h */
 /* #undef COMPAT_SHA512 */
 
@@ -69,6 +72,14 @@
    if you don't. */
 /* #undef HAVE_DECL_ARC4RANDOM_UNIFORM */
 
+/* Define to 1 if you have the declaration of `inet_ntop', and to 0 if you
+   don't. */
+#define HAVE_DECL_INET_NTOP 1
+
+/* Define to 1 if you have the declaration of `inet_pton', and to 0 if you
+   don't. */
+#define HAVE_DECL_INET_PTON 1
+
 /* Define to 1 if you have the declaration of `NID_secp384r1', and to 0 if you
    don't. */
 #define HAVE_DECL_NID_SECP384R1 1
@@ -108,6 +119,9 @@
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #define HAVE_DLFCN_H 1
 
+/* Define to 1 if you have the `DSA_SIG_set0' function. */
+/* #undef HAVE_DSA_SIG_SET0 */
+
 /* Define to 1 if you have the <endian.h> header file. */
 /* #undef HAVE_ENDIAN_H */
 
@@ -143,6 +157,9 @@
 
 /* Define to 1 if you have the `EVP_cleanup' function. */
 #define HAVE_EVP_CLEANUP 1
+
+/* Define to 1 if you have the `EVP_dss1' function. */
+#define HAVE_EVP_DSS1 1
 
 /* Define to 1 if you have the `EVP_MD_CTX_new' function. */
 /* #undef HAVE_EVP_MD_CTX_NEW */
@@ -345,9 +362,6 @@
 /* Define to 1 if you have the `recvmsg' function. */
 #define HAVE_RECVMSG 1
 
-/* define if you have the sbrk() call */
-/* #undef HAVE_SBRK */
-
 /* Define to 1 if you have the `sendmsg' function. */
 #define HAVE_SENDMSG 1
 
@@ -375,6 +389,9 @@
 /* Define to 1 if you have the `SHA512_Update' function. */
 /* #undef HAVE_SHA512_UPDATE */
 
+/* Define to 1 if you have the `shmget' function. */
+#define HAVE_SHMGET 1
+
 /* Define to 1 if you have the `sigprocmask' function. */
 #define HAVE_SIGPROCMASK 1
 
@@ -395,6 +412,9 @@
 
 /* Define if you have the SSL libraries installed. */
 #define HAVE_SSL /**/
+
+/* Define to 1 if you have the `SSL_CTX_set_security_level' function. */
+/* #undef HAVE_SSL_CTX_SET_SECURITY_LEVEL */
 
 /* Define to 1 if you have the <stdarg.h> header file. */
 #define HAVE_STDARG_H 1
@@ -441,6 +461,12 @@
 /* Define to 1 if you have the <syslog.h> header file. */
 #define HAVE_SYSLOG_H 1
 
+/* Define to 1 if systemd should be used */
+/* #undef HAVE_SYSTEMD */
+
+/* Define to 1 if you have the <sys/ipc.h> header file. */
+#define HAVE_SYS_IPC_H 1
+
 /* Define to 1 if you have the <sys/param.h> header file. */
 #define HAVE_SYS_PARAM_H 1
 
@@ -449,6 +475,9 @@
 
 /* Define to 1 if you have the <sys/sha2.h> header file. */
 /* #undef HAVE_SYS_SHA2_H */
+
+/* Define to 1 if you have the <sys/shm.h> header file. */
+#define HAVE_SYS_SHM_H 1
 
 /* Define to 1 if you have the <sys/socket.h> header file. */
 #define HAVE_SYS_SOCKET_H 1
@@ -566,7 +595,7 @@
 #define PACKAGE_NAME "unbound"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "unbound 1.5.10"
+#define PACKAGE_STRING "unbound 1.6.3"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "unbound"
@@ -575,7 +604,7 @@
 #define PACKAGE_URL ""
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "1.5.10"
+#define PACKAGE_VERSION "1.6.3"
 
 /* default pidfile location */
 #define PIDFILE "/var/unbound/unbound.pid"
@@ -594,7 +623,7 @@
 #define ROOT_CERT_FILE "/var/unbound/icannbundle.pem"
 
 /* version number for resource files */
-#define RSRC_PACKAGE_VERSION 1,5,10,0
+#define RSRC_PACKAGE_VERSION 1,6,3,0
 
 /* Directory to chdir to */
 #define RUN_DIR "/var/unbound"
@@ -635,6 +664,9 @@
 /* Define to 1 to use cachedb support */
 /* #undef USE_CACHEDB */
 
+/* Define to 1 to enable dnscrypt support */
+/* #undef USE_DNSCRYPT */
+
 /* Define to 1 to enable dnstap support */
 /* #undef USE_DNSTAP */
 
@@ -658,6 +690,9 @@
 
 /* Define this to enable client TCP Fast Open. */
 /* #undef USE_OSX_MSG_FASTOPEN */
+
+/* Define this to enable SHA1 support. */
+#define USE_SHA1 1
 
 /* Define this to enable SHA256 and SHA512 support. */
 #define USE_SHA2 1
@@ -1054,6 +1089,14 @@ char *strsep(char **stringp, const char *delim);
 #ifndef HAVE_ISBLANK
 #define isblank unbound_isblank
 int isblank(int c);
+#endif
+
+#if defined(HAVE_INET_NTOP) && !HAVE_DECL_INET_NTOP
+const char *inet_ntop(int af, const void *src, char *dst, size_t size);
+#endif
+
+#if defined(HAVE_INET_PTON) && !HAVE_DECL_INET_PTON
+int inet_pton(int af, const char* src, void* dst);
 #endif
 
 #if !defined(HAVE_STRPTIME) || !defined(STRPTIME_WORKS)

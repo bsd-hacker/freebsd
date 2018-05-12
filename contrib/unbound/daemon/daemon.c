@@ -73,6 +73,7 @@
 #include "util/log.h"
 #include "util/config_file.h"
 #include "util/data/msgreply.h"
+#include "util/shm_side/shm_main.h"
 #include "util/storage/lookup3.h"
 #include "util/storage/slabhash.h"
 #include "services/listen_dnsport.h"
@@ -86,7 +87,12 @@
 #include "util/tube.h"
 #include "util/net_help.h"
 #include "sldns/keyraw.h"
+#include "respip/respip.h"
 #include <signal.h>
+
+#ifdef HAVE_SYSTEMD
+#include <systemd/sd-daemon.h>
+#endif
 
 /** How many quit requests happened. */
 static int sig_record_quit = 0;
@@ -175,8 +181,15 @@ static void
 signal_handling_playback(struct worker* wrk)
 {
 #ifdef SIGHUP
-	if(sig_record_reload)
+	if(sig_record_reload) {
+# ifdef HAVE_SYSTEMD
+		sd_notify(0, "RELOADING=1");
+# endif
 		worker_sighandler(SIGHUP, wrk);
+# ifdef HAVE_SYSTEMD
+		sd_notify(0, "READY=1");
+# endif
+	}
 #endif
 	if(sig_record_quit)
 		worker_sighandler(SIGTERM, wrk);
@@ -550,6 +563,8 @@ daemon_stop_others(struct daemon* daemon)
 void 
 daemon_fork(struct daemon* daemon)
 {
+	int have_view_respip_cfg = 0;
+
 	log_assert(daemon);
 	if(!(daemon->views = views_create()))
 		fatal_exit("Could not create views: out of memory");
@@ -559,14 +574,43 @@ daemon_fork(struct daemon* daemon)
 
 	if(!acl_list_apply_cfg(daemon->acl, daemon->cfg, daemon->views))
 		fatal_exit("Could not setup access control list");
+	if(daemon->cfg->dnscrypt) {
+#ifdef USE_DNSCRYPT
+		daemon->dnscenv = dnsc_create();
+		if (!daemon->dnscenv)
+			fatal_exit("dnsc_create failed");
+		dnsc_apply_cfg(daemon->dnscenv, daemon->cfg);
+#else
+		fatal_exit("dnscrypt enabled in config but unbound was not built with "
+				   "dnscrypt support");
+#endif
+	}
 	/* create global local_zones */
 	if(!(daemon->local_zones = local_zones_create()))
 		fatal_exit("Could not create local zones: out of memory");
 	if(!local_zones_apply_cfg(daemon->local_zones, daemon->cfg))
 		fatal_exit("Could not set up local zones");
 
+	/* process raw response-ip configuration data */
+	if(!(daemon->respip_set = respip_set_create()))
+		fatal_exit("Could not create response IP set");
+	if(!respip_global_apply_cfg(daemon->respip_set, daemon->cfg))
+		fatal_exit("Could not set up response IP set");
+	if(!respip_views_apply_cfg(daemon->views, daemon->cfg,
+		&have_view_respip_cfg))
+		fatal_exit("Could not set up per-view response IP sets");
+	daemon->use_response_ip = !respip_set_is_empty(daemon->respip_set) ||
+		have_view_respip_cfg;
+
 	/* setup modules */
 	daemon_setup_modules(daemon);
+
+	/* response-ip-xxx options don't work as expected without the respip
+	 * module.  To avoid run-time operational surprise we reject such
+	 * configuration. */
+	if(daemon->use_response_ip &&
+		modstack_find(&daemon->mods, "respip") < 0)
+		fatal_exit("response-ip options require respip module");
 
 	/* first create all the worker structures, so we can pass
 	 * them to the newly created threads. 
@@ -594,13 +638,25 @@ daemon_fork(struct daemon* daemon)
 #endif
 	signal_handling_playback(daemon->workers[0]);
 
+	if (!shm_main_init(daemon))
+		log_warn("SHM has failed");
+
 	/* Start resolver service on main thread. */
+#ifdef HAVE_SYSTEMD
+	sd_notify(0, "READY=1");
+#endif
 	log_info("start of service (%s).", PACKAGE_STRING);
 	worker_work(daemon->workers[0]);
+#ifdef HAVE_SYSTEMD
+	sd_notify(0, "STOPPING=1");
+#endif
 	log_info("service stopped (%s).", PACKAGE_STRING);
 
 	/* we exited! a signal happened! Stop other threads */
 	daemon_stop_others(daemon);
+
+	/* Shutdown SHM */
+	shm_main_shutdown(daemon);
 
 	daemon->need_to_exit = daemon->workers[0]->need_to_exit;
 }
@@ -621,6 +677,8 @@ daemon_cleanup(struct daemon* daemon)
 	slabhash_clear(daemon->env->msg_cache);
 	local_zones_delete(daemon->local_zones);
 	daemon->local_zones = NULL;
+	respip_set_delete(daemon->respip_set);
+	daemon->respip_set = NULL;
 	views_delete(daemon->views);
 	daemon->views = NULL;
 	/* key cache is cleared by module desetup during next daemon_fork() */
@@ -653,7 +711,6 @@ daemon_delete(struct daemon* daemon)
 		rrset_cache_delete(daemon->env->rrset_cache);
 		infra_delete(daemon->env->infra_cache);
 		edns_known_options_delete(daemon->env);
-		inplace_cb_lists_delete(daemon->env);
 	}
 	ub_randfree(daemon->rand);
 	alloc_clear(&daemon->superalloc);

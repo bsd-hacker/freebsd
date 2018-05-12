@@ -75,6 +75,7 @@
 #ifdef UB_ON_WINDOWS
 #include "winrc/win_svc.h"
 #endif
+#include "respip/respip.h"
 
 #ifdef WITH_PYTHONMODULE
 #include "pythonmod/pythonmod.h"
@@ -82,9 +83,12 @@
 #ifdef USE_CACHEDB
 #include "cachedb/cachedb.h"
 #endif
+#ifdef CLIENT_SUBNET
+#include "edns-subnet/subnetmod.h"
+#endif
 
 int 
-fptr_whitelist_comm_point(comm_point_callback_t *fptr)
+fptr_whitelist_comm_point(comm_point_callback_type *fptr)
 {
 	if(fptr == &worker_handle_request) return 1;
 	else if(fptr == &outnet_udp_cb) return 1;
@@ -94,7 +98,7 @@ fptr_whitelist_comm_point(comm_point_callback_t *fptr)
 }
 
 int 
-fptr_whitelist_comm_point_raw(comm_point_callback_t *fptr)
+fptr_whitelist_comm_point_raw(comm_point_callback_type *fptr)
 {
 	if(fptr == &tube_handle_listen) return 1;
 	else if(fptr == &tube_handle_write) return 1;
@@ -156,7 +160,7 @@ fptr_whitelist_event(void (*fptr)(int, short, void *))
 }
 
 int 
-fptr_whitelist_pending_udp(comm_point_callback_t *fptr)
+fptr_whitelist_pending_udp(comm_point_callback_type *fptr)
 {
 	if(fptr == &serviced_udp_callback) return 1;
 	else if(fptr == &worker_handle_reply) return 1;
@@ -165,7 +169,7 @@ fptr_whitelist_pending_udp(comm_point_callback_t *fptr)
 }
 
 int 
-fptr_whitelist_pending_tcp(comm_point_callback_t *fptr)
+fptr_whitelist_pending_tcp(comm_point_callback_type *fptr)
 {
 	if(fptr == &serviced_tcp_callback) return 1;
 	else if(fptr == &worker_handle_reply) return 1;
@@ -174,7 +178,7 @@ fptr_whitelist_pending_tcp(comm_point_callback_t *fptr)
 }
 
 int 
-fptr_whitelist_serviced_query(comm_point_callback_t *fptr)
+fptr_whitelist_serviced_query(comm_point_callback_type *fptr)
 {
 	if(fptr == &worker_handle_service_reply) return 1;
 	else if(fptr == &libworker_handle_service_reply) return 1;
@@ -209,43 +213,49 @@ fptr_whitelist_rbtree_cmp(int (*fptr) (const void *, const void *))
 }
 
 int 
-fptr_whitelist_hash_sizefunc(lruhash_sizefunc_t fptr)
+fptr_whitelist_hash_sizefunc(lruhash_sizefunc_type fptr)
 {
 	if(fptr == &msgreply_sizefunc) return 1;
 	else if(fptr == &ub_rrset_sizefunc) return 1;
 	else if(fptr == &infra_sizefunc) return 1;
 	else if(fptr == &key_entry_sizefunc) return 1;
 	else if(fptr == &rate_sizefunc) return 1;
+	else if(fptr == &ip_rate_sizefunc) return 1;
 	else if(fptr == &test_slabhash_sizefunc) return 1;
+#ifdef CLIENT_SUBNET
+	else if(fptr == &msg_cache_sizefunc) return 1;
+#endif
 	return 0;
 }
 
 int 
-fptr_whitelist_hash_compfunc(lruhash_compfunc_t fptr)
+fptr_whitelist_hash_compfunc(lruhash_compfunc_type fptr)
 {
 	if(fptr == &query_info_compare) return 1;
 	else if(fptr == &ub_rrset_compare) return 1;
 	else if(fptr == &infra_compfunc) return 1;
 	else if(fptr == &key_entry_compfunc) return 1;
 	else if(fptr == &rate_compfunc) return 1;
+	else if(fptr == &ip_rate_compfunc) return 1;
 	else if(fptr == &test_slabhash_compfunc) return 1;
 	return 0;
 }
 
 int 
-fptr_whitelist_hash_delkeyfunc(lruhash_delkeyfunc_t fptr)
+fptr_whitelist_hash_delkeyfunc(lruhash_delkeyfunc_type fptr)
 {
 	if(fptr == &query_entry_delete) return 1;
 	else if(fptr == &ub_rrset_key_delete) return 1;
 	else if(fptr == &infra_delkeyfunc) return 1;
 	else if(fptr == &key_entry_delkeyfunc) return 1;
 	else if(fptr == &rate_delkeyfunc) return 1;
+	else if(fptr == &ip_rate_delkeyfunc) return 1;
 	else if(fptr == &test_slabhash_delkey) return 1;
 	return 0;
 }
 
 int 
-fptr_whitelist_hash_deldatafunc(lruhash_deldatafunc_t fptr)
+fptr_whitelist_hash_deldatafunc(lruhash_deldatafunc_type fptr)
 {
 	if(fptr == &reply_info_delete) return 1;
 	else if(fptr == &rrset_data_delete) return 1;
@@ -253,11 +263,14 @@ fptr_whitelist_hash_deldatafunc(lruhash_deldatafunc_t fptr)
 	else if(fptr == &key_entry_deldatafunc) return 1;
 	else if(fptr == &rate_deldatafunc) return 1;
 	else if(fptr == &test_slabhash_deldata) return 1;
+#ifdef CLIENT_SUBNET
+	else if(fptr == &subnet_data_delete) return 1;
+#endif
 	return 0;
 }
 
 int 
-fptr_whitelist_hash_markdelfunc(lruhash_markdelfunc_t fptr)
+fptr_whitelist_hash_markdelfunc(lruhash_markdelfunc_type fptr)
 {
 	if(fptr == NULL) return 1;
 	else if(fptr == &rrset_markdel) return 1;
@@ -315,11 +328,15 @@ fptr_whitelist_mod_init(int (*fptr)(struct module_env* env, int id))
 	if(fptr == &iter_init) return 1;
 	else if(fptr == &val_init) return 1;
 	else if(fptr == &dns64_init) return 1;
+	else if(fptr == &respip_init) return 1;
 #ifdef WITH_PYTHONMODULE
 	else if(fptr == &pythonmod_init) return 1;
 #endif
 #ifdef USE_CACHEDB
 	else if(fptr == &cachedb_init) return 1;
+#endif
+#ifdef CLIENT_SUBNET
+	else if(fptr == &subnetmod_init) return 1;
 #endif
 	return 0;
 }
@@ -330,11 +347,15 @@ fptr_whitelist_mod_deinit(void (*fptr)(struct module_env* env, int id))
 	if(fptr == &iter_deinit) return 1;
 	else if(fptr == &val_deinit) return 1;
 	else if(fptr == &dns64_deinit) return 1;
+	else if(fptr == &respip_deinit) return 1;
 #ifdef WITH_PYTHONMODULE
 	else if(fptr == &pythonmod_deinit) return 1;
 #endif
 #ifdef USE_CACHEDB
 	else if(fptr == &cachedb_deinit) return 1;
+#endif
+#ifdef CLIENT_SUBNET
+	else if(fptr == &subnetmod_deinit) return 1;
 #endif
 	return 0;
 }
@@ -346,11 +367,15 @@ fptr_whitelist_mod_operate(void (*fptr)(struct module_qstate* qstate,
 	if(fptr == &iter_operate) return 1;
 	else if(fptr == &val_operate) return 1;
 	else if(fptr == &dns64_operate) return 1;
+	else if(fptr == &respip_operate) return 1;
 #ifdef WITH_PYTHONMODULE
 	else if(fptr == &pythonmod_operate) return 1;
 #endif
 #ifdef USE_CACHEDB
 	else if(fptr == &cachedb_operate) return 1;
+#endif
+#ifdef CLIENT_SUBNET
+	else if(fptr == &subnetmod_operate) return 1;
 #endif
 	return 0;
 }
@@ -362,11 +387,15 @@ fptr_whitelist_mod_inform_super(void (*fptr)(
 	if(fptr == &iter_inform_super) return 1;
 	else if(fptr == &val_inform_super) return 1;
 	else if(fptr == &dns64_inform_super) return 1;
+	else if(fptr == &respip_inform_super) return 1;
 #ifdef WITH_PYTHONMODULE
 	else if(fptr == &pythonmod_inform_super) return 1;
 #endif
 #ifdef USE_CACHEDB
 	else if(fptr == &cachedb_inform_super) return 1;
+#endif
+#ifdef CLIENT_SUBNET
+	else if(fptr == &subnetmod_inform_super) return 1;
 #endif
 	return 0;
 }
@@ -378,11 +407,15 @@ fptr_whitelist_mod_clear(void (*fptr)(struct module_qstate* qstate,
 	if(fptr == &iter_clear) return 1;
 	else if(fptr == &val_clear) return 1;
 	else if(fptr == &dns64_clear) return 1;
+	else if(fptr == &respip_clear) return 1;
 #ifdef WITH_PYTHONMODULE
 	else if(fptr == &pythonmod_clear) return 1;
 #endif
 #ifdef USE_CACHEDB
 	else if(fptr == &cachedb_clear) return 1;
+#endif
+#ifdef CLIENT_SUBNET
+	else if(fptr == &subnetmod_clear) return 1;
 #endif
 	return 0;
 }
@@ -393,11 +426,15 @@ fptr_whitelist_mod_get_mem(size_t (*fptr)(struct module_env* env, int id))
 	if(fptr == &iter_get_mem) return 1;
 	else if(fptr == &val_get_mem) return 1;
 	else if(fptr == &dns64_get_mem) return 1;
+	else if(fptr == &respip_get_mem) return 1;
 #ifdef WITH_PYTHONMODULE
 	else if(fptr == &pythonmod_get_mem) return 1;
 #endif
 #ifdef USE_CACHEDB
 	else if(fptr == &cachedb_get_mem) return 1;
+#endif
+#ifdef CLIENT_SUBNET
+	else if(fptr == &subnetmod_get_mem) return 1;
 #endif
 	return 0;
 }
@@ -409,14 +446,14 @@ fptr_whitelist_alloc_cleanup(void (*fptr)(void*))
 	return 0;
 }
 
-int fptr_whitelist_tube_listen(tube_callback_t* fptr)
+int fptr_whitelist_tube_listen(tube_callback_type* fptr)
 {
 	if(fptr == &worker_handle_control_cmd) return 1;
 	else if(fptr == &libworker_handle_control_cmd) return 1;
 	return 0;
 }
 
-int fptr_whitelist_mesh_cb(mesh_cb_func_t fptr)
+int fptr_whitelist_mesh_cb(mesh_cb_func_type fptr)
 {
 	if(fptr == &libworker_fg_done_cb) return 1;
 	else if(fptr == &libworker_bg_done_cb) return 1;
@@ -433,7 +470,7 @@ int fptr_whitelist_print_func(void (*fptr)(char*,void*))
 	return 0;
 }
 
-int fptr_whitelist_inplace_cb_reply_generic(inplace_cb_reply_func_t* fptr,
+int fptr_whitelist_inplace_cb_reply_generic(inplace_cb_reply_func_type* fptr,
 	enum inplace_cb_list_type type)
 {
 #ifndef WITH_PYTHONMODULE
@@ -459,7 +496,37 @@ int fptr_whitelist_inplace_cb_reply_generic(inplace_cb_reply_func_t* fptr,
 	return 0;
 }
 
-int fptr_whitelist_inplace_cb_query(inplace_cb_query_func_t* ATTR_UNUSED(fptr))
+int fptr_whitelist_inplace_cb_query(inplace_cb_query_func_type* fptr)
 {
+#ifdef CLIENT_SUBNET
+	if(fptr == &ecs_whitelist_check)
+		return 1;
+#else
+	(void)fptr;
+#endif
+	return 0;
+}
+
+int fptr_whitelist_inplace_cb_edns_back_parsed(
+	inplace_cb_edns_back_parsed_func_type* fptr)
+{
+#ifdef CLIENT_SUBNET
+	if(fptr == &ecs_edns_back_parsed)
+		return 1;
+#else
+	(void)fptr;
+#endif
+	return 0;
+}
+
+int fptr_whitelist_inplace_cb_query_response(
+	inplace_cb_query_response_func_type* fptr)
+{
+#ifdef CLIENT_SUBNET
+	if(fptr == &ecs_query_response)
+		return 1;
+#else
+	(void)fptr;
+#endif
 	return 0;
 }
