@@ -241,7 +241,8 @@ ipstrtoaddr(const char* ip, int port, struct sockaddr_storage* addr,
 int netblockstrtoaddr(const char* str, int port, struct sockaddr_storage* addr,
         socklen_t* addrlen, int* net)
 {
-	char* s = NULL;
+	char buf[64];
+	char* s;
 	*net = (str_is_ip6(str)?128:32);
 	if((s=strchr(str, '/'))) {
 		if(atoi(s+1) > *net) {
@@ -253,22 +254,76 @@ int netblockstrtoaddr(const char* str, int port, struct sockaddr_storage* addr,
 			log_err("cannot parse netblock: '%s'", str);
 			return 0;
 		}
-		if(!(s = strdup(str))) {
-			log_err("out of memory");
-			return 0;
-		}
-		*strchr(s, '/') = '\0';
+		strlcpy(buf, str, sizeof(buf));
+		s = strchr(buf, '/');
+		if(s) *s = 0;
+		s = buf;
 	}
 	if(!ipstrtoaddr(s?s:str, port, addr, addrlen)) {
-		free(s);
 		log_err("cannot parse ip address: '%s'", str);
 		return 0;
 	}
 	if(s) {
-		free(s);
 		addr_mask(addr, *addrlen, *net);
 	}
 	return 1;
+}
+
+int authextstrtoaddr(char* str, struct sockaddr_storage* addr, 
+	socklen_t* addrlen, char** auth_name)
+{
+	char* s;
+	int port = UNBOUND_DNS_PORT;
+	if((s=strchr(str, '@'))) {
+		char buf[MAX_ADDR_STRLEN];
+		size_t len = (size_t)(s-str);
+		char* hash = strchr(s+1, '#');
+		if(hash) {
+			*auth_name = hash+1;
+		} else {
+			*auth_name = NULL;
+		}
+		if(len >= MAX_ADDR_STRLEN) {
+			return 0;
+		}
+		(void)strlcpy(buf, str, sizeof(buf));
+		buf[len] = 0;
+		port = atoi(s+1);
+		if(port == 0) {
+			if(!hash && strcmp(s+1,"0")!=0)
+				return 0;
+			if(hash && strncmp(s+1,"0#",2)!=0)
+				return 0;
+		}
+		return ipstrtoaddr(buf, port, addr, addrlen);
+	}
+	if((s=strchr(str, '#'))) {
+		char buf[MAX_ADDR_STRLEN];
+		size_t len = (size_t)(s-str);
+		if(len >= MAX_ADDR_STRLEN) {
+			return 0;
+		}
+		(void)strlcpy(buf, str, sizeof(buf));
+		buf[len] = 0;
+		port = UNBOUND_DNS_OVER_TLS_PORT;
+		*auth_name = s+1;
+		return ipstrtoaddr(buf, port, addr, addrlen);
+	}
+	*auth_name = NULL;
+	return ipstrtoaddr(str, port, addr, addrlen);
+}
+
+/** store port number into sockaddr structure */
+void
+sockaddr_store_port(struct sockaddr_storage* addr, socklen_t addrlen, int port)
+{
+	if(addr_is_ip6(addr, addrlen)) {
+		struct sockaddr_in6* sa = (struct sockaddr_in6*)addr;
+		sa->sin6_port = (in_port_t)htons((uint16_t)port);
+	} else {
+		struct sockaddr_in* sa = (struct sockaddr_in*)addr;
+		sa->sin_port = (in_port_t)htons((uint16_t)port);
+	}
 }
 
 void
@@ -645,7 +700,7 @@ listen_sslctx_setup(void* ctxt)
 #endif
 #if defined(SHA256_DIGEST_LENGTH) && defined(USE_ECDSA)
 	/* if we have sha256, set the cipher list to have no known vulns */
-	if(!SSL_CTX_set_cipher_list(ctx, "ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"))
+	if(!SSL_CTX_set_cipher_list(ctx, "TLS13-CHACHA20-POLY1305-SHA256:TLS13-AES-256-GCM-SHA384:TLS13-AES-128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"))
 		log_crypto_err("could not set cipher list with SSL_CTX_set_cipher_list");
 #endif
 

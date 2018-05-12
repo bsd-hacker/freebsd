@@ -1,6 +1,7 @@
-/* arc4_lock.c - global lock for arc4random
-*
- * Copyright (c) 2014, NLnet Labs. All rights reserved.
+/*
+ * cachedb/redis.h - cachedb redis module
+ *
+ * Copyright (c) 2018, NLnet Labs. All rights reserved.
  *
  * This software is open source.
  * 
@@ -31,52 +32,14 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include "config.h"
-#define LOCKRET(func) func
-#ifdef ENABLE_LOCK_CHECKS
-#undef ENABLE_LOCK_CHECKS
-#endif
-#include "util/locks.h"
 
-void _ARC4_LOCK(void);
-void _ARC4_UNLOCK(void);
+/**
+ * \file
+ *
+ * This file contains a module that uses the redis database to cache
+ * dns responses.
+ */
 
-#ifdef THREADS_DISABLED
-void _ARC4_LOCK(void)
-{
-}
-
-void _ARC4_UNLOCK(void)
-{
-}
-
-void _ARC4_LOCK_DESTROY(void)
-{
-}
-#else /* !THREADS_DISABLED */
-
-static lock_quick_type arc4lock;
-static int arc4lockinit = 0;
-
-void _ARC4_LOCK(void)
-{
-	if(!arc4lockinit) {
-		arc4lockinit = 1;
-		lock_quick_init(&arc4lock);
-	}
-	lock_quick_lock(&arc4lock);
-}
-
-void _ARC4_UNLOCK(void)
-{
-	lock_quick_unlock(&arc4lock);
-}
-
-void _ARC4_LOCK_DESTROY(void)
-{
-	if(arc4lockinit) {
-		arc4lockinit = 0;
-		lock_quick_destroy(&arc4lock);
-	}
-}
-#endif /* THREADS_DISABLED */
+/** the redis backend definition, contains callable functions
+ * and name string */
+extern struct cachedb_backend redis_backend;
