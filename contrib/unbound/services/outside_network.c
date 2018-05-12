@@ -268,6 +268,13 @@ outnet_tcp_take_into_use(struct waiting_tcp* w, uint8_t* pkt, size_t pkt_len)
 	if (connectx(s, &endpoints, SAE_ASSOCID_ANY,  
 	             CONNECT_DATA_IDEMPOTENT | CONNECT_RESUME_ON_READ_WRITE,
 	             NULL, 0, NULL, NULL) == -1) {
+		/* if fails, failover to connect for OSX 10.10 */
+#ifdef EINPROGRESS
+		if(errno != EINPROGRESS) {
+#else
+		if(1) {
+#endif
+			if(connect(s, (struct sockaddr*)&w->addr, w->addrlen) == -1) {
 #else /* USE_OSX_MSG_FASTOPEN*/
 #ifdef USE_MSG_FASTOPEN
 	pend->c->tcp_do_fastopen = 1;
@@ -302,6 +309,10 @@ outnet_tcp_take_into_use(struct waiting_tcp* w, uint8_t* pkt, size_t pkt_len)
 #ifdef USE_MSG_FASTOPEN
 	}
 #endif /* USE_MSG_FASTOPEN */
+#ifdef USE_OSX_MSG_FASTOPEN
+		}
+	}
+#endif /* USE_OSX_MSG_FASTOPEN */
 	if(w->outnet->sslctx && w->ssl_upstream) {
 		pend->c->ssl = outgoing_ssl_fd(w->outnet->sslctx, s);
 		if(!pend->c->ssl) {
@@ -353,9 +364,9 @@ use_free_buffer(struct outside_network* outnet)
 	}
 }
 
-/** decomission a tcp buffer, closes commpoint and frees waiting_tcp entry */
+/** decommission a tcp buffer, closes commpoint and frees waiting_tcp entry */
 static void
-decomission_pending_tcp(struct outside_network* outnet, 
+decommission_pending_tcp(struct outside_network* outnet, 
 	struct pending_tcp* pend)
 {
 	if(pend->c->ssl) {
@@ -395,7 +406,7 @@ outnet_tcp_cb(struct comm_point* c, void* arg, int error,
 	}
 	fptr_ok(fptr_whitelist_pending_tcp(pend->query->cb));
 	(void)(*pend->query->cb)(c, pend->query->cb_arg, error, reply_info);
-	decomission_pending_tcp(outnet, pend);
+	decommission_pending_tcp(outnet, pend);
 	return 0;
 }
 
@@ -1405,7 +1416,7 @@ serviced_delete(struct serviced_query* sq)
 			struct waiting_tcp* p = (struct waiting_tcp*)
 				sq->pending;
 			if(p->pkt == NULL) {
-				decomission_pending_tcp(sq->outnet, 
+				decommission_pending_tcp(sq->outnet, 
 					(struct pending_tcp*)p->next_waiting);
 			} else {
 				waiting_list_remove(sq->outnet, p);

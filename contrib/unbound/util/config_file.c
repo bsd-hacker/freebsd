@@ -69,9 +69,9 @@
 #include <pwd.h>
 #endif
 
-/** from cfg username, after daemonise setup performed */
+/** from cfg username, after daemonize setup performed */
 uid_t cfg_uid = (uid_t)-1;
-/** from cfg username, after daemonise setup performed */
+/** from cfg username, after daemonize setup performed */
 gid_t cfg_gid = (gid_t)-1;
 /** for debug allow small timeout values for fast rollovers */
 int autr_permit_small_holddown = 0;
@@ -101,6 +101,7 @@ config_create(void)
 	cfg->do_udp = 1;
 	cfg->do_tcp = 1;
 	cfg->tcp_upstream = 0;
+	cfg->udp_upstream_without_downstream = 0;
 	cfg->tcp_mss = 0;
 	cfg->outgoing_tcp_mss = 0;
 	cfg->ssl_service_key = NULL;
@@ -207,7 +208,7 @@ config_create(void)
 	cfg->trust_anchor_file_list = NULL;
 	cfg->trust_anchor_list = NULL;
 	cfg->trusted_keys_file_list = NULL;
-	cfg->trust_anchor_signaling = 0;
+	cfg->trust_anchor_signaling = 1;
 	cfg->dlv_anchor_file = NULL;
 	cfg->dlv_anchor_list = NULL;
 	cfg->domain_insecure = NULL;
@@ -282,6 +283,10 @@ config_create(void)
 	cfg->dnscrypt_provider = NULL;
 	cfg->dnscrypt_provider_cert = NULL;
 	cfg->dnscrypt_secret_key = NULL;
+	cfg->dnscrypt_shared_secret_cache_size = 4*1024*1024;
+	cfg->dnscrypt_shared_secret_cache_slabs = 4;
+	cfg->dnscrypt_nonce_cache_size = 4*1024*1024;
+	cfg->dnscrypt_nonce_cache_slabs = 4;
 #ifdef USE_IPSECMOD
 	cfg->ipsecmod_enabled = 1;
 	cfg->ipsecmod_ignore_bogus = 0;
@@ -289,6 +294,10 @@ config_create(void)
 	cfg->ipsecmod_max_ttl = 3600;
 	cfg->ipsecmod_whitelist = NULL;
 	cfg->ipsecmod_strict = 0;
+#endif
+#ifdef USE_CACHEDB
+	cfg->cachedb_backend = NULL;
+	cfg->cachedb_secret = NULL;
 #endif
 	return cfg;
 error_exit:
@@ -420,6 +429,8 @@ int config_set_option(struct config_file* cfg, const char* opt,
 	else S_YNO("do-udp:", do_udp)
 	else S_YNO("do-tcp:", do_tcp)
 	else S_YNO("tcp-upstream:", tcp_upstream)
+	else S_YNO("udp-upstream-without-downstream:",
+		udp_upstream_without_downstream)
 	else S_NUMBER_NONZERO("tcp-mss:", tcp_mss)
 	else S_NUMBER_NONZERO("outgoing-tcp-mss:", outgoing_tcp_mss)
 	else S_YNO("ssl-upstream:", ssl_upstream)
@@ -561,6 +572,14 @@ int config_set_option(struct config_file* cfg, const char* opt,
 	else S_STR("dnscrypt-provider:", dnscrypt_provider)
 	else S_STRLIST("dnscrypt-provider-cert:", dnscrypt_provider_cert)
 	else S_STRLIST("dnscrypt-secret-key:", dnscrypt_secret_key)
+	else S_MEMSIZE("dnscrypt-shared-secret-cache-size:",
+		dnscrypt_shared_secret_cache_size)
+	else S_POW2("dnscrypt-shared-secret-cache-slabs:",
+		dnscrypt_shared_secret_cache_slabs)
+	else S_MEMSIZE("dnscrypt-nonce-cache-size:",
+		dnscrypt_nonce_cache_size)
+	else S_POW2("dnscrypt-nonce-cache-slabs:",
+		dnscrypt_nonce_cache_slabs)
 #endif
 	else if(strcmp(opt, "ip-ratelimit:") == 0) {
 	    IS_NUMBER_OR_ZERO; cfg->ip_ratelimit = atoi(val);
@@ -818,6 +837,7 @@ config_get_option(struct config_file* cfg, const char* opt,
 	else O_YNO(opt, "do-udp", do_udp)
 	else O_YNO(opt, "do-tcp", do_tcp)
 	else O_YNO(opt, "tcp-upstream", tcp_upstream)
+	else O_YNO(opt, "udp-upstream-without-downstream", udp_upstream_without_downstream)
 	else O_DEC(opt, "tcp-mss", tcp_mss)
 	else O_DEC(opt, "outgoing-tcp-mss", outgoing_tcp_mss)
 	else O_YNO(opt, "ssl-upstream", ssl_upstream)
@@ -922,6 +942,14 @@ config_get_option(struct config_file* cfg, const char* opt,
 	else O_STR(opt, "dnscrypt-provider", dnscrypt_provider)
 	else O_LST(opt, "dnscrypt-provider-cert", dnscrypt_provider_cert)
 	else O_LST(opt, "dnscrypt-secret-key", dnscrypt_secret_key)
+	else O_MEM(opt, "dnscrypt-shared-secret-cache-size",
+		dnscrypt_shared_secret_cache_size)
+	else O_DEC(opt, "dnscrypt-shared-secret-cache-slabs",
+		dnscrypt_shared_secret_cache_slabs)
+	else O_MEM(opt, "dnscrypt-nonce-cache-size",
+		dnscrypt_nonce_cache_size)
+	else O_DEC(opt, "dnscrypt-nonce-cache-slabs",
+		dnscrypt_nonce_cache_slabs)
 #endif
 	else O_YNO(opt, "unblock-lan-zones", unblock_lan_zones)
 	else O_YNO(opt, "insecure-lan-zones", insecure_lan_zones)
@@ -957,6 +985,10 @@ config_get_option(struct config_file* cfg, const char* opt,
 	else O_DEC(opt, "ipsecmod-max-ttl", ipsecmod_max_ttl)
 	else O_LST(opt, "ipsecmod-whitelist", ipsecmod_whitelist)
 	else O_YNO(opt, "ipsecmod-strict", ipsecmod_strict)
+#endif
+#ifdef USE_CACHEDB
+	else O_STR(opt, "backend", cachedb_backend)
+	else O_STR(opt, "secret-seed", cachedb_secret)
 #endif
 	/* not here:
 	 * outgoing-permit, outgoing-avoid - have list of ports
@@ -1258,6 +1290,10 @@ config_delete(struct config_file* cfg)
 #ifdef USE_IPSECMOD
 	free(cfg->ipsecmod_hook);
 	config_delstrlist(cfg->ipsecmod_whitelist);
+#endif
+#ifdef USE_CACHEDB
+	free(cfg->cachedb_backend);
+	free(cfg->cachedb_secret);
 #endif
 	free(cfg);
 }
