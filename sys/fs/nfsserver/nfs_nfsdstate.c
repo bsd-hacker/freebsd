@@ -7284,18 +7284,22 @@ nfsrv_deleteds(struct nfsdevice *fndds, struct nfsdevice *pards)
 		return;
 	}
 
-	if (TAILQ_EMPTY(&fndds->nfsdev_mirrors)) {
+	NFSD_DEBUG(4, "deleteds: deleting main ds\n");
+	/* Search for a usable mirror. If none found, return. */
+	TAILQ_FOREACH(mds, &fndds->nfsdev_mirrors, nfsdev_list) {
+		if (mds->nfsdev_nmp != NULL)
+			break;
+	}
+	if (mds == NULL) {
 		printf("nfsrv_deleteds: empty mirror\n");
 		return;
 	}
 
 	/*
-	 * The fndds is the first one, so make the first entry in the
+	 * The fndds is the first one, so make the first valid entry in the
 	 * mirror list the first one.
 	 */
-	NFSD_DEBUG(4, "deleteds: deleting main ds\n");
 	TAILQ_REMOVE(&nfsrv_devidhead, fndds, nfsdev_list);
-	mds = TAILQ_FIRST(&fndds->nfsdev_mirrors);
 	TAILQ_REMOVE(&fndds->nfsdev_mirrors, mds, nfsdev_list);
 	TAILQ_INIT(&mds->nfsdev_mirrors);
 
@@ -7304,7 +7308,7 @@ nfsrv_deleteds(struct nfsdevice *fndds, struct nfsdevice *pards)
 	while (nds != NULL) {
 		NFSD_DEBUG(4, "shifting mirror up\n");
 		TAILQ_REMOVE(&fndds->nfsdev_mirrors, nds, nfsdev_list);
-		TAILQ_INSERT_HEAD(&mds->nfsdev_mirrors, nds, nfsdev_list);
+		TAILQ_INSERT_TAIL(&mds->nfsdev_mirrors, nds, nfsdev_list);
 		nds = TAILQ_FIRST(&fndds->nfsdev_mirrors);
 	}
 
@@ -7314,7 +7318,7 @@ nfsrv_deleteds(struct nfsdevice *fndds, struct nfsdevice *pards)
 	/* Put fndds in the mirror list with nfsdev_nmp == NULL. */
 	fndds->nfsdev_nmp = NULL;
 	TAILQ_INIT(&fndds->nfsdev_mirrors);
-	TAILQ_INSERT_HEAD(&mds->nfsdev_mirrors, fndds, nfsdev_list);
+	TAILQ_INSERT_TAIL(&mds->nfsdev_mirrors, fndds, nfsdev_list);
 }
 
 /*
