@@ -437,6 +437,7 @@ upload_gce_image() {
 	chroot ${CHROOTDIR} make -C /usr/src/release \
 		GCE_BUCKET=${GCE_BUCKET} \
 		GCE_LOGIN_SKIP=1 \
+		GCE_LICENSE="${GCE_LICENSE}" \
 		gce-upload \
 		>> ${logdir}/${_build}.gce 2>&1
 	unset _build _conf GCE_BUCKET GCE_CONFIG_DIR GCE_CONFIG_PKG
