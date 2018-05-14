@@ -34,15 +34,16 @@
 
 . ../default.cfg
 
-kldstat -v | grep -q hwpmc  || kldload hwpmc
+kldstat -v | grep -q hwpmc  || { kldload hwpmc; loaded=1; }
 
 for i in `jot 2`; do
-	pmcstat -P instructions  -O /tmp/sample.out.$i find /var -name not.there &
+	pmcstat -P instructions  -O /tmp/sample.out.$i find -x /var -name \
+	    not.there &
 done
 
 export runRUNTIME=5m
 (cd ..; ./run.sh vfs.cfg)
-
-for i in `jot 2`; do
-	wait
-done
+wait
+[ $loaded ] && kldunload hwpmc
+rm /tmp/sample.out.*
+exit 0
