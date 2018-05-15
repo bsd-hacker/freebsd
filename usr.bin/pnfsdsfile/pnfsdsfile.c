@@ -213,6 +213,7 @@ main(int argc, char *argv[])
 			}
 			if (ad != NULL) {
 				sin->sin_family = AF_INET;
+				sin->sin_len = sizeof(*sin);
 				sin->sin_port = 0;
 				sin->sin_addr.s_addr = 0;
 				dosetxattr = 1;
