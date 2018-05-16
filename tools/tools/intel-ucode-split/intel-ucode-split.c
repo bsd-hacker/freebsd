@@ -77,8 +77,10 @@ static void
 dump_header(const struct microcode_update_header *hdr)
 {
 	char buf[16];
+	int i;
+	bool platformid_printed;
 
-	printf("version\t\t0x%x\n", hdr->header_version);
+	printf("header version\t0x%x\n", hdr->header_version);
 	printf("revision\t0x%x\n", hdr->update_revision);
 	printf("date\t\t0x%x\t%04x-%02x-%02x\n", hdr->date,
 	    hdr->date & 0xffff, (hdr->date & 0xff000000) >> 24,
@@ -87,7 +89,15 @@ dump_header(const struct microcode_update_header *hdr)
 	    format_signature(buf, hdr->processor_signature));
 	printf("checksum\t0x%x\n", hdr->checksum);
 	printf("loader revision\t0x%x\n", hdr->loader_revision);
-	printf("processor flags\t0x%x\n", hdr->processor_flags);
+	printf("processor flags\t0x%x", hdr->processor_flags);
+	platformid_printed = false;
+	for (i = 0; i < 8; i++) {
+		if (hdr->processor_flags & 1 << i) {
+			printf("%s%d", platformid_printed ? ", " : "\t\t", i);
+			platformid_printed = true;
+		}
+	}
+	printf("\n");
 	printf("datasize\t0x%x\t\t0x%x\n", hdr->data_size,
 	    hdr->data_size != 0 ? hdr->data_size : 2000);
 	printf("size\t\t0x%x\t\t0x%x\n", hdr->total_size,
@@ -147,6 +157,8 @@ main(int argc, char *argv[])
 		} else if (rv < (ssize_t)sizeof(hdr)) {
 			errx(1, "invalid microcode header");
 		}
+		if (hdr.header_version != 1)
+			errx(1, "invalid header version");
 
 		if (vflag)
 			dump_header(&hdr);
