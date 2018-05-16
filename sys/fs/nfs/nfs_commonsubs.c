@@ -4331,8 +4331,12 @@ nfsv4_findmirror(struct nfsmount *nmp, struct nfsdevice **fndpardsp)
 		if (fndds != NULL)
 			break;
 		if (ds->nfsdev_nmp == nmp) {
-			/* If there are no mirrors, return error. */
-			if (TAILQ_EMPTY(&ds->nfsdev_mirrors)) {
+			/* If there are no mirrors, return NULL. */
+			TAILQ_FOREACH(mds, &ds->nfsdev_mirrors, nfsdev_list) {
+				if (mds->nfsdev_nmp != NULL)
+					break;
+			}
+			if (mds == NULL) {
 				NFSCL_DEBUG(4, "no mirror for DS\n");
 				return (NULL);
 			}

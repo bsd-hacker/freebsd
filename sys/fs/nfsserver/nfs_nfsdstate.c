@@ -7220,7 +7220,11 @@ nfsrv_delds(char *devid, NFSPROC_T *p)
 		if (NFSBCMP(ds->nfsdev_deviceid, devid, NFSX_V4DEVICEID) == 0 &&
 		    ds->nfsdev_nmp != NULL) {
 			/* If there are no mirrors, return error. */
-			if (TAILQ_EMPTY(&ds->nfsdev_mirrors)) {
+			TAILQ_FOREACH(mds, &ds->nfsdev_mirrors, nfsdev_list) {
+				if (mds->nfsdev_nmp != NULL)
+					break;
+			}
+			if (mds == NULL) {
 				NFSDDSUNLOCK();
 				NFSD_DEBUG(4, "no mirror for DS\n");
 				return (ENXIO);
