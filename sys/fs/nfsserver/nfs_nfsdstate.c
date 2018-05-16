@@ -7990,7 +7990,7 @@ nfsrv_mdscopymr(char *mdspathp, char *dspathp, char *curdspathp, char *buf,
 	 * nfsrv_dsgetsockmnt() returns EEXIST, so no copying will occur.
 	 */
 	error = nfsrv_dsgetsockmnt(vp, LK_EXCLUSIVE, buf, buflenp,
-	    &mirrorcnt, p, NULL, NULL, NULL, NULL, fname, nvpp, nmp, curnmp,
+	    &mirrorcnt, p, NULL, NULL, NULL, fname, nvpp, nmp, curnmp,
 	    &zeroippos, &dsdir);
 	vput(nd.ni_vp);
 	vput(curvp);

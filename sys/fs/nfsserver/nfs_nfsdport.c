@@ -3948,6 +3948,7 @@ nfsrv_pnfscreate(struct vnode *vp, struct vattr *vap, struct ucred *cred,
 
 	NFSFREECRED(tcred);
 	if (error == 0) {
+		ASSERT_VOP_ELOCKED(vp, "nfsrv_pnfscreate vp");
 		error = vn_start_write(vp, &mp, V_WAIT);
 		if (error == 0) {
 			error = vn_extattr_set(vp, IO_NODELOCKED,
@@ -3978,7 +3979,6 @@ static void
 nfsrv_pnfsremovesetup(struct vnode *vp, NFSPROC_T *p, struct vnode **dvpp,
     int *mirrorcntp, char *fname)
 {
-	struct nfsmount *nmp[NFSDEV_MAXMIRRORS];
 	struct vattr va;
 	struct ucred *tcred;
 	char *buf;
@@ -4005,7 +4005,7 @@ nfsrv_pnfsremovesetup(struct vnode *vp, NFSPROC_T *p, struct vnode **dvpp,
 	buf = malloc(buflen, M_TEMP, M_WAITOK);
 	/* Get the directory vnode for the DS mount and the file handle. */
 	error = nfsrv_dsgetsockmnt(vp, LK_EXCLUSIVE, buf, &buflen, mirrorcntp,
-	    p, dvpp, nmp, NULL, NULL, fname, NULL, NULL, NULL, NULL, NULL);
+	    p, dvpp, NULL, NULL, fname, NULL, NULL, NULL, NULL, NULL);
 	free(buf, M_TEMP);
 	if (error != 0)
 		printf("pNFS: nfsrv_pnfsremovesetup getsockmnt=%d\n", error);
@@ -4285,9 +4285,12 @@ tryagain:
 	if (error == 0) {
 		buflen = 1024;
 		error = nfsrv_dsgetsockmnt(vp, LK_SHARED, buf, &buflen,
-		    &mirrorcnt, p, dvp, nmp, fh, NULL, NULL, NULL, NULL, NULL,
+		    &mirrorcnt, p, dvp, fh, NULL, NULL, NULL, NULL, NULL,
 		    NULL, NULL);
-		if (error != 0)
+		if (error == 0) {
+			for (i = 0; i < mirrorcnt; i++)
+				nmp[i] = VFSTONFS(dvp[i]->v_mount);
+		} else
 			printf("pNFS: proxy getextattr sockaddr=%d\n", error);
 	} else
 		printf("pNFS: nfsrv_dsgetsockmnt=%d\n", error);
@@ -4387,10 +4390,9 @@ tryagain:
  */
 int
 nfsrv_dsgetsockmnt(struct vnode *vp, int lktype, char *buf, int *buflenp,
-    int *mirrorcntp, NFSPROC_T *p, struct vnode **dvpp, struct nfsmount **nmpp,
-    fhandle_t *fhp, char *devid, char *fnamep, struct vnode **nvpp,
-    struct nfsmount *newnmp, struct nfsmount *curnmp, int *zeroippos,
-    int *dsdirp)
+    int *mirrorcntp, NFSPROC_T *p, struct vnode **dvpp, fhandle_t *fhp,
+    char *devid, char *fnamep, struct vnode **nvpp, struct nfsmount *newnmp,
+    struct nfsmount *curnmp, int *zeroippos, int *dsdirp)
 {
 	struct vnode *dvp, *nvp, **tdvpp;
 	struct nfsmount *nmp;
@@ -4401,16 +4403,15 @@ nfsrv_dsgetsockmnt(struct vnode *vp, int lktype, char *buf, int *buflenp,
 	uint32_t dsdir;
 	int done, error, fnd, fhiszero, gotone, i, mirrorcnt;
 
+	ASSERT_VOP_LOCKED(vp, "nfsrv_dsgetsockmnt vp");
 	*mirrorcntp = 1;
 	tdvpp = dvpp;
 	if (lktype == 0)
 		lktype = LK_SHARED;
 	if (nvpp != NULL)
 		*nvpp = NULL;
-	if (dvpp != NULL) {
+	if (dvpp != NULL)
 		*dvpp = NULL;
-		*nmpp = NULL;
-	}
 	if (zeroippos != NULL)
 		*zeroippos = -1;
 	error = vn_extattr_get(vp, IO_NODELOCKED, EXTATTR_NAMESPACE_SYSTEM,
@@ -4465,6 +4466,10 @@ nfsrv_dsgetsockmnt(struct vnode *vp, int lktype, char *buf, int *buflenp,
 					if (mds->nfsdev_nmp != NULL) {
 						dvp = mds->nfsdev_dvp;
 						nmp = VFSTONFS(dvp->v_mount);
+						if (nmp != mds->nfsdev_nmp)
+							printf("different nmp "
+							    "%p %p\n", nmp,
+							    mds->nfsdev_nmp);
 						if (nfsaddr2_match(sad,
 						    nmp->nm_nam)) {
 							ds = mds;
@@ -4477,6 +4482,9 @@ nfsrv_dsgetsockmnt(struct vnode *vp, int lktype, char *buf, int *buflenp,
 					break;
 				dvp = ds->nfsdev_dvp;
 				nmp = VFSTONFS(dvp->v_mount);
+				if (nmp != ds->nfsdev_nmp)
+					printf("different2 nmp %p %p\n",
+					    nmp, ds->nfsdev_nmp);
 				if (nfsaddr2_match(sad, nmp->nm_nam))
 					break;
 			}
@@ -4513,18 +4521,16 @@ nfsrv_dsgetsockmnt(struct vnode *vp, int lktype, char *buf, int *buflenp,
 							NFSVOPUNLOCK(dvp, 0);
 					}
 				}
-				if (devid != NULL) {
-					NFSBCOPY(ds->nfsdev_deviceid, devid,
-					    NFSX_V4DEVICEID);
-					devid += NFSX_V4DEVICEID;
-				}
 				if (error == 0) {
 					gotone++;
 					NFSD_DEBUG(4, "gotone=%d\n", gotone);
-					if (dvpp != NULL) {
-						*tdvpp++ = dvp;
-						*nmpp++ = nmp;
+					if (devid != NULL) {
+						NFSBCOPY(ds->nfsdev_deviceid,
+						    devid, NFSX_V4DEVICEID);
+						devid += NFSX_V4DEVICEID;
 					}
+					if (dvpp != NULL)
+						*tdvpp++ = dvp;
 					if (fhp != NULL)
 						NFSBCOPY(&pf->dsf_fh, fhp++,
 						    NFSX_MYFH);
@@ -4579,6 +4585,7 @@ nfsrv_setextattr(struct vnode *vp, struct nfsvattr *nap, NFSPROC_T *p)
 	struct mount *mp;
 	int error;
 
+	ASSERT_VOP_ELOCKED(vp, "nfsrv_setextattr vp");
 	error = vn_start_write(vp, &mp, V_WAIT);
 	if (error == 0) {
 		dsattr.dsa_filerev = nap->na_filerev;
@@ -5307,7 +5314,7 @@ nfsrv_dsgetdevandfh(struct vnode *vp, NFSPROC_T *p, int *mirrorcntp,
 	buflen = 1024;
 	buf = malloc(buflen, M_TEMP, M_WAITOK);
 	error = nfsrv_dsgetsockmnt(vp, 0, buf, &buflen, mirrorcntp, p, NULL,
-	    NULL, fhp, devid, NULL, NULL, NULL, NULL, NULL, NULL);
+	    fhp, devid, NULL, NULL, NULL, NULL, NULL, NULL);
 	free(buf, M_TEMP);
 	return (error);
 }

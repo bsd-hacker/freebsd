@@ -703,9 +703,8 @@ void nfsrv_backupstable(void);
 int nfsrv_dsgetdevandfh(struct vnode *, NFSPROC_T *, int *, fhandle_t *,
     char *);
 int nfsrv_dsgetsockmnt(struct vnode *, int, char *, int *, int *,
-    NFSPROC_T *, struct vnode **, struct nfsmount **, fhandle_t *, char *,
-    char *, struct vnode **, struct nfsmount *, struct nfsmount *, int *,
-    int *);
+    NFSPROC_T *, struct vnode **, fhandle_t *, char *, char *,
+    struct vnode **, struct nfsmount *, struct nfsmount *, int *, int *);
 int nfsrv_dscreate(struct vnode *, struct vattr *, struct vattr *,
     fhandle_t *, struct pnfsdsfile *, struct pnfsdsattr *, char *,
     struct ucred *, NFSPROC_T *, struct vnode **);
