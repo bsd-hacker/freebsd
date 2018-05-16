@@ -45,13 +45,15 @@ sub register :Local :Args(0) {
 	$c->res->redirect($c->uri_for('/run'));
 	$c->detach();
     }
-    if ($p->{submit}) {
+    if ($p->{submit} && $p->{long}) {
 	my $stmt = $c->model('FBCE::Statement')->
 	    new({ person => $user, short => $p->{short}, long => $p->{long} });
 	$stmt->insert()
 	    or die("failed to register");
 	$c->res->redirect($c->uri_for('/run'));
 	$c->detach();
+    } elsif ($p->{submit}) {
+	$c->stash(error => "You must provide a stamement!");
     }
     $c->stash(short => $p->{short});
     $c->stash(long => $p->{long});
@@ -76,11 +78,13 @@ sub edit :Local :Args(0) {
 	$c->detach();
     }
     my $statement = $user->statement;
-    if ($p->{submit}) {
+    if ($p->{submit} && $p->{long}) {
 	$statement->update({ short => $p->{short}, long => $p->{long} })
 	    or die("failed to update");
 	$c->res->redirect($c->uri_for('/run'));
 	$c->detach();
+    } elsif ($p->{submit}) {
+	$c->stash(error => "You must provide a stamement!");
     }
     $c->stash(short => $p->{short} // $statement->short);
     $c->stash(long => $p->{long} // $statement->long);

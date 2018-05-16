@@ -10,7 +10,9 @@
 [% IF candidate.incumbent %]<p class="candidate-incumbent">(incumbent)</p>[% END %]
 </div>
 <div class="statement">
+[% IF candidate.statement.short %]
   <h3 class="statement-title">[% candidate.statement.short | wiki %]</h3>
+[% END %]
   <div class="statement-body">
     [% candidate.statement.long | wiki %]
   </div>
