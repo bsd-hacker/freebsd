@@ -203,7 +203,9 @@ static int nfsrv_addlayout(struct nfsrv_descript *nd, struct nfslayout **lypp,
     nfsv4stateid_t *stateidp, char *layp, int *layoutlenp, NFSPROC_T *p);
 static void nfsrv_freelayout(struct nfslayout *lyp);
 static void nfsrv_freelayoutlist(nfsquad_t clientid);
-static void nfsrv_freealllayouts(int *fndp);
+static void nfsrv_freelayouts(nfsquad_t *clid, fsid_t *fs, int laytype,
+    int iomode);
+static void nfsrv_freealllayouts(void);
 static void nfsrv_freedevid(struct nfsdevice *ds);
 static int nfsrv_setdsserver(char *dspathp, char *mirrorp, NFSPROC_T *p,
     struct nfsdevice **dsp);
@@ -218,9 +220,9 @@ static int nfsrv_findlayout(struct nfsrv_descript *nd, fhandle_t *fhp,
     int laytype, NFSPROC_T *, struct nfslayout **lypp);
 static int nfsrv_fndclid(nfsquad_t *clidvec, nfsquad_t clid, int clidcnt);
 static struct nfslayout *nfsrv_filelayout(struct nfsrv_descript *nd, int iomode,
-    fhandle_t *fhp, fhandle_t *dsfhp, char *devid);
+    fhandle_t *fhp, fhandle_t *dsfhp, char *devid, fsid_t fs);
 static struct nfslayout *nfsrv_flexlayout(struct nfsrv_descript *nd, int iomode,
-    int mirrorcnt, fhandle_t *fhp, fhandle_t *dsfhp, char *devid);
+    int mirrorcnt, fhandle_t *fhp, fhandle_t *dsfhp, char *devid, fsid_t fs);
 static int nfsrv_dontlayout(fhandle_t *fhp);
 static int nfsrv_createdsfile(vnode_t vp, fhandle_t *fhp, struct pnfsdsfile *pf,
     vnode_t dvp, struct nfsdevice *ds, struct ucred *cred, NFSPROC_T *p,
@@ -6367,13 +6369,14 @@ nfsrv_layoutget(struct nfsrv_descript *nd, vnode_t vp, struct nfsexstuff *exp,
 				error = NFSERR_TOOSMALL;
 			else
 				lyp = nfsrv_filelayout(nd, *iomode, &fh, dsfhp,
-				    devid);
+				    devid, vp->v_mount->mnt_stat.f_fsid);
 		} else {
 			if (NFSX_V4FLEXLAYOUT(mirrorcnt) > maxcnt)
 				error = NFSERR_TOOSMALL;
 			else
 				lyp = nfsrv_flexlayout(nd, *iomode, mirrorcnt,
-				    &fh, dsfhp, devid);
+				    &fh, dsfhp, devid,
+				    vp->v_mount->mnt_stat.f_fsid);
 		}
 	}
 	free(dsfhp, M_TEMP);
@@ -6399,7 +6402,7 @@ nfsrv_layoutget(struct nfsrv_descript *nd, vnode_t vp, struct nfsexstuff *exp,
  */
 static struct nfslayout *
 nfsrv_filelayout(struct nfsrv_descript *nd, int iomode, fhandle_t *fhp,
-    fhandle_t *dsfhp, char *devid)
+    fhandle_t *dsfhp, char *devid, fsid_t fs)
 {
 	uint32_t *tl;
 	struct nfslayout *lyp;
@@ -6414,6 +6417,7 @@ nfsrv_filelayout(struct nfsrv_descript *nd, int iomode, fhandle_t *fhp,
 		lyp->lay_flags = NFSLAY_READ;
 	NFSBCOPY(fhp, &lyp->lay_fh, sizeof(*fhp));
 	lyp->lay_clientid.qval = nd->nd_clientid.qval;
+	lyp->lay_fsid = fs;
 
 	/* Fill in the xdr for the files layout. */
 	tl = (uint32_t *)lyp->lay_xdr;
@@ -6451,7 +6455,7 @@ nfsrv_filelayout(struct nfsrv_descript *nd, int iomode, fhandle_t *fhp,
  */
 static struct nfslayout *
 nfsrv_flexlayout(struct nfsrv_descript *nd, int iomode, int mirrorcnt,
-    fhandle_t *fhp, fhandle_t *dsfhp, char *devid)
+    fhandle_t *fhp, fhandle_t *dsfhp, char *devid, fsid_t fs)
 {
 	uint32_t *tl;
 	struct nfslayout *lyp;
@@ -6467,6 +6471,7 @@ nfsrv_flexlayout(struct nfsrv_descript *nd, int iomode, int mirrorcnt,
 		lyp->lay_flags = NFSLAY_READ;
 	NFSBCOPY(fhp, &lyp->lay_fh, sizeof(*fhp));
 	lyp->lay_clientid.qval = nd->nd_clientid.qval;
+	lyp->lay_fsid = fs;
 	lyp->lay_mirrorcnt = mirrorcnt;
 
 	/* Fill in the xdr for the files layout. */
@@ -6719,8 +6724,13 @@ nfsrv_layoutreturn(struct nfsrv_descript *nd, vnode_t vp,
 		}
 		if (layouttype == NFSLAYOUT_FLEXFILE)
 			nfsrv_flexlayouterr(nd, layp, maxcnt, p);
-	} else
-		nfsrv_freealllayouts(fndp);
+	} else if (kind == NFSV4LAYOUTRET_FSID)
+		nfsrv_freelayouts(&nd->nd_clientid,
+		    &vp->v_mount->mnt_stat.f_fsid, layouttype, iomode);
+	else if (kind == NFSV4LAYOUTRET_ALL)
+		nfsrv_freelayouts(&nd->nd_clientid, NULL, layouttype, iomode);
+	else
+		error = NFSERR_INVAL;
 	if (error == -1)
 		error = 0;
 	return (error);
@@ -6963,7 +6973,6 @@ nfsrv_freealllayoutsanddevids(void)
 {
 	struct nfsdontlist *mrp, *nmrp;
 	struct nfslayout *lyp, *nlyp;
-	int fnd;
 
 	/* Get rid of the deviceid structures. */
 	nfsrv_freealldevids();
@@ -6971,7 +6980,7 @@ nfsrv_freealllayoutsanddevids(void)
 	nfsrv_devidcnt = 0;
 
 	/* Get rid of all layouts. */
-	nfsrv_freealllayouts(&fnd);
+	nfsrv_freealllayouts();
 
 	/* Get rid of any nfsdontlist entries. */
 	LIST_FOREACH_SAFE(mrp, &nfsrv_dontlisthead, nfsmr_list, nmrp)
@@ -6986,21 +6995,50 @@ nfsrv_freealllayoutsanddevids(void)
 }
 
 /*
- * Free all layouts.
+ * Free layouts that match the arguments.
  */
 static void
-nfsrv_freealllayouts(int *fndp)
+nfsrv_freelayouts(nfsquad_t *clid, fsid_t *fs, int laytype, int iomode)
 {
 	struct nfslayouthash *lhyp;
 	struct nfslayout *lyp, *nlyp;
 	int i;
 
-	*fndp = 0;
 	for (i = 0; i < nfsrv_layouthashsize; i++) {
 		lhyp = &nfslayouthash[i];
 		NFSLOCKLAYOUT(lhyp);
-		if (!LIST_EMPTY(&lhyp->list))
-			*fndp = 1;
+		LIST_FOREACH_SAFE(lyp, &lhyp->list, lay_list, nlyp) {
+			if (clid->qval != lyp->lay_clientid.qval)
+				continue;
+			if (fs != NULL && (fs->val[0] != lyp->lay_fsid.val[0] ||
+			    fs->val[1] != lyp->lay_fsid.val[1]))
+				continue;
+			if (laytype != lyp->lay_type)
+				continue;
+			if ((iomode & NFSLAYOUTIOMODE_READ) != 0)
+				lyp->lay_flags &= ~NFSLAY_READ;
+			if ((iomode & NFSLAYOUTIOMODE_RW) != 0)
+				lyp->lay_flags &= ~NFSLAY_RW;
+			if ((lyp->lay_flags & (NFSLAY_READ | NFSLAY_RW)) == 0)
+				nfsrv_freelayout(lyp);
+		}
+		NFSUNLOCKLAYOUT(lhyp);
+	}
+}
+
+/*
+ * Free all layouts.
+ */
+static void
+nfsrv_freealllayouts(void)
+{
+	struct nfslayouthash *lhyp;
+	struct nfslayout *lyp, *nlyp;
+	int i;
+
+	for (i = 0; i < nfsrv_layouthashsize; i++) {
+		lhyp = &nfslayouthash[i];
+		NFSLOCKLAYOUT(lhyp);
 		LIST_FOREACH_SAFE(lyp, &lhyp->list, lay_list, nlyp)
 			nfsrv_freelayout(lyp);
 		NFSUNLOCKLAYOUT(lhyp);
