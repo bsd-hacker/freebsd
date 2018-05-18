@@ -6650,8 +6650,8 @@ nfsrv_layoutreturn(struct nfsrv_descript *nd, vnode_t vp,
 	fhandle_t fh;
 	int error = 0;
 
+	*fndp = 0;
 	if (kind == NFSV4LAYOUTRET_FILE) {
-		*fndp = 0;
 		error = nfsvno_getfh(vp, &fh, p);
 		if (error == 0) {
 			error = nfsrv_updatemdsattr(vp, &na, p);
@@ -6683,7 +6683,6 @@ nfsrv_layoutreturn(struct nfsrv_descript *nd, vnode_t vp,
 				if (++lyp->lay_stateid.seqid == 0)
 					lyp->lay_stateid.seqid = 1;
 				stateidp->seqid = lyp->lay_stateid.seqid;
-				*fndp = 1;
 				if (offset == 0 && len == UINT64_MAX) {
 					if ((iomode & NFSLAYOUTIOMODE_READ) !=
 					    0)
@@ -6693,7 +6692,10 @@ nfsrv_layoutreturn(struct nfsrv_descript *nd, vnode_t vp,
 					if ((lyp->lay_flags & (NFSLAY_READ |
 					    NFSLAY_RW)) == 0)
 						nfsrv_freelayout(lyp);
-				}
+					else
+						*fndp = 1;
+				} else
+					*fndp = 1;
 			}
 			NFSUNLOCKLAYOUT(lhyp);
 			/* Search the nfsrv_recalllist for a match. */
