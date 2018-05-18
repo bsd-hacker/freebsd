@@ -4884,7 +4884,7 @@ nfsrv_writedsrpc(fhandle_t *fhp, off_t off, int len, struct ucred *cred,
 		tdrpc->err = 0;
 		tdrpc->m = m_copym(*mpp, offs, NFSM_RNDUP(len), M_WAITOK);
 		ret = EIO;
-		if (nfs_pnfsiothreads > 0) {
+		if (nfs_pnfsiothreads != 0) {
 			ret = nfs_pnfsio(start_writedsdorpc, tdrpc);
 			NFSD_DEBUG(4, "nfsrv_writedsrpc: nfs_pnfsio=%d\n",
 			    ret);
@@ -5068,7 +5068,7 @@ nfsrv_setattrdsrpc(fhandle_t *fhp, struct ucred *cred, NFSPROC_T *p,
 		tdrpc->na = *nap;
 		tdrpc->err = 0;
 		ret = EIO;
-		if (nfs_pnfsiothreads > 0) {
+		if (nfs_pnfsiothreads != 0) {
 			ret = nfs_pnfsio(start_setattrdsdorpc, tdrpc);
 			NFSD_DEBUG(4, "nfsrv_setattrdsrpc: nfs_pnfsio=%d\n",
 			    ret);
@@ -5216,7 +5216,7 @@ nfsrv_setacldsrpc(fhandle_t *fhp, struct ucred *cred, NFSPROC_T *p,
 		tdrpc->aclp = aclp;
 		tdrpc->err = 0;
 		ret = EIO;
-		if (nfs_pnfsiothreads > 0) {
+		if (nfs_pnfsiothreads != 0) {
 			ret = nfs_pnfsio(start_setacldsdorpc, tdrpc);
 			NFSD_DEBUG(4, "nfsrv_setacldsrpc: nfs_pnfsio=%d\n",
 			    ret);
