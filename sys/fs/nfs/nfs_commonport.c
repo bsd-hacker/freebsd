@@ -725,7 +725,9 @@ nfs_pnfsio(task_fn_t *func, void *context)
 
 	pio = (struct pnfsio *)context;
 	if (pnfsioq == NULL) {
-		if (nfs_pnfsiothreads <= 0)
+		if (nfs_pnfsiothreads == 0)
+			return (EPERM);
+		if (nfs_pnfsiothreads < 0)
 			nfs_pnfsiothreads = mp_ncpus * 4;
 		pnfsioq = taskqueue_create("pnfsioq", M_WAITOK,
 		    taskqueue_thread_enqueue, &pnfsioq);
