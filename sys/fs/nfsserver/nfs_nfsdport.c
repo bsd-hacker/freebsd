@@ -3668,14 +3668,16 @@ nfsrv_backupstable(void)
 /*
  * Create a DS data file for nfsrv_pnfscreate(). Called for each mirror.
  * The arguments are in a structure, so that they can be passed through
- * kproc_create() for a kernel process to execute this function.
+ * taskqueue for a kernel process to execute this function.
  */
 struct nfsrvdscreate {
+	int			done;
+	int			inprog;
+	struct task		tsk;
 	struct ucred		*tcred;
 	struct vnode		*dvp;
 	NFSPROC_T		*p;
 	struct pnfsdsfile	*pf;
-	int			haskproc;
 	int			err;
 	fhandle_t		fh;
 	struct vattr		va;
@@ -3776,18 +3778,15 @@ nfsrv_dscreate(struct vnode *dvp, struct vattr *vap, struct vattr *nvap,
  * Start up the thread that will execute nfsrv_dscreate().
  */
 static void
-start_dscreate(void *arg)
+start_dscreate(void *arg, int pending)
 {
 	struct nfsrvdscreate *dsc;
 
 	dsc = (struct nfsrvdscreate *)arg;
 	dsc->err = nfsrv_dscreate(dsc->dvp, &dsc->createva, &dsc->va, &dsc->fh,
 	    dsc->pf, NULL, NULL, dsc->tcred, dsc->p, NULL);
-	NFSDSCLOCK();
-	dsc->haskproc = 0;
-	wakeup(dsc);
-	NFSDSCUNLOCK();
-	kproc_exit(0);
+	dsc->done = 1;
+	NFSD_DEBUG(4, "start_dscreate: err=%d\n", dsc->err);
 }
 
 /*
@@ -3810,8 +3809,8 @@ nfsrv_pnfscreate(struct vnode *vp, struct vattr *vap, struct ucred *cred,
 	gid_t vagid;
 	u_short vamode;
 	struct ucred *tcred;
-	int dsdir[NFSDEV_MAXMIRRORS], error, haskproc, i, mirrorcnt, ret;
-	int failpos;
+	int dsdir[NFSDEV_MAXMIRRORS], error, i, mirrorcnt, ret;
+	int failpos, timo;
 
 	/* Get a DS server directory in a round-robin order. */
 	mirrorcnt = 1;
@@ -3868,7 +3867,6 @@ nfsrv_pnfscreate(struct vnode *vp, struct vattr *vap, struct ucred *cred,
 	 * additional mirrors.
 	 */
 	failpos = -1;
-	haskproc = 0;
 	for (i = 0; i < mirrorcnt - 1 && error == 0; i++, tpf++, tdsc++) {
 		tpf->dsf_dir = dsdir[i];
 		tdsc->tcred = tcred;
@@ -3878,13 +3876,15 @@ nfsrv_pnfscreate(struct vnode *vp, struct vattr *vap, struct ucred *cred,
 		tdsc->fh = fh;
 		tdsc->va = va;
 		tdsc->dvp = dvp[i];
-		tdsc->haskproc = 1;
-		ret = kproc_create(start_dscreate, (void *)tdsc, NULL, 0, 0,
-		    "nfsdpcr");
-		if (ret == 0)
-			haskproc = 1;
-		else {
-			tdsc->haskproc = 0;
+		tdsc->done = 0;
+		tdsc->inprog = 0;
+		tdsc->err = 0;
+		ret = EIO;
+		if (nfs_pnfsiothreads != 0) {
+			ret = nfs_pnfsio(start_dscreate, tdsc);
+			NFSD_DEBUG(4, "nfsrv_pnfscreate: nfs_pnfsio=%d\n", ret);
+		}
+		if (ret != 0) {
 			ret = nfsrv_dscreate(dvp[i], vap, &va, &fh, tpf, NULL,
 			    NULL, tcred, p, NULL);
 			if (ret != 0) {
@@ -3906,21 +3906,19 @@ nfsrv_pnfscreate(struct vnode *vp, struct vattr *vap, struct ucred *cred,
 			error = 0;
 		}
 	}
-	if (haskproc != 0) {
-		/* Wait for kernel proc(s) to complete. */
-		NFSDSCLOCK();
-		for (tdsc = dsc, i = 0; i < mirrorcnt - 1; i++, tdsc++) {
-			while (tdsc->haskproc != 0)
-				mtx_sleep(tdsc, NFSDSCLOCKMUTEXPTR, PVFS,
-				    "nfspcr", 0);
-			if (tdsc->err != 0) {
-				if (failpos == -1 && tdsc->err == ENXIO)
-					failpos = i;
-				else if (error == 0)
-					error = tdsc->err;
-			}
+	timo = hz / 50;		/* Wait for 20msec. */
+	if (timo < 1)
+		timo = 1;
+	/* Wait for kernel task(s) to complete. */
+	for (tdsc = dsc, i = 0; i < mirrorcnt - 1; i++, tdsc++) {
+		while (tdsc->inprog != 0 && tdsc->done == 0)
+			tsleep(&tdsc->tsk, PVFS, "srvdcr", timo);
+		if (tdsc->err != 0) {
+			if (failpos == -1 && tdsc->err == ENXIO)
+				failpos = i;
+			else if (error == 0)
+				error = tdsc->err;
 		}
-		NFSDSCUNLOCK();
 	}
 
 	/*
@@ -4014,13 +4012,15 @@ nfsrv_pnfsremovesetup(struct vnode *vp, NFSPROC_T *p, struct vnode **dvpp,
 /*
  * Remove a DS data file for nfsrv_pnfsremove(). Called for each mirror.
  * The arguments are in a structure, so that they can be passed through
- * kproc_create() for a kernel process to execute this function.
+ * taskqueue for a kernel process to execute this function.
  */
 struct nfsrvdsremove {
+	int			done;
+	int			inprog;
+	struct task		tsk;
 	struct ucred		*tcred;
 	struct vnode		*dvp;
 	NFSPROC_T		*p;
-	int			haskproc;
 	int			err;
 	char			fname[PNFS_FILENAME_LEN + 1];
 };
@@ -4061,18 +4061,15 @@ nfsrv_dsremove(struct vnode *dvp, char *fname, struct ucred *tcred,
  * Start up the thread that will execute nfsrv_dsremove().
  */
 static void
-start_dsremove(void *arg)
+start_dsremove(void *arg, int pending)
 {
 	struct nfsrvdsremove *dsrm;
 
 	dsrm = (struct nfsrvdsremove *)arg;
 	dsrm->err = nfsrv_dsremove(dsrm->dvp, dsrm->fname, dsrm->tcred,
 	    dsrm->p);
-	NFSDSRMLOCK();
-	dsrm->haskproc = 0;
-	wakeup(dsrm);
-	NFSDSRMUNLOCK();
-	kproc_exit(0);
+	dsrm->done = 1;
+	NFSD_DEBUG(4, "start_dsremove: err=%d\n", dsrm->err);
 }
 
 /*
@@ -4087,7 +4084,7 @@ nfsrv_pnfsremove(struct vnode **dvp, int mirrorcnt, char *fname, NFSPROC_T *p)
 	struct nfsrvdsremove *dsrm, *tdsrm;
 	struct nfsdevice *ds;
 	struct nfsmount *nmp;
-	int failpos, haskproc, i, ret;
+	int failpos, i, ret, timo;
 
 	tcred = newnfs_getcred();
 	dsrm = NULL;
@@ -4098,19 +4095,20 @@ nfsrv_pnfsremove(struct vnode **dvp, int mirrorcnt, char *fname, NFSPROC_T *p)
 	 * additional mirrors.
 	 */
 	failpos = -1;
-	haskproc = 0;
 	for (tdsrm = dsrm, i = 0; i < mirrorcnt - 1; i++, tdsrm++) {
 		tdsrm->tcred = tcred;
 		tdsrm->p = p;
 		tdsrm->dvp = dvp[i];
 		strlcpy(tdsrm->fname, fname, PNFS_FILENAME_LEN + 1);
-		tdsrm->haskproc = 1;
-		ret = kproc_create(start_dsremove, (void *)tdsrm, NULL, 0, 0,
-		    "nfsdprm");
-		if (ret == 0)
-			haskproc = 1;
-		else {
-			tdsrm->haskproc = 0;
+		tdsrm->inprog = 0;
+		tdsrm->done = 0;
+		tdsrm->err = 0;
+		ret = EIO;
+		if (nfs_pnfsiothreads != 0) {
+			ret = nfs_pnfsio(start_dsremove, tdsrm);
+			NFSD_DEBUG(4, "nfsrv_pnfsremove: nfs_pnfsio=%d\n", ret);
+		}
+		if (ret != 0) {
 			ret = nfsrv_dsremove(dvp[i], fname, tcred, p);
 			if (failpos == -1 && ret == ENXIO)
 				failpos = i;
@@ -4119,17 +4117,15 @@ nfsrv_pnfsremove(struct vnode **dvp, int mirrorcnt, char *fname, NFSPROC_T *p)
 	ret = nfsrv_dsremove(dvp[mirrorcnt - 1], fname, tcred, p);
 	if (failpos == -1 && mirrorcnt > 1 && ret == ENXIO)
 		failpos = mirrorcnt - 1;
-	if (haskproc != 0) {
-		/* Wait for kernel proc(s) to complete. */
-		NFSDSRMLOCK();
-		for (tdsrm = dsrm, i = 0; i < mirrorcnt - 1; i++, tdsrm++) {
-			while (tdsrm->haskproc != 0)
-				mtx_sleep(tdsrm, NFSDSRMLOCKMUTEXPTR, PVFS,
-				    "nfsprm", 0);
-			if (failpos == -1 && tdsrm->err == ENXIO)
-				failpos = i;
-		}
-		NFSDSRMUNLOCK();
+	timo = hz / 50;		/* Wait for 20msec. */
+	if (timo < 1)
+		timo = 1;
+	/* Wait for kernel task(s) to complete. */
+	for (tdsrm = dsrm, i = 0; i < mirrorcnt - 1; i++, tdsrm++) {
+		while (tdsrm->inprog != 0 && tdsrm->done == 0)
+			tsleep(&tdsrm->tsk, PVFS, "srvdsrm", timo);
+		if (failpos == -1 && tdsrm->err == ENXIO)
+			failpos = i;
 	}
 
 	/*
