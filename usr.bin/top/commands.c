@@ -18,14 +18,15 @@
  *  "top" (i.e.:  changing the number of processes to display).
  */
 
-#include "os.h"
-
 #include <sys/time.h>
 #include <sys/resource.h>
 
 #include <ctype.h>
 #include <errno.h>
 #include <signal.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 #include "commands.h"
@@ -56,7 +57,7 @@ void
 show_help()
 
 {
-    printf("Top version %s, %s\n", version_string(), copyright);
+    printf("Top version FreeBSD, %s\n", copyright);
     fputs("\n\n\
 A top users display for Unix\n\
 \n\
