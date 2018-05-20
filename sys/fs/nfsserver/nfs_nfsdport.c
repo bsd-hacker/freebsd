@@ -106,8 +106,9 @@ extern struct nfsdevicehead nfsrv_devidhead;
 static void nfsrv_pnfscreate(struct vnode *, struct vattr *, struct ucred *,
     NFSPROC_T *);
 static void nfsrv_pnfsremovesetup(struct vnode *, NFSPROC_T *, struct vnode **,
-    int *, char *);
-static void nfsrv_pnfsremove(struct vnode **, int, char *, NFSPROC_T *);
+    int *, char *, fhandle_t *);
+static void nfsrv_pnfsremove(struct vnode **, int, char *, fhandle_t *,
+    NFSPROC_T *);
 static int nfsrv_proxyds(struct nfsrv_descript *, struct vnode *, off_t, int,
     struct ucred *, struct thread *, int, struct mbuf **, char *,
     struct mbuf **, struct nfsvattr *, struct acl *);
@@ -1209,6 +1210,7 @@ nfsvno_removesub(struct nameidata *ndp, int is_v4, struct ucred *cred,
 	struct vnode *vp, *dsdvp[NFSDEV_MAXMIRRORS];
 	int error = 0, i, mirrorcnt;
 	char fname[PNFS_FILENAME_LEN + 1];
+	fhandle_t fh;
 
 	vp = ndp->ni_vp;
 	dsdvp[0] = NULL;
@@ -1217,12 +1219,12 @@ nfsvno_removesub(struct nameidata *ndp, int is_v4, struct ucred *cred,
 	else if (is_v4)
 		error = nfsrv_checkremove(vp, 1, p);
 	if (error == 0)
-		nfsrv_pnfsremovesetup(vp, p, dsdvp, &mirrorcnt, fname);
+		nfsrv_pnfsremovesetup(vp, p, dsdvp, &mirrorcnt, fname, &fh);
 	if (!error)
 		error = VOP_REMOVE(ndp->ni_dvp, vp, &ndp->ni_cnd);
 	if (dsdvp[0] != NULL) {
 		if (error == 0)
-			nfsrv_pnfsremove(dsdvp, mirrorcnt, fname, p);
+			nfsrv_pnfsremove(dsdvp, mirrorcnt, fname, &fh, p);
 		for (i = 0; i < mirrorcnt; i++)
 			NFSVOPUNLOCK(dsdvp[i], 0);
 	}
@@ -1288,6 +1290,7 @@ nfsvno_rename(struct nameidata *fromndp, struct nameidata *tondp,
 	struct vnode *fvp, *tvp, *tdvp, *dsdvp[NFSDEV_MAXMIRRORS];
 	int error = 0, i, mirrorcnt;
 	char fname[PNFS_FILENAME_LEN + 1];
+	fhandle_t fh;
 
 	dsdvp[0] = NULL;
 	fvp = fromndp->ni_vp;
@@ -1365,7 +1368,7 @@ nfsvno_rename(struct nameidata *fromndp, struct nameidata *tondp,
 		nfsd_recalldelegation(fvp, p);
 	}
 	if (error == 0 && tvp != NULL) {
-		nfsrv_pnfsremovesetup(tvp, p, dsdvp, &mirrorcnt, fname);
+		nfsrv_pnfsremovesetup(tvp, p, dsdvp, &mirrorcnt, fname, &fh);
 		NFSD_DEBUG(4, "nfsvno_rename: pnfsremovesetup"
 		    " dsdvp=%p\n", dsdvp[0]);
 	}
@@ -1394,7 +1397,7 @@ out:
 	 */
 	if (dsdvp[0] != NULL) {
 		if (error == 0) {
-			nfsrv_pnfsremove(dsdvp, mirrorcnt, fname, p);
+			nfsrv_pnfsremove(dsdvp, mirrorcnt, fname, &fh, p);
 			NFSD_DEBUG(4, "nfsvno_rename: pnfsremove\n");
 		}
 		for (i = 0; i < mirrorcnt; i++)
@@ -3970,7 +3973,7 @@ nfsrv_pnfscreate(struct vnode *vp, struct vattr *vap, struct ucred *cred,
  */
 static void
 nfsrv_pnfsremovesetup(struct vnode *vp, NFSPROC_T *p, struct vnode **dvpp,
-    int *mirrorcntp, char *fname)
+    int *mirrorcntp, char *fname, fhandle_t *fhp)
 {
 	struct vattr va;
 	struct ucred *tcred;
@@ -3993,6 +3996,12 @@ nfsrv_pnfsremovesetup(struct vnode *vp, NFSPROC_T *p, struct vnode **dvpp,
 	}
 	if (va.va_nlink > 1)
 		return;
+
+	error = nfsvno_getfh(vp, fhp, p);
+	if (error != 0) {
+		printf("pNFS: nfsrv_pnfsremovesetup getfh=%d\n", error);
+		return;
+	}
 
 	buflen = 1024;
 	buf = malloc(buflen, M_TEMP, M_WAITOK);
@@ -4073,7 +4082,8 @@ start_dsremove(void *arg, int pending)
  * removed to set up the dvp and fill in the FH.
  */
 static void
-nfsrv_pnfsremove(struct vnode **dvp, int mirrorcnt, char *fname, NFSPROC_T *p)
+nfsrv_pnfsremove(struct vnode **dvp, int mirrorcnt, char *fname, fhandle_t *fhp,
+    NFSPROC_T *p)
 {
 	struct ucred *tcred;
 	struct nfsrvdsremove *dsrm, *tdsrm;
@@ -4145,6 +4155,9 @@ nfsrv_pnfsremove(struct vnode **dvp, int mirrorcnt, char *fname, NFSPROC_T *p)
 		}
 		NFSUNLOCKMNT(nmp);
 	}
+
+	/* Get rid all layouts for the file. */
+	nfsrv_freefilelayouts(fhp);
 
 	NFSFREECRED(tcred);
 	free(dsrm, M_TEMP);

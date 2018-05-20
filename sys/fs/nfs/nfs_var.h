@@ -155,6 +155,7 @@ int nfsrv_layoutreturn(struct nfsrv_descript *, vnode_t, int, int, uint64_t,
 int nfsrv_getdevinfo(char *, int, uint32_t *, uint32_t *, int *, char **);
 void nfsrv_freeonedevid(struct nfsdevice *);
 void nfsrv_freealllayoutsanddevids(void);
+void nfsrv_freefilelayouts(fhandle_t *);
 int nfsrv_deldsserver(char *, NFSPROC_T *);
 struct nfsdevice *nfsrv_deldsnmp(struct nfsmount *, NFSPROC_T *);
 int nfsrv_createdevids(struct nfsd_nfsd_args *, NFSPROC_T *);

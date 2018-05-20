@@ -7027,6 +7027,27 @@ nfsrv_freelayouts(nfsquad_t *clid, fsid_t *fs, int laytype, int iomode)
 }
 
 /*
+ * Free all layouts for the argument file.
+ */
+void
+nfsrv_freefilelayouts(fhandle_t *fhp)
+{
+	struct nfslayouthash *lhyp;
+	struct nfslayout *lyp, *nlyp;
+	int i;
+
+	for (i = 0; i < nfsrv_layouthashsize; i++) {
+		lhyp = &nfslayouthash[i];
+		NFSLOCKLAYOUT(lhyp);
+		LIST_FOREACH_SAFE(lyp, &lhyp->list, lay_list, nlyp) {
+			if (NFSBCMP(&lyp->lay_fh, fhp, sizeof(*fhp)) == 0)
+				nfsrv_freelayout(lyp);
+		}
+		NFSUNLOCKLAYOUT(lhyp);
+	}
+}
+
+/*
  * Free all layouts.
  */
 static void
