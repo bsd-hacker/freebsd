@@ -6666,6 +6666,13 @@ nfsrv_layoutreturn(struct nfsrv_descript *nd, vnode_t vp,
 				    " failed=%d\n", error);
 		}
 		if (error == 0) {
+			if (reclaim == newnfs_true) {
+				error = nfsrv_checkgrace(NULL, NULL,
+				    NFSLCK_RECLAIM);
+				if (error != NFSERR_NOGRACE)
+					error = 0;
+				return (error);
+			}
 			lhyp = NFSLAYOUTHASH(&fh);
 			NFSDRECALLLOCK();
 			NFSLOCKLAYOUT(lhyp);
