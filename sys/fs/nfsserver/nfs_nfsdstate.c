@@ -39,6 +39,7 @@ int nfsrv_issuedelegs = 0;
 int nfsrv_dolocallocks = 0;
 struct nfsv4lock nfsv4rootfs_lock;
 time_t nfsdev_time = 0;
+int nfsrv_layouthashsize;
 
 extern int newnfs_numnfsd;
 extern struct nfsstatsv1 nfsstatsv1;
@@ -80,10 +81,10 @@ SYSCTL_INT(_vfs_nfsd, OID_AUTO, sessionhashsize, CTLFLAG_RDTUN,
     &nfsrv_sessionhashsize, 0,
     "Size of session hash table set via loader.conf");
 
-int	nfsrv_layouthashsize = NFSLAYOUTHASHSIZE;
-SYSCTL_INT(_vfs_nfsd, OID_AUTO, layouthashsize, CTLFLAG_RDTUN,
-    &nfsrv_layouthashsize, 0,
-    "Size of layout hash table set via loader.conf");
+int	nfsrv_layouthighwater = NFSLAYOUTHIGHWATER;
+SYSCTL_INT(_vfs_nfsd, OID_AUTO, layouthighwater, CTLFLAG_RDTUN,
+    &nfsrv_layouthighwater, 0,
+    "High water mark for number of layouts set via loader.conf");
 
 static int	nfsrv_v4statelimit = NFSRV_V4STATELIMIT;
 SYSCTL_INT(_vfs_nfsd, OID_AUTO, v4statelimit, CTLFLAG_RWTUN,
@@ -7476,7 +7477,7 @@ nfsrv_createdevids(struct nfsd_nfsd_args *args, NFSPROC_T *p)
 {
 	struct nfsdevice *ds;
 	char *addrp, *dnshostp, *dspathp, *mirrorp;
-	int error;
+	int error, i;
 
 	addrp = args->addr;
 	dnshostp = args->dnshost;
@@ -7511,6 +7512,23 @@ nfsrv_createdevids(struct nfsd_nfsd_args *args, NFSPROC_T *p)
 		dnshostp += (strlen(dnshostp) + 1);
 		dspathp += (strlen(dspathp) + 1);
 		mirrorp += (strlen(mirrorp) + 1);
+	}
+
+	/*
+	 * Allocate the nfslayout hash table now, since this is a pNFS server.
+	 * Make it 1% of the high water mark and at least 100.
+	 */
+	if (nfslayouthash == NULL) {
+		nfsrv_layouthashsize = nfsrv_layouthighwater / 100;
+		if (nfsrv_layouthashsize < 100)
+			nfsrv_layouthashsize = 100;
+		nfslayouthash = mallocarray(nfsrv_layouthashsize,
+		    sizeof(struct nfslayouthash), M_NFSDSESSION, M_WAITOK |
+		    M_ZERO);
+		for (i = 0; i < nfsrv_layouthashsize; i++) {
+			mtx_init(&nfslayouthash[i].mtx, "nfslm", NULL, MTX_DEF);
+			TAILQ_INIT(&nfslayouthash[i].list);
+		}
 	}
 	return (0);
 }

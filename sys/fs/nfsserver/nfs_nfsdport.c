@@ -5496,13 +5496,15 @@ nfsd_modevent(module_t mod, int type, void *data)
 		mtx_destroy(&nfsrv_recalllock_mtx);
 		for (i = 0; i < nfsrv_sessionhashsize; i++)
 			mtx_destroy(&nfssessionhash[i].mtx);
-		for (i = 0; i < nfsrv_layouthashsize; i++)
-			mtx_destroy(&nfslayouthash[i].mtx);
+		if (nfslayouthash != NULL) {
+			for (i = 0; i < nfsrv_layouthashsize; i++)
+				mtx_destroy(&nfslayouthash[i].mtx);
+			free(nfslayouthash, M_NFSDSESSION);
+		}
 		lockdestroy(&nfsv4root_mnt.mnt_explock);
 		free(nfsclienthash, M_NFSDCLIENT);
 		free(nfslockhash, M_NFSDLOCKFILE);
 		free(nfssessionhash, M_NFSDSESSION);
-		free(nfslayouthash, M_NFSDSESSION);
 		loaded = 0;
 		break;
 	default:

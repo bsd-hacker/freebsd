@@ -98,7 +98,7 @@
 #define	NFSSESSIONHASHSIZE	20	/* Size of server session hash table */
 #endif
 #define	NFSSTATEHASHSIZE	10	/* Size of server stateid hash table */
-#define	NFSLAYOUTHASHSIZE	100	/* Size of server layout hash table */
+#define	NFSLAYOUTHIGHWATER	1000000	/* Upper limit for # of layouts */
 #ifndef	NFSCLDELEGHIGHWATER
 #define	NFSCLDELEGHIGHWATER	10000	/* limit for client delegations */
 #endif

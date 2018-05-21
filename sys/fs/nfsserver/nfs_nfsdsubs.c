@@ -52,8 +52,6 @@ extern struct nfslockhashhead *nfslockhash;
 extern int nfsrv_lockhashsize;
 extern struct nfssessionhash *nfssessionhash;
 extern int nfsrv_sessionhashsize;
-extern struct nfslayouthash *nfslayouthash;
-extern int nfsrv_layouthashsize;
 extern int nfsrv_useacl;
 extern uid_t nfsrv_defaultuid;
 extern gid_t nfsrv_defaultgid;
@@ -2063,12 +2061,6 @@ nfsd_init(void)
 	for (i = 0; i < nfsrv_sessionhashsize; i++) {
 		mtx_init(&nfssessionhash[i].mtx, "nfssm", NULL, MTX_DEF);
 		LIST_INIT(&nfssessionhash[i].list);
-	}
-	nfslayouthash = malloc(sizeof(struct nfslayouthash) *
-	    nfsrv_layouthashsize, M_NFSDSESSION, M_WAITOK | M_ZERO);
-	for (i = 0; i < nfsrv_layouthashsize; i++) {
-		mtx_init(&nfslayouthash[i].mtx, "nfslm", NULL, MTX_DEF);
-		TAILQ_INIT(&nfslayouthash[i].list);
 	}
 	LIST_INIT(&nfsrv_dontlisthead);
 	TAILQ_INIT(&nfsrv_recalllisthead);
