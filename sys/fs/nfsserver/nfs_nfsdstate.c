@@ -7523,8 +7523,7 @@ nfsrv_createdevids(struct nfsd_nfsd_args *args, NFSPROC_T *p)
 		if (nfsrv_layouthashsize < 100)
 			nfsrv_layouthashsize = 100;
 		nfslayouthash = mallocarray(nfsrv_layouthashsize,
-		    sizeof(struct nfslayouthash), M_NFSDSESSION, M_WAITOK |
-		    M_ZERO);
+		    sizeof(struct nfslayouthash), M_NFSDSESSION, M_WAITOK);
 		for (i = 0; i < nfsrv_layouthashsize; i++) {
 			mtx_init(&nfslayouthash[i].mtx, "nfslm", NULL, MTX_DEF);
 			TAILQ_INIT(&nfslayouthash[i].list);
