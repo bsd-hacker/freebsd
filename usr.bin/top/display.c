@@ -32,6 +32,7 @@
 
 #include <curses.h>
 #include <ctype.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -66,7 +67,7 @@ static int display_width = MAX_COLS;
 /* things initialized by display_init and used thruout */
 
 /* buffer of proc information lines for display updating */
-char *screenbuf = NULL;
+static char *screenbuf = NULL;
 
 static char **procstate_names;
 static char **cpustate_names;
@@ -440,40 +441,6 @@ int *brkdn;
     }
 }
 
-#ifdef no_more
-/*
- *  *_cpustates(states, names) - print the cpu state percentages
- *
- *  Assumptions:  cursor is on the PREVIOUS line
- */
-
-/* cpustates_tag() calculates the correct tag to use to label the line */
-
-char *cpustates_tag()
-
-{
-    char *use;
-
-    static char *short_tag = "CPU: ";
-    static char *long_tag = "CPU states: ";
-
-    /* if length + strlen(long_tag) >= screen_width, then we have to
-       use the shorter tag (we subtract 2 to account for ": ") */
-    if (cpustate_total_length + (int)strlen(long_tag) - 2 >= screen_width)
-    {
-	use = short_tag;
-    }
-    else
-    {
-	use = long_tag;
-    }
-
-    /* set cpustates_column accordingly then return result */
-    cpustates_column = strlen(use);
-    return(use);
-}
-#endif
-
 void
 i_cpustates(states)
 
@@ -656,13 +623,10 @@ int *stats;
  *  Assumptions:  cursor is on "lastline"
  *                for i_arc ONLY: cursor is on the previous line
  */
-char arc_buffer[MAX_COLS];
+static char arc_buffer[MAX_COLS];
 
 void
-i_arc(stats)
-
-int *stats;
-
+i_arc(int *stats)
 {
     if (arc_names == NULL)
 	return;
@@ -698,13 +662,10 @@ int *stats;
  *  Assumptions:  cursor is on "lastline"
  *                for i_carc ONLY: cursor is on the previous line
  */
-char carc_buffer[MAX_COLS];
+static char carc_buffer[MAX_COLS];
 
 void
-i_carc(stats)
-
-int *stats;
-
+i_carc(int *stats)
 {
     if (carc_names == NULL)
 	return;
@@ -740,13 +701,10 @@ int *stats;
  *                for i_swap ONLY: cursor is on the previous line
  */
 
-char swap_buffer[MAX_COLS];
+static char swap_buffer[MAX_COLS];
 
 void
-i_swap(stats)
-
-int *stats;
-
+i_swap(int *stats)
 {
     fputs("\nSwap: ", stdout);
     lastline++;
@@ -757,10 +715,7 @@ int *stats;
 }
 
 void
-u_swap(stats)
-
-int *stats;
-
+u_swap(int *stats)
 {
     static char new[MAX_COLS];
 
@@ -790,8 +745,8 @@ static int msglen = 0;
 
 void
 i_message()
-
 {
+
     while (lastline < y_message)
     {
 	fputc('\n', stdout);
@@ -1054,14 +1009,16 @@ display_header(int t)
     }
 }
 
-/*VARARGS2*/
 void
-new_message(int type, char *msgfmt, caddr_t a1, caddr_t a2, caddr_t a3)
+new_message(int type, char *msgfmt, ...)
 {
-    int i;
+    va_list args;
+    size_t i;
+
+    va_start(args, msgfmt);
 
     /* first, format the message */
-    snprintf(next_msg, sizeof(next_msg), msgfmt, a1, a2, a3);
+    snprintf(next_msg, sizeof(next_msg), msgfmt, args);
 
     if (msglen > 0)
     {

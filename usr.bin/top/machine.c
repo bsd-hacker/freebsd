@@ -42,8 +42,9 @@
 #include <vis.h>
 
 #include "top.h"
-#include "machine.h"
 #include "display.h"
+#include "machine.h"
+#include "loadavg.h"
 #include "screen.h"
 #include "utils.h"
 #include "layout.h"
@@ -56,11 +57,7 @@ extern struct process_select ps;
 extern struct timeval timeout;
 static int smpmode;
 enum displaymodes displaymode;
-#ifdef TOP_USERNAME_LEN
-static int namelength = TOP_USERNAME_LEN;
-#else
 static int namelength = 8;
-#endif
 /* TOP_JID_LEN based on max of 999999 */
 #define TOP_JID_LEN 7
 #define TOP_SWAP_LEN 6
@@ -75,8 +72,6 @@ struct handle {
 	int remaining;			/* number of pointers remaining */
 };
 
-/* declarations for load_avg */
-#include "loadavg.h"
 
 /* define what weighted cpu is.  */
 #define weighted_cpu(pct, pp) ((pp)->ki_swtime == 0 ? 0.0 : \
@@ -124,7 +119,7 @@ static char up_header[] =
 /* the extra nulls in the string "run" are for adding a slash and
    the processor number when needed */
 
-char *state_abbrev[] = {
+static char *state_abbrev[] = {
 	"", "START", "RUN\0\0\0", "SLEEP", "STOP", "ZOMB", "WAIT", "LOCK"
 };
 
@@ -151,8 +146,8 @@ static long cp_diff[CPUSTATES];
 
 /* these are for detailing the process states */
 
-int process_states[8];
-char *procstatenames[] = {
+static int process_states[8];
+static char *procstatenames[] = {
 	"", " starting, ", " running, ", " sleeping, ", " stopped, ",
 	" zombie, ", " waiting, ", " lock, ",
 	NULL
@@ -160,33 +155,33 @@ char *procstatenames[] = {
 
 /* these are for detailing the cpu states */
 
-int cpu_states[CPUSTATES];
-char *cpustatenames[] = {
+static int cpu_states[CPUSTATES];
+static char *cpustatenames[] = {
 	"user", "nice", "system", "interrupt", "idle", NULL
 };
 
 /* these are for detailing the memory statistics */
 
-int memory_stats[7];
-char *memorynames[] = {
+static int memory_stats[7];
+static char *memorynames[] = {
 	"K Active, ", "K Inact, ", "K Laundry, ", "K Wired, ", "K Buf, ",
 	"K Free", NULL
 };
 
-int arc_stats[7];
-char *arcnames[] = {
+static int arc_stats[7];
+static char *arcnames[] = {
 	"K Total, ", "K MFU, ", "K MRU, ", "K Anon, ", "K Header, ", "K Other",
 	NULL
 };
 
-int carc_stats[4];
-char *carcnames[] = {
+static int carc_stats[4];
+static char *carcnames[] = {
 	"K Compressed, ", "K Uncompressed, ", ":1 Ratio, ",
 	NULL
 };
 
-int swap_stats[7];
-char *swapnames[] = {
+static int swap_stats[7];
+static char *swapnames[] = {
 	"K Total, ", "K Used, ", "K Free, ", "% Inuse, ", "K In, ", "K Out",
 	NULL
 };
@@ -910,7 +905,7 @@ get_process_info(struct system_info *si, struct process_select *sel,
 
 	/* remember active and total counts */
 	si->p_total = total_procs;
-	si->p_active = pref_len = active_procs;
+	si->p_pactive = pref_len = active_procs;
 
 	/* pass back a handle */
 	handle.next_proc = pref;
@@ -933,7 +928,8 @@ format_next_process(caddr_t xhandle, char *(*get_userid)(int), int flags)
 	size_t state;
 	struct rusage ru, *rup;
 	long p_tot, s_tot;
-	char *proc_fmt, thr_buf[6];
+	char *proc_fmt;
+	char thr_buf[6];
 	char jid_buf[TOP_JID_LEN + 1], swap_buf[TOP_SWAP_LEN + 1];
 	char *cmdbuf = NULL;
 	char **args;
