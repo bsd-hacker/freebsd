@@ -47,7 +47,7 @@ LIST_HEAD(nfslockhead, nfslock);
 LIST_HEAD(nfslockhashhead, nfslockfile);
 LIST_HEAD(nfssessionhead, nfsdsession);
 LIST_HEAD(nfssessionhashhead, nfsdsession);
-LIST_HEAD(nfslayouthead, nfslayout);
+TAILQ_HEAD(nfslayouthead, nfslayout);
 SLIST_HEAD(nfsdsdirhead, nfsdsdir);
 TAILQ_HEAD(nfsdevicehead, nfsdevice);
 LIST_HEAD(nfsdontlisthead, nfsdontlist);
@@ -128,10 +128,11 @@ struct nfsclient {
  * Malloc'd to correct size for the lay_xdr.
  */
 struct nfslayout {
-	LIST_ENTRY(nfslayout)	lay_list;
+	TAILQ_ENTRY(nfslayout)	lay_list;
 	nfsv4stateid_t		lay_stateid;
 	nfsquad_t		lay_clientid;
 	fhandle_t		lay_fh;
+	fsid_t			lay_fsid;
 	uint32_t		lay_layoutlen;
 	uint32_t		lay_mirrorcnt;
 	uint16_t		lay_type;

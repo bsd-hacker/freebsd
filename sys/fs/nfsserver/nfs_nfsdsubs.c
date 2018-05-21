@@ -2068,10 +2068,10 @@ nfsd_init(void)
 	    nfsrv_layouthashsize, M_NFSDSESSION, M_WAITOK | M_ZERO);
 	for (i = 0; i < nfsrv_layouthashsize; i++) {
 		mtx_init(&nfslayouthash[i].mtx, "nfslm", NULL, MTX_DEF);
-		LIST_INIT(&nfslayouthash[i].list);
+		TAILQ_INIT(&nfslayouthash[i].list);
 	}
 	LIST_INIT(&nfsrv_dontlisthead);
-	LIST_INIT(&nfsrv_recalllisthead);
+	TAILQ_INIT(&nfsrv_recalllisthead);
 
 	/* and the v2 pubfh should be all zeros */
 	NFSBZERO(nfs_v2pubfh, NFSX_V2FH);
