@@ -145,6 +145,7 @@ struct nfslayout {
 #define	NFSLAY_RW	0x0002
 #define	NFSLAY_RECALL	0x0004
 #define	NFSLAY_RETURNED	0x0008
+#define	NFSLAY_CALLB	0x0010
 
 /*
  * Structure for an NFSv4.1 session.
@@ -290,7 +291,6 @@ struct nfsrollback {
 struct nfslockfile {
 	LIST_HEAD(, nfsstate)	lf_open;	/* Open list */
 	LIST_HEAD(, nfsstate)	lf_deleg;	/* Delegation list */
-	LIST_HEAD(, nfsstate)	lf_layout;	/* Layout list */
 	LIST_HEAD(, nfslock)	lf_lock;	/* Lock list */
 	LIST_HEAD(, nfslock)	lf_locallock;	/* Local lock list */
 	LIST_HEAD(, nfsrollback) lf_rollback;	/* Local lock rollback list */

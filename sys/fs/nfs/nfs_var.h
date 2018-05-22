@@ -149,6 +149,7 @@ int nfsrv_layoutget(struct nfsrv_descript *, vnode_t, struct nfsexstuff *,
     int, int *, uint64_t *, uint64_t *, uint64_t, nfsv4stateid_t *, int, int *,
     int *, char *, struct ucred *, NFSPROC_T *);
 void nfsrv_flexmirrordel(char *, NFSPROC_T *);
+void nfsrv_recalloldlayout(NFSPROC_T *);
 int nfsrv_layoutreturn(struct nfsrv_descript *, vnode_t, int, int, uint64_t,
     uint64_t, int, int, nfsv4stateid_t *, int, uint32_t *, int *,
     struct ucred *, NFSPROC_T *);
