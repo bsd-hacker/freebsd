@@ -59,7 +59,7 @@ perl -Ilib -MFBCE -e 'map { $_->reset_password() } FBCE->model("FBCE::Person")->
 # fst3k=# \t on
 # Showing only tuples.
 # fst3k=# \o active-20180516.txt
-# fst3k=# select p.login from persons p join revisions r on p.id = r.author where r.datetime >= '2017-05-16' group by p.login order by p.login;
+# fst3k=# select p.login from persons p join revisions r on p.id = r.author where r.datetime >= '20170516T180000Z' and r.datetime <'20180516T180000Z' group by p.login order by p.login;
 # fst3k=# \o
 #
 ./script/fbce_user.pl activate active-20180516.txt
