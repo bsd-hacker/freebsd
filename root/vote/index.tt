@@ -65,7 +65,7 @@
       <tr>
 	<td class="votebox"><input type="checkbox" name="vote_for_[% login %]" id="vote_for_[% login %]"[% IF voted_for.$login %] checked="checked"[% END %] onclick="updateTotal()"/></td>
 	<td><label for="vote_for_[% login %]">[% candidate.name | html %][% IF candidate.incumbent %] (incumbent)[% END %]:</label></td>
-	<td><a href="[% c.uri_for('/see/candidate', login) | html %]">[% candidate.statement.short | html %]</a></td>
+	<td><a href="[% c.uri_for('/see/candidate', login) | html %]">[% IF candidate.statement.short %][% candidate.statement.short | html %][% ELSE %]see statement[% END %]</a></td>
       </tr>
       [% END %]
       <tr id="totalrow" style="visibility: collapse">
