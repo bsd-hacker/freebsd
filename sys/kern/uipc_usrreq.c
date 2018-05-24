@@ -1069,6 +1069,13 @@ uipc_send(struct socket *so, int flags, struct mbuf *m, struct sockaddr *nam,
 				break;
 			}
 		}
+		if (__predict_false(unp == unp2)) {
+			if (unp->unp_socket == NULL) {
+				error = ENOTCONN;
+				break;
+			}
+			goto connect_self;
+		}
 		unp_pcb_owned_lock2(unp, unp2, freed);
 		if (__predict_false(freed)) {
 			UNP_PCB_UNLOCK(unp);
@@ -1088,6 +1095,7 @@ uipc_send(struct socket *so, int flags, struct mbuf *m, struct sockaddr *nam,
 			error = ENOTCONN;
 			break;
 		}
+	connect_self:
 		if (unp2->unp_flags & UNP_WANTCRED)
 			control = unp_addsockcred(td, control);
 		if (unp->unp_addr != NULL)
@@ -1107,7 +1115,8 @@ uipc_send(struct socket *so, int flags, struct mbuf *m, struct sockaddr *nam,
 		}
 		if (nam != NULL)
 			unp_disconnect(unp, unp2);
-		UNP_PCB_UNLOCK(unp2);
+		if (__predict_true(unp != unp2))
+			UNP_PCB_UNLOCK(unp2);
 		UNP_PCB_UNLOCK(unp);
 		break;
 	}
@@ -1610,14 +1619,18 @@ unp_connectat(int fd, struct socket *so, struct sockaddr *nam,
 		mac_socketpeer_set_from_socket(so, so2);
 		mac_socketpeer_set_from_socket(so2, so);
 #endif
-	} else
-		unp_pcb_lock2(unp, unp2);
-
+	} else {
+		if (unp == unp2)
+			UNP_PCB_LOCK(unp);
+		else
+			unp_pcb_lock2(unp, unp2);
+	}
 	KASSERT(unp2 != NULL && so2 != NULL && unp2->unp_socket == so2 &&
 	    sotounpcb(so2) == unp2,
 	    ("%s: unp2 %p so2 %p", __func__, unp2, so2));
 	error = unp_connect2(so, so2, PRU_CONNECT);
-	UNP_PCB_UNLOCK(unp2);
+	if (unp != unp2)
+		UNP_PCB_UNLOCK(unp2);
 	UNP_PCB_UNLOCK(unp);
 bad2:
 	mtx_unlock(vplock);
