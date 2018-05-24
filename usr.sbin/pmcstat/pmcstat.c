@@ -425,7 +425,7 @@ main(int argc, char **argv)
 	double interval;
 	double duration;
 	int option, npmc;
-	int c, check_driver_stats, current_sampling_count;
+	int c, check_driver_stats; 
 	int do_callchain, do_descendants, do_logproccsw, do_logprocexit;
 	int do_print, do_read;
 	size_t len;
@@ -433,6 +433,7 @@ main(int argc, char **argv)
 	int pipefd[2], rfd;
 	int use_cumulative_counts;
 	short cf, cb;
+	uint64_t current_sampling_count;
 	char *end, *tmp;
 	const char *errmsg, *graphfilename;
 	enum pmcstat_state runstate;
@@ -445,7 +446,7 @@ main(int argc, char **argv)
 	char buffer[PATH_MAX];
 
 	check_driver_stats      = 0;
-	current_sampling_count  = DEFAULT_SAMPLE_COUNT;
+	current_sampling_count  = 0;
 	do_callchain		= 1;
 	do_descendants          = 0;
 	do_logproccsw           = 0;
@@ -652,7 +653,7 @@ main(int argc, char **argv)
 				errx(EX_SOFTWARE, "ERROR: Out of memory.");
 
 			if (option == 'S' || option == 'P')
-				ev->ev_count = current_sampling_count;
+				ev->ev_count = current_sampling_count ? current_sampling_count : pmcstat_pmu_sample_rate_get(ev->ev_spec);
 			else
 				ev->ev_count = -1;
 
