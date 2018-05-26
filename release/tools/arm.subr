@@ -116,7 +116,7 @@ arm_install_base() {
 	hostname="$(echo ${KERNEL} | tr '[:upper:]' '[:lower:]')"
 	echo "hostname=\"${hostname}\"" > ${CHROOTDIR}/${DESTDIR}/etc/rc.conf
 	echo 'ifconfig_DEFAULT="DHCP"' >> ${CHROOTDIR}/${DESTDIR}/etc/rc.conf
-	echo 'ifconfig_DEFAULT_ipv6="inet6 accept_rtadv"' >> ${CHROOTDIR}/${DESTDIR}/etc/rc.conf
+    echo 'ipv6_activate_all_interfaces="YES"' >> ${CHROOTDIR}/${DESTDIR}/etc/rc.conf
 	echo 'sshd_enable="YES"' >> ${CHROOTDIR}/${DESTDIR}/etc/rc.conf
 	echo 'sendmail_enable="NONE"' >> ${CHROOTDIR}/${DESTDIR}/etc/rc.conf
 	echo 'sendmail_submit_enable="NO"' >> ${CHROOTDIR}/${DESTDIR}/etc/rc.conf
@@ -124,6 +124,10 @@ arm_install_base() {
 	echo 'sendmail_msp_queue_enable="NO"' >> ${CHROOTDIR}/${DESTDIR}/etc/rc.conf
 	echo 'growfs_enable="YES"' >> ${CHROOTDIR}/${DESTDIR}/etc/rc.conf
 	echo 'kldxref_enable="YES"' >> ${CHROOTDIR}/${DESTDIR}/etc/rc.conf
+
+	echo '' >> ${CHROOTDIR}/${DESTDIR}/etc/sysctl.conf
+	echo '#' >> ${CHROOTDIR}/${DESTDIR}/etc/sysctl.conf
+	echo 'net.inet6.ip6.accept_rtadv=1' >> ${CHROOTDIR}/${DESTDIR}/etc/sysctl.conf
 
 	sync
 	umount_loop ${CHROOTDIR}/${DESTDIR}

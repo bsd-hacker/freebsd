@@ -311,8 +311,7 @@ _ifconfig_getargs()
 		return 1
 	fi
 
-	eval "_ifconfig_DEFAULT=\$ifconfig_DEFAULT$_af"
-	get_if_var $_ifn ifconfig_IF$_af "$_ifconfig_DEFAULT"
+	get_if_var $_ifn ifconfig_IF$_af "$ifconfig_DEFAULT"
 }
 
 # ifconfig_getargs if [af]
