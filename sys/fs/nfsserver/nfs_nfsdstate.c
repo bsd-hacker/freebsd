@@ -217,7 +217,8 @@ static void nfsrv_freealldevids(void);
 static void nfsrv_flexlayouterr(struct nfsrv_descript *nd, uint32_t *layp,
     int maxcnt, NFSPROC_T *p);
 static int nfsrv_recalllayout(nfsquad_t clid, nfsv4stateid_t *stateidp,
-    fhandle_t *fhp, struct nfslayout *lyp, int laytype, NFSPROC_T *p);
+    fhandle_t *fhp, struct nfslayout *lyp, struct nfslayouthead *lyheadp,
+    int laytype, NFSPROC_T *p);
 static int nfsrv_findlayout(nfsquad_t *clientidp, fhandle_t *fhp, int laytype,
     NFSPROC_T *, struct nfslayout **lypp);
 static int nfsrv_fndclid(nfsquad_t *clidvec, nfsquad_t clid, int clidcnt);
@@ -6621,11 +6622,13 @@ nfsrv_flexmirrordel(char *devid, NFSPROC_T *p)
 		/*
 		 * The layout stateid.seqid needs to be incremented
 		 * before doing a LAYOUT_RECALL callback.
+		 * Set lay_trycnt to UINT16_MAX so it won't set up a retry.
 		 */
 		if (++lyp->lay_stateid.seqid == 0)
 			lyp->lay_stateid.seqid = 1;
+		lyp->lay_trycnt = UINT16_MAX;
 		nfsrv_recalllayout(lyp->lay_clientid, &lyp->lay_stateid,
-		    &lyp->lay_fh, lyp, lyp->lay_type, p);
+		    &lyp->lay_fh, lyp, &loclyp, lyp->lay_type, p);
 		nfsrv_freelayout(&loclyp, lyp);
 	}
 }
@@ -6635,7 +6638,8 @@ nfsrv_flexmirrordel(char *devid, NFSPROC_T *p)
  */
 static int
 nfsrv_recalllayout(nfsquad_t clid, nfsv4stateid_t *stateidp, fhandle_t *fhp,
-    struct nfslayout *lyp, int laytype, NFSPROC_T *p)
+    struct nfslayout *lyp, struct nfslayouthead *lyheadp, int laytype,
+    NFSPROC_T *p)
 {
 	struct nfsclient *clp;
 	int error;
@@ -6649,13 +6653,33 @@ nfsrv_recalllayout(nfsquad_t clid, nfsv4stateid_t *stateidp, fhandle_t *fhp,
 	if ((clp->lc_flags & LCL_NFSV41) != 0) {
 		error = nfsrv_docallback(clp, NFSV4OP_CBLAYOUTRECALL,
 		    stateidp, 0, fhp, NULL, NULL, laytype, p);
-		if (lyp != NULL && error == NFSERR_NOMATCHLAYOUT) {
+		/* If lyp != NULL, handle an error return here. */
+		if (error != 0 && lyp != NULL) {
 			NFSDRECALLLOCK();
-			if ((lyp->lay_flags & NFSLAY_RECALL) != 0) {
-				lyp->lay_flags |= NFSLAY_RETURNED;
-				wakeup(lyp);
-			}
-			NFSDRECALLUNLOCK();
+			if (error == NFSERR_NOMATCHLAYOUT) {
+				/*
+				 * Mark it returned, since there is no layout.
+				 */
+				if ((lyp->lay_flags & NFSLAY_RECALL) != 0) {
+					lyp->lay_flags |= NFSLAY_RETURNED;
+					wakeup(lyp);
+				}
+				NFSDRECALLUNLOCK();
+			} else if ((lyp->lay_flags & NFSLAY_RETURNED) == 0 &&
+			    lyp->lay_trycnt < 10) {
+				/*
+				 * Clear recall, so it can be tried again
+				 * and put it at the end of the list to
+				 * delay the retry a little longer.
+				 */
+				lyp->lay_flags &= ~NFSLAY_RECALL;
+				lyp->lay_trycnt++;
+				TAILQ_REMOVE(lyheadp, lyp, lay_list);
+				TAILQ_INSERT_TAIL(lyheadp, lyp, lay_list);
+				NFSDRECALLUNLOCK();
+				nfs_catnap(PVFS, 0, "nfsrclay");
+			} else
+				NFSDRECALLUNLOCK();
 		}
 	} else
 		printf("nfsrv_recalllayout: clp not NFSv4.1\n");
@@ -6673,7 +6697,7 @@ nfsrv_recalloldlayout(NFSPROC_T *p)
 	nfsquad_t clientid;
 	nfsv4stateid_t stateid;
 	fhandle_t fh;
-	int error, laytype;
+	int error, laytype, ret;
 
 	lhyp = &nfslayouthash[arc4random() % nfsrv_layouthashsize];
 	NFSLOCKLAYOUT(lhyp);
@@ -6695,26 +6719,43 @@ nfsrv_recalloldlayout(NFSPROC_T *p)
 	}
 	NFSUNLOCKLAYOUT(lhyp);
 	if (lyp != NULL) {
-		error = nfsrv_recalllayout(clientid, &stateid, &fh, NULL,
+		error = nfsrv_recalllayout(clientid, &stateid, &fh, NULL, NULL,
 		    laytype, p);
 		if (error != 0 && error != NFSERR_NOMATCHLAYOUT)
 			printf("recallold=%d\n", error);
-		if (error == NFSERR_NOMATCHLAYOUT) {
-			/*
-			 * The client no longer knows this layout, so it can
-			 * be free'd now.
-			 * Since the hash list was unlocked, we need to find
-			 * it again.
-			 */
+		if (error != 0) {
 			NFSLOCKLAYOUT(lhyp);
-			error = nfsrv_findlayout(&clientid, &fh, laytype, p,
+			/*
+			 * Since the hash list was unlocked, we need to
+			 * find it again.
+			 */
+			ret = nfsrv_findlayout(&clientid, &fh, laytype, p,
 			    &lyp);
-			if (error == 0 &&
+			if (ret == 0 &&
 			    (lyp->lay_flags & NFSLAY_CALLB) != 0 &&
 			    lyp->lay_stateid.other[0] == stateid.other[0] &&
 			    lyp->lay_stateid.other[1] == stateid.other[1] &&
-			    lyp->lay_stateid.other[2] == stateid.other[2])
-				nfsrv_freelayout(&lhyp->list, lyp);
+			    lyp->lay_stateid.other[2] == stateid.other[2]) {
+				/*
+				 * The client no longer knows this layout, so
+				 * it can be free'd now.
+				 */
+				if (error == NFSERR_NOMATCHLAYOUT)
+					nfsrv_freelayout(&lhyp->list, lyp);
+				else {
+					/*
+					 * Leave it to be tried later by
+					 * clearing NFSLAY_CALLB and moving
+					 * it to the head of the list, so it
+					 * won't be tried again for a while.
+					 */
+					lyp->lay_flags &= ~NFSLAY_CALLB;
+					TAILQ_REMOVE(&lhyp->list, lyp,
+					    lay_list);
+					TAILQ_INSERT_HEAD(&lhyp->list, lyp,
+					    lay_list);
+				}
+			}
 			NFSUNLOCKLAYOUT(lhyp);
 		}
 	}
@@ -7831,6 +7872,7 @@ nfsrv_copymr(vnode_t vp, vnode_t fvp, vnode_t dvp, struct nfsdevice *ds,
 		    (lyp->lay_flags & NFSLAY_RW) != 0) {
 			TAILQ_REMOVE(&lhyp->list, lyp, lay_list);
 			TAILQ_INSERT_HEAD(&nfsrv_recalllisthead, lyp, lay_list);
+			lyp->lay_trycnt = 0;
 		}
 	}
 	NFSUNLOCKLAYOUT(lhyp);
@@ -7856,7 +7898,8 @@ tryagain:
 				lyp->lay_stateid.seqid = 1;
 			NFSDRECALLUNLOCK();
 			nfsrv_recalllayout(lyp->lay_clientid, &lyp->lay_stateid,
-			    &lyp->lay_fh, lyp, lyp->lay_type, p);
+			    &lyp->lay_fh, lyp, &nfsrv_recalllisthead,
+			    lyp->lay_type, p);
 			NFSD_DEBUG(4, "nfsrv_copymr: recalled layout\n");
 			goto tryagain;
 		}

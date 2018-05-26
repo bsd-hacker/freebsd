@@ -134,7 +134,8 @@ struct nfslayout {
 	fhandle_t		lay_fh;
 	fsid_t			lay_fsid;
 	uint32_t		lay_layoutlen;
-	uint32_t		lay_mirrorcnt;
+	uint16_t		lay_mirrorcnt;
+	uint16_t		lay_trycnt;
 	uint16_t		lay_type;
 	uint16_t		lay_flags;
 	uint32_t		lay_xdr[0];
