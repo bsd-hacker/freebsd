@@ -7794,18 +7794,31 @@ nfsrv_dontlayout(fhandle_t *fhp)
 
 #define	PNFSDS_COPYSIZ	65536
 /*
- * Do the recovery of a file for a recovered mirror.
+ * Create a new file on a DS and copy the contents of an extant DS file to it.
+ * This can be used for recovery of a DS file onto a recovered DS.
  * The steps are:
- * - Disable issuing of rw layouts for the file.
- * - Recall and wait for return of all rw layouts for the file.
+ * - When called, the MDS file's vnode is locked, blocking LayoutGet operations.
+ * - Disable issuing of read/write layouts for the file via the nfsdontlist,
+ *   so that they will be disabled after the MDS file's vnode is unlocked.
+ * - Set up the nfsrv_recalllist so that recall of read/write layouts can
+ *   be done.
+ * - Unlock the MDS file's vnode, so that the client(s) can perform proxied
+ *   writes, LayoutCommits and LayoutReturns for the file when completing the
+ *   LayoutReturn requested by the LayoutRecall callback.
+ * - Issue a LayoutRecall callback for all read/write layouts and wait for
+ *   them to be returned. (If the LayoutRecall callback replies
+ *   NFSERR_NOMATCHLAYOUT, they are gone and no LayoutReturn is needed.)
+ * - Exclusively lock the MDS file's vnode.  This ensures that no proxied
+ *   writes are in progress or can occur during the DS file copy.
+ *   It also blocks Setattr operations.
  * - Create the file on the recovered mirror.
- * - Upgrade the vnode lock on the MDS file, so that proxied writes and
- *   VOP_SETACL()s are blocked until the copy is complete.
  * - Copy the file from the operational DS.
  * - Copy any ACL from the MDS file to the new DS file.
  * - Set the modify time of the new DS file to that of the MDS file.
  * - Update the extended attribute for the MDS file.
- * - Enable issuing of rw layouts.
+ * - Enable issuing of rw layouts by deleting the nfsdontlist entry.
+ * - The caller will unlock the MDS file's vnode allowing operations
+ *   to continue normally, since it is now on the mirror again.
  */
 int
 nfsrv_copymr(vnode_t vp, vnode_t fvp, vnode_t dvp, struct nfsdevice *ds,
