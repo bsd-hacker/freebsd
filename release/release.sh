@@ -315,7 +315,7 @@ extra_chroot_setup() {
 				/usr/ports/textproc/docproj \
 				OPTIONS_UNSET="FOP IGOR" \
 				FORCE_PKG_REGISTER=1 \
-				install clean distclean
+				deinstall install clean distclean
 		fi
 	fi
 
@@ -331,7 +331,7 @@ extra_chroot_setup() {
 		for _PORT in ${EMBEDDEDPORTS}; do
 			eval chroot ${CHROOTDIR} env ${PBUILD_FLAGS} make -C \
 				/usr/ports/${_PORT} \
-				FORCE_PKG_REGISTER=1 install clean distclean
+				FORCE_PKG_REGISTER=1 deinstall install clean distclean
 		done
 	fi
 
