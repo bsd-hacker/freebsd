@@ -114,14 +114,6 @@ static struct option longopts[] = {
 	{ NULL, 0, NULL, 0}
 };
 
-struct nfhret {
-	u_long		stat;
-	long		vers;
-	long		auth;
-	long		fhsize;
-	u_char		nfh[NFS3_FHSIZE];
-};
-
 static void	cleanup(int);
 static void	child_cleanup(int);
 static void	killchildren(void);
