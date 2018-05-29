@@ -208,10 +208,10 @@ static void nfsrv_freelayouts(nfsquad_t *clid, fsid_t *fs, int laytype,
     int iomode);
 static void nfsrv_freealllayouts(void);
 static void nfsrv_freedevid(struct nfsdevice *ds);
-static int nfsrv_setdsserver(char *dspathp, char *mirrorp, NFSPROC_T *p,
+static int nfsrv_setdsserver(char *dspathp, NFSPROC_T *p,
     struct nfsdevice **dsp);
 static int nfsrv_delds(char *devid, NFSPROC_T *p);
-static void nfsrv_deleteds(struct nfsdevice *fndds, struct nfsdevice *pards);
+static void nfsrv_deleteds(struct nfsdevice *fndds);
 static void nfsrv_allocdevid(struct nfsdevice *ds, char *addr, char *dnshost);
 static void nfsrv_freealldevids(void);
 static void nfsrv_flexlayouterr(struct nfsrv_descript *nd, uint32_t *layp,
@@ -6965,8 +6965,7 @@ int
 nfsrv_getdevinfo(char *devid, int layouttype, uint32_t *maxcnt,
     uint32_t *notify, int *devaddrlen, char **devaddr)
 {
-	struct nfsdevice *ds, *mds;
-	int done;
+	struct nfsdevice *ds;
 
 	if ((layouttype != NFSLAYOUT_NFSV4_1_FILES && layouttype !=
 	     NFSLAYOUT_FLEXFILE) ||
@@ -6978,20 +6977,10 @@ nfsrv_getdevinfo(char *devid, int layouttype, uint32_t *maxcnt,
 	 * away, but the order changes in the list.  As such, the lock only
 	 * needs to be held during the search through the list.
 	 */
-	done = 0;
 	NFSDDSLOCK();
 	TAILQ_FOREACH(ds, &nfsrv_devidhead, nfsdev_list) {
-		TAILQ_FOREACH(mds, &ds->nfsdev_mirrors, nfsdev_list) {
-			if (mds->nfsdev_nmp != NULL && NFSBCMP(devid,
-			    mds->nfsdev_deviceid, NFSX_V4DEVICEID) == 0) {
-				ds = mds;
-				done = 1;
-				break;
-			}
-		}
-		if (done != 0)
-			break;
-		if (NFSBCMP(devid, ds->nfsdev_deviceid, NFSX_V4DEVICEID) == 0)
+		if (NFSBCMP(devid, ds->nfsdev_deviceid, NFSX_V4DEVICEID) == 0 &&
+		    ds->nfsdev_nmp != NULL)
 			break;
 	}
 	NFSDDSUNLOCK();
@@ -7083,11 +7072,8 @@ nfsrv_freeonedevid(struct nfsdevice *ds)
 static void
 nfsrv_freedevid(struct nfsdevice *ds)
 {
-	struct nfsdevice *mds, *nds;
 
 	TAILQ_REMOVE(&nfsrv_devidhead, ds, nfsdev_list);
-	TAILQ_FOREACH_SAFE(mds, &ds->nfsdev_mirrors, nfsdev_list, nds)
-		nfsrv_freeonedevid(mds);
 	nfsrv_freeonedevid(ds);
 }
 
@@ -7195,11 +7181,10 @@ nfsrv_freealllayouts(void)
  * Look up the mount path for the DS server.
  */
 static int
-nfsrv_setdsserver(char *dspathp, char *mirrorp, NFSPROC_T *p,
-    struct nfsdevice **dsp)
+nfsrv_setdsserver(char *dspathp, NFSPROC_T *p, struct nfsdevice **dsp)
 {
 	struct nameidata nd;
-	struct nfsdevice *ds, *mds, *tds;
+	struct nfsdevice *ds;
 	int error, i;
 	char *dsdirpath;
 	size_t dsdirsize;
@@ -7230,8 +7215,6 @@ nfsrv_setdsserver(char *dspathp, char *mirrorp, NFSPROC_T *p,
 	 */
 	*dsp = ds = malloc(sizeof(*ds) + nfsrv_dsdirsize * sizeof(vnode_t),
 	    M_NFSDSTATE, M_WAITOK | M_ZERO);
-	TAILQ_INIT(&ds->nfsdev_mirrors);
-	strcpy(ds->nfsdev_mirrorid, mirrorp);
 	ds->nfsdev_dvp = nd.ni_vp;
 	ds->nfsdev_nmp = VFSTONFS(nd.ni_vp->v_mount);
 	NFSVOPUNLOCK(nd.ni_vp, 0);
@@ -7264,33 +7247,8 @@ nfsrv_setdsserver(char *dspathp, char *mirrorp, NFSPROC_T *p,
 	}
 	free(dsdirpath, M_TEMP);
 
-	/*
-	 * Since this is done before the nfsd threads are running, locking
-	 * isn't required.
-	 * First, look for a mirror. If none found, link into main list.
-	 */
-	TAILQ_FOREACH(mds, &nfsrv_devidhead, nfsdev_list) {
-		if (strcmp(mds->nfsdev_mirrorid, mirrorp) == 0) {
-			TAILQ_INSERT_TAIL(&mds->nfsdev_mirrors, ds,
-			    nfsdev_list);
-			atomic_add_int(&nfsrv_devidcnt, 1);
-			ds = NULL;
-			i = 1;
-			TAILQ_FOREACH(tds, &mds->nfsdev_mirrors, nfsdev_list)
-				i++;
-			if (i > NFSDEV_MAXMIRRORS)
-				error = ENXIO;
-			else if (i > nfsrv_maxpnfsmirror) {
-				nfsrv_maxpnfsmirror = i;
-				nfsrv_doflexfile = 1;	/* Force Flex File. */
-			}
-			break;
-		}
-	}
-	if (ds != NULL) {
-		TAILQ_INSERT_TAIL(&nfsrv_devidhead, ds, nfsdev_list);
-		atomic_add_int(&nfsrv_devidcnt, 1);
-	}
+	TAILQ_INSERT_TAIL(&nfsrv_devidhead, ds, nfsdev_list);
+	atomic_add_int(&nfsrv_devidcnt, 1);
 	return (error);
 }
 
@@ -7364,13 +7322,13 @@ nfsrv_deldsserver(char *dspathp, NFSPROC_T *p)
 struct nfsdevice *
 nfsrv_deldsnmp(struct nfsmount *nmp, NFSPROC_T *p)
 {
-	struct nfsdevice *fndds, *fndpards;
+	struct nfsdevice *fndds;
 
 	NFSD_DEBUG(4, "deldsdvp\n");
 	NFSDDSLOCK();
-	fndds = nfsv4_findmirror(nmp, &fndpards);
+	fndds = nfsv4_findmirror(nmp);
 	if (fndds != NULL)
-		nfsrv_deleteds(fndds, fndpards);
+		nfsrv_deleteds(fndds);
 	NFSDDSUNLOCK();
 	if (fndds != NULL) {
 		nfsrv_flexmirrordel(fndds->nfsdev_deviceid, p);
@@ -7388,8 +7346,9 @@ nfsrv_deldsnmp(struct nfsmount *nmp, NFSPROC_T *p)
 static int
 nfsrv_delds(char *devid, NFSPROC_T *p)
 {
-	struct nfsdevice *ds, *mds, *fndds, *fndpards;
+	struct nfsdevice *ds, *fndds;
 	struct nfsmount *nmp;
+	int fndmirror;
 
 	NFSD_DEBUG(4, "delds\n");
 	/*
@@ -7397,48 +7356,27 @@ nfsrv_delds(char *devid, NFSPROC_T *p)
 	 * Remove the DS entry if found and there is a mirror.
 	 */
 	fndds = NULL;
-	fndpards = NULL;
 	nmp = NULL;
+	fndmirror = 0;
 	NFSDDSLOCK();
 	TAILQ_FOREACH(ds, &nfsrv_devidhead, nfsdev_list) {
-		if (fndds != NULL)
-			break;
 		if (NFSBCMP(ds->nfsdev_deviceid, devid, NFSX_V4DEVICEID) == 0 &&
 		    ds->nfsdev_nmp != NULL) {
-			/* If there are no mirrors, return error. */
-			TAILQ_FOREACH(mds, &ds->nfsdev_mirrors, nfsdev_list) {
-				if (mds->nfsdev_nmp != NULL)
-					break;
-			}
-			if (mds == NULL) {
-				NFSDDSUNLOCK();
-				NFSD_DEBUG(4, "no mirror for DS\n");
-				return (ENXIO);
-			}
 			NFSD_DEBUG(4, "fnd main ds\n");
 			fndds = ds;
+		} else if (ds->nfsdev_nmp != NULL)
+			fndmirror = 1;
+		if (fndds != NULL && fndmirror != 0)
 			break;
-		} else {
-			TAILQ_FOREACH(mds, &ds->nfsdev_mirrors, nfsdev_list) {
-				if (NFSBCMP(mds->nfsdev_deviceid, devid,
-				    NFSX_V4DEVICEID) == 0 &&
-				    mds->nfsdev_nmp != NULL) {
-					NFSD_DEBUG(4, "fnd mirror ds\n");
-					fndds = mds;
-					fndpards = ds;
-					break;
-				}
-			}
-		}
 	}
-	if (fndds != NULL) {
+	if (fndds != NULL && fndmirror != 0) {
 		nmp = fndds->nfsdev_nmp;
 		NFSLOCKMNT(nmp);
 		if ((nmp->nm_privflag & (NFSMNTP_FORCEDISM |
 		     NFSMNTP_CANCELRPCS)) == 0) {
 			nmp->nm_privflag |= NFSMNTP_CANCELRPCS;
 			NFSUNLOCKMNT(nmp);
-			nfsrv_deleteds(fndds, fndpards);
+			nfsrv_deleteds(fndds);
 		} else {
 			NFSUNLOCKMNT(nmp);
 			nmp = NULL;
@@ -7459,56 +7397,14 @@ nfsrv_delds(char *devid, NFSPROC_T *p)
 }
 
 /*
- * Remove a mirror from the list, moving a mirror up to be the first one,
- * as required.
- * The mirror is removed by setting nfsdev_nmp = NULL.
+ * Mark a DS as disabled by setting nfsdev_nmp = NULL.
  */
 static void
-nfsrv_deleteds(struct nfsdevice *fndds, struct nfsdevice *pards)
+nfsrv_deleteds(struct nfsdevice *fndds)
 {
-	struct nfsdevice *mds, *nds;
 
-	if (pards != NULL) {
-		NFSD_DEBUG(4, "deleteds: deleting a mirror\n");
-		fndds->nfsdev_nmp = NULL;
-		return;
-	}
-
-	NFSD_DEBUG(4, "deleteds: deleting main ds\n");
-	/* Search for a usable mirror. If none found, return. */
-	TAILQ_FOREACH(mds, &fndds->nfsdev_mirrors, nfsdev_list) {
-		if (mds->nfsdev_nmp != NULL)
-			break;
-	}
-	if (mds == NULL) {
-		printf("nfsrv_deleteds: empty mirror\n");
-		return;
-	}
-
-	/*
-	 * The fndds is the first one, so make the first valid entry in the
-	 * mirror list the first one.
-	 */
-	TAILQ_REMOVE(&nfsrv_devidhead, fndds, nfsdev_list);
-	TAILQ_REMOVE(&fndds->nfsdev_mirrors, mds, nfsdev_list);
-	TAILQ_INIT(&mds->nfsdev_mirrors);
-
-	/* Now, move the rest of the mirrors over to mds->nfsdev_mirrors. */
-	nds = TAILQ_FIRST(&fndds->nfsdev_mirrors);
-	while (nds != NULL) {
-		NFSD_DEBUG(4, "shifting mirror up\n");
-		TAILQ_REMOVE(&fndds->nfsdev_mirrors, nds, nfsdev_list);
-		TAILQ_INSERT_TAIL(&mds->nfsdev_mirrors, nds, nfsdev_list);
-		nds = TAILQ_FIRST(&fndds->nfsdev_mirrors);
-	}
-
-	/* And insert mds in the first/main list. */
-	TAILQ_INSERT_HEAD(&nfsrv_devidhead, mds, nfsdev_list);
-
-	/* Put fndds in the mirror list with nfsdev_nmp == NULL. */
+	NFSD_DEBUG(4, "deleteds: deleting a mirror\n");
 	fndds->nfsdev_nmp = NULL;
-	TAILQ_INIT(&fndds->nfsdev_mirrors);
-	TAILQ_INSERT_TAIL(&mds->nfsdev_mirrors, fndds, nfsdev_list);
 }
 
 /*
@@ -7594,31 +7490,24 @@ int
 nfsrv_createdevids(struct nfsd_nfsd_args *args, NFSPROC_T *p)
 {
 	struct nfsdevice *ds;
-	char *addrp, *dnshostp, *dspathp, *mirrorp;
+	char *addrp, *dnshostp, *dspathp;
 	int error, i;
 
 	addrp = args->addr;
 	dnshostp = args->dnshost;
 	dspathp = args->dspath;
-	mirrorp = args->mirror;
-	nfsrv_maxpnfsmirror = 1;
-	if (addrp == NULL || dnshostp == NULL || dspathp == NULL ||
-	    mirrorp == NULL)
+	nfsrv_maxpnfsmirror = args->mirrorcnt;
+	if (addrp == NULL || dnshostp == NULL || dspathp == NULL)
 		return (0);
 
 	/*
 	 * Loop around for each nul-terminated string in args->addr,
-	 * args->dnshost, args->dnspath and args->mirror.
+	 * args->dnshost and args->dnspath.
 	 */
 	while (addrp < (args->addr + args->addrlen) &&
 	    dnshostp < (args->dnshost + args->dnshostlen) &&
-	    dspathp < (args->dspath + args->dspathlen) &&
-	    mirrorp < (args->mirror + args->mirrorlen)) {
-		error = 0;
-		if (*mirrorp == '\0' || strlen(mirrorp) > NFSDEV_MIRRORSTR)
-			error = ENXIO;
-		if (error == 0)
-			error = nfsrv_setdsserver(dspathp, mirrorp, p, &ds);
+	    dspathp < (args->dspath + args->dspathlen)) {
+		error = nfsrv_setdsserver(dspathp, p, &ds);
 		if (error != 0) {
 			/* Free all DS servers. */
 			nfsrv_freealldevids();
@@ -7629,7 +7518,13 @@ nfsrv_createdevids(struct nfsd_nfsd_args *args, NFSPROC_T *p)
 		addrp += (strlen(addrp) + 1);
 		dnshostp += (strlen(dnshostp) + 1);
 		dspathp += (strlen(dspathp) + 1);
-		mirrorp += (strlen(mirrorp) + 1);
+	}
+	if (nfsrv_devidcnt < nfsrv_maxpnfsmirror) {
+		/* Free all DS servers. */
+		nfsrv_freealldevids();
+		nfsrv_devidcnt = 0;
+		nfsrv_maxpnfsmirror = 1;
+		return (ENXIO);
 	}
 
 	/*
@@ -8084,7 +7979,7 @@ nfsrv_createdsfile(vnode_t vp, fhandle_t *fhp, struct pnfsdsfile *pf,
 }
 
 /*
- * Look up the MDS file exclusively locked, and then get the extended attribute
+ * Look up the MDS file shared locked, and then get the extended attribute
  * to find the extant DS file to be copied to the new mirror.
  * If successful, *vpp is set to the MDS file's vp and *nvpp is
  * set to a DS data file for the MDS file, both exclusively locked.
@@ -8093,19 +7988,24 @@ nfsrv_createdsfile(vnode_t vp, fhandle_t *fhp, struct pnfsdsfile *pf,
  */
 int
 nfsrv_mdscopymr(char *mdspathp, char *dspathp, char *curdspathp, char *buf,
-    int *buflenp, NFSPROC_T *p, struct vnode **vpp, struct vnode **nvpp,
-    struct pnfsdsfile **pfp, struct nfsdevice **dsp)
+    int *buflenp, char *fname, NFSPROC_T *p, struct vnode **vpp,
+    struct vnode **nvpp, struct pnfsdsfile **pfp, struct nfsdevice **dsp,
+    struct nfsdevice **fdsp)
 {
 	struct nameidata nd;
 	struct vnode *vp, *curvp;
 	struct pnfsdsfile *pf;
 	struct nfsmount *nmp, *curnmp;
-	int dsdir, error, mirrorcnt, zeroippos;
-	char fname[PNFS_FILENAME_LEN + 1];
+	int dsdir, error, mirrorcnt, ippos;
 
 	vp = NULL;
 	curvp = NULL;
+	curnmp = NULL;
 	*dsp = NULL;
+	*fdsp = NULL;
+	if (dspathp == NULL && curdspathp != NULL)
+		return (EPERM);
+
 	/*
 	 * Look up the MDS file shared locked.  The lock will be upgraded
 	 * to an exclusive lock after any rw layouts have been returned.
@@ -8124,82 +8024,97 @@ nfsrv_mdscopymr(char *mdspathp, char *dspathp, char *curdspathp, char *buf,
 	}
 	vp = nd.ni_vp;
 
-	/*
-	 * Look up the current DS path and find the nfsdev structure for it.
-	 */
-	NFSD_DEBUG(4, "curmdsdev path=%s\n", curdspathp);
-	NDINIT(&nd, LOOKUP, FOLLOW | LOCKSHARED | LOCKLEAF, UIO_SYSSPACE,
-	    curdspathp, p);
-	error = namei(&nd);
-	NFSD_DEBUG(4, "ds lookup=%d\n", error);
-	if (error != 0) {
-		vput(vp);
-		return (error);
+	if (curdspathp != NULL) {
+		/*
+		 * Look up the current DS path and find the nfsdev structure for
+		 * it.
+		 */
+		NFSD_DEBUG(4, "curmdsdev path=%s\n", curdspathp);
+		NDINIT(&nd, LOOKUP, FOLLOW | LOCKSHARED | LOCKLEAF,
+		    UIO_SYSSPACE, curdspathp, p);
+		error = namei(&nd);
+		NFSD_DEBUG(4, "ds lookup=%d\n", error);
+		if (error != 0) {
+			vput(vp);
+			return (error);
+		}
+		if (nd.ni_vp->v_type != VDIR) {
+			vput(nd.ni_vp);
+			vput(vp);
+			NFSD_DEBUG(4, "curdspath not dir\n");
+			return (ENOTDIR);
+		}
+		if (strcmp(nd.ni_vp->v_mount->mnt_vfc->vfc_name, "nfs") != 0) {
+			vput(nd.ni_vp);
+			vput(vp);
+			NFSD_DEBUG(4, "curdspath not an NFS mount\n");
+			return (ENXIO);
+		}
+		curnmp = VFSTONFS(nd.ni_vp->v_mount);
+	
+		/* Search the nfsdev list for a match. */
+		NFSDDSLOCK();
+		*fdsp = nfsv4_findmirror(curnmp);
+		NFSDDSUNLOCK();
+		if (*fdsp == NULL)
+			curnmp = NULL;
+		if (curnmp == NULL) {
+			vput(nd.ni_vp);
+			vput(vp);
+			NFSD_DEBUG(4, "mdscopymr: no current ds\n");
+			return (ENXIO);
+		}
+		curvp = nd.ni_vp;
 	}
-	if (nd.ni_vp->v_type != VDIR) {
-		vput(nd.ni_vp);
-		vput(vp);
-		NFSD_DEBUG(4, "curdspath not dir\n");
-		return (ENOTDIR);
-	}
-	if (strcmp(nd.ni_vp->v_mount->mnt_vfc->vfc_name, "nfs") != 0) {
-		vput(nd.ni_vp);
-		vput(vp);
-		NFSD_DEBUG(4, "curdspath not an NFS mount\n");
-		return (ENXIO);
-	}
-	curnmp = VFSTONFS(nd.ni_vp->v_mount);
 
-	/* Search the nfsdev list for a match. */
-	NFSDDSLOCK();
-	if (nfsv4_findmirror(curnmp, NULL) == NULL)
-		curnmp = NULL;
-	NFSDDSUNLOCK();
-	if (curnmp == NULL) {
-		vput(nd.ni_vp);
-		vput(vp);
-		NFSD_DEBUG(4, "mdscopymr: no current ds\n");
-		return (ENXIO);
-	}
-	curvp = nd.ni_vp;
-
-	/* Look up the nfsdev path and find the nfsdev structure. */
-	NFSD_DEBUG(4, "mdsdev path=%s\n", dspathp);
-	NDINIT(&nd, LOOKUP, FOLLOW | LOCKSHARED | LOCKLEAF, UIO_SYSSPACE,
-	    dspathp, p);
-	error = namei(&nd);
-	NFSD_DEBUG(4, "ds lookup=%d\n", error);
-	if (error != 0) {
-		vput(vp);
-		vput(curvp);
-		return (error);
-	}
-	if (nd.ni_vp->v_type != VDIR) {
-		vput(nd.ni_vp);
-		vput(vp);
-		vput(curvp);
-		NFSD_DEBUG(4, "dspath not dir\n");
-		return (ENOTDIR);
-	}
-	if (strcmp(nd.ni_vp->v_mount->mnt_vfc->vfc_name, "nfs") != 0) {
-		vput(nd.ni_vp);
-		vput(vp);
-		vput(curvp);
-		NFSD_DEBUG(4, "dspath not an NFS mount\n");
-		return (ENXIO);
-	}
-	nmp = VFSTONFS(nd.ni_vp->v_mount);
-
-	/* Search the nfsdev list for a match. */
-	NFSDDSLOCK();
-	*dsp = nfsv4_findmirror(nmp, NULL);
-	NFSDDSUNLOCK();
-	if (*dsp == NULL) {
-		vput(nd.ni_vp);
-		vput(vp);
-		vput(curvp);
-		NFSD_DEBUG(4, "mdscopymr: no ds\n");
-		return (ENXIO);
+	if (dspathp != NULL) {
+		/* Look up the nfsdev path and find the nfsdev structure. */
+		NFSD_DEBUG(4, "mdsdev path=%s\n", dspathp);
+		NDINIT(&nd, LOOKUP, FOLLOW | LOCKSHARED | LOCKLEAF,
+		    UIO_SYSSPACE, dspathp, p);
+		error = namei(&nd);
+		NFSD_DEBUG(4, "ds lookup=%d\n", error);
+		if (error != 0) {
+			vput(vp);
+			if (curvp != NULL)
+				vput(curvp);
+			return (error);
+		}
+		if (nd.ni_vp->v_type != VDIR || nd.ni_vp == curvp) {
+			vput(nd.ni_vp);
+			vput(vp);
+			if (curvp != NULL)
+				vput(curvp);
+			NFSD_DEBUG(4, "dspath not dir\n");
+			if (nd.ni_vp == curvp)
+				return (EPERM);
+			return (ENOTDIR);
+		}
+		if (strcmp(nd.ni_vp->v_mount->mnt_vfc->vfc_name, "nfs") != 0) {
+			vput(nd.ni_vp);
+			vput(vp);
+			if (curvp != NULL)
+				vput(curvp);
+			NFSD_DEBUG(4, "dspath not an NFS mount\n");
+			return (ENXIO);
+		}
+		nmp = VFSTONFS(nd.ni_vp->v_mount);
+	
+		/* Search the nfsdev list for a match. */
+		NFSDDSLOCK();
+		*dsp = nfsv4_findmirror(nmp);
+		NFSDDSUNLOCK();
+		if (*dsp == NULL) {
+			vput(nd.ni_vp);
+			vput(vp);
+			if (curvp != NULL)
+				vput(curvp);
+			NFSD_DEBUG(4, "mdscopymr: no ds\n");
+			return (ENXIO);
+		}
+	} else {
+		nd.ni_vp = NULL;
+		nmp = NULL;
 	}
 
 	/*
@@ -8210,24 +8125,53 @@ nfsrv_mdscopymr(char *mdspathp, char *dspathp, char *curdspathp, char *buf,
 	 * nfsrv_dsgetsockmnt() returns EEXIST, so no copying will occur.
 	 */
 	error = nfsrv_dsgetsockmnt(vp, LK_EXCLUSIVE, buf, buflenp,
-	    &mirrorcnt, p, NULL, NULL, NULL, fname, nvpp, nmp, curnmp,
-	    &zeroippos, &dsdir);
-	vput(nd.ni_vp);
-	vput(curvp);
+	    &mirrorcnt, p, NULL, NULL, NULL, fname, nvpp, &nmp, curnmp,
+	    &ippos, &dsdir);
+	if (curvp != NULL)
+		vput(curvp);
+	if (nd.ni_vp == NULL) {
+		if (error == 0 && nmp != NULL) {
+			/* Search the nfsdev list for a match. */
+			NFSDDSLOCK();
+			*dsp = nfsv4_findmirror(nmp);
+			NFSDDSUNLOCK();
+		}
+		if (error == 0 && (nmp == NULL || *dsp == NULL)) {
+			if (nvpp != NULL && *nvpp != NULL) {
+				vput(*nvpp);
+				*nvpp = NULL;
+			}
+			error = ENXIO;
+		}
+	} else
+		vput(nd.ni_vp);
+
+	/*
+	 * When dspathp != NULL and curdspathp == NULL, this is a recovery
+	 * and is only allowed if there is a 0.0.0.0 IP address entry.
+	 * When curdspathp != NULL, the ippos will be set to that entry.
+	 */
+	if (error == 0 && dspathp != NULL && ippos == -1) {
+		if (nvpp != NULL && *nvpp != NULL) {
+			vput(*nvpp);
+			*nvpp = NULL;
+		}
+		error = ENXIO;
+	}
 	if (error == 0) {
 		*vpp = vp;
 
 		pf = (struct pnfsdsfile *)buf;
-		if (zeroippos == -1) {
+		if (ippos == -1) {
 			/* If no zeroip pnfsdsfile, add one. */
-			zeroippos = *buflenp / sizeof(*pf);
+			ippos = *buflenp / sizeof(*pf);
 			*buflenp += sizeof(*pf);
-			pf += zeroippos;
+			pf += ippos;
 			pf->dsf_dir = dsdir;
 			strlcpy(pf->dsf_filename, fname,
 			    sizeof(pf->dsf_filename));
 		} else
-			pf += zeroippos;
+			pf += ippos;
 		*pfp = pf;
 	} else
 		vput(vp);

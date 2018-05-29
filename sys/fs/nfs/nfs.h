@@ -185,18 +185,14 @@ struct nfsd_nfsd_args {
 	int	dnshostlen;	/* Length of DNS names */
 	char	*dspath;	/* DS Mount path on MDS */
 	int	dspathlen;	/* Length of DS Mount path on MDS */
-	char	*mirror;	/* DS with same mirrorindex are mirrors */
-	int	mirrorlen;	/* Length of the mirrorindex array */
+	int	mirrorcnt;	/* Number of mirrors to create on DSs */
 };
 
 /*
- * NFSDEV_MIRRORSTR - string of digits that number the DSs 0->999.
- * (To support more than 1000 DSs on an MDS, this needs to be increased.)
  * NFSDEV_MAXMIRRORS - Maximum # of mirrors for a DS.
  * (Most will only have a single mirror, but this setting allows up to 3.)
  * NFSDEV_MAXVERS - maximum number of NFS versions supported by Flex File.
  */
-#define	NFSDEV_MIRRORSTR	3
 #define	NFSDEV_MAXMIRRORS	4
 #define	NFSDEV_MAXVERS		4
 

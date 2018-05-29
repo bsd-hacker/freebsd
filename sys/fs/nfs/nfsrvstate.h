@@ -343,11 +343,9 @@ void nfsrv_freedeleglist(struct nfsstatehead *);
  */
 struct nfsdevice {
 	TAILQ_ENTRY(nfsdevice)	nfsdev_list;
-	struct nfsdevicehead	nfsdev_mirrors;
 	vnode_t			nfsdev_dvp;
 	struct nfsmount		*nfsdev_nmp;
 	char			nfsdev_deviceid[NFSX_V4DEVICEID];
-	char			nfsdev_mirrorid[NFSDEV_MIRRORSTR + 1];
 	uint16_t		nfsdev_hostnamelen;
 	uint16_t		nfsdev_fileaddrlen;
 	uint16_t		nfsdev_flexaddrlen;

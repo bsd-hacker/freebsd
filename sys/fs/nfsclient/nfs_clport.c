@@ -1385,8 +1385,7 @@ nfssvc_nfscl(struct thread *td, struct nfssvc_args *uap)
 				    "nfs") == 0 && mp->mnt_data != NULL) {
 					nmp = VFSTONFS(mp);
 					NFSDDSLOCK();
-					if (nfsv4_findmirror(nmp, NULL) != NULL
-					    ) {
+					if (nfsv4_findmirror(nmp) != NULL) {
 						NFSDDSUNLOCK();
 						error = ENXIO;
 						nmp = NULL;

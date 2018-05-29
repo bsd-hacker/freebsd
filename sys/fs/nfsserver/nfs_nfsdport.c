@@ -73,6 +73,7 @@ extern int nfs_pnfsiothreads;
 extern struct nfsdontlisthead nfsrv_dontlisthead;
 extern volatile int nfsrv_dontlistlen;
 extern volatile int nfsrv_devidcnt;
+extern int nfsrv_maxpnfsmirror;
 struct vfsoptlist nfsv4root_opt, nfsv4root_newopt;
 NFSDLOCKMUTEX;
 NFSSTATESPINLOCK;
@@ -129,6 +130,7 @@ static int nfsrv_pnfslookupds(struct vnode *, struct vnode *,
     struct pnfsdsfile *, struct vnode **, NFSPROC_T *);
 static void nfsrv_pnfssetfh(struct vnode *, struct pnfsdsfile *,
     struct vnode *, NFSPROC_T *);
+static int nfsrv_dsremove(struct vnode *, char *, struct ucred *, NFSPROC_T *);
 
 int nfs_pnfsio(task_fn_t *, void *);
 
@@ -3282,12 +3284,13 @@ nfssvc_nfsd(struct thread *td, struct nfssvc_args *uap)
 	struct nfsd_nfsd_args nfsdarg;
 	struct nfsd_nfsd_oargs onfsdarg;
 	struct nfsd_pnfsd_args pnfsdarg;
-	struct vnode *vp, *nvp;
+	struct vnode *vp, *nvp, *curdvp;
 	struct pnfsdsfile *pf;
-	struct nfsdevice *ds;
+	struct nfsdevice *ds, *fds;
 	cap_rights_t rights;
-	int buflen, error;
+	int buflen, error, ret;
 	char *buf, *cp, *cp2, *cp3;
+	char fname[PNFS_FILENAME_LEN + 1];
 
 	if (uap->flag & NFSSVC_NFSDADDSOCK) {
 		error = copyin(uap->argp, (caddr_t)&sockarg, sizeof (sockarg));
@@ -3325,8 +3328,7 @@ nfssvc_nfsd(struct thread *td, struct nfssvc_args *uap)
 				nfsdarg.addrlen = 0;
 				nfsdarg.dnshost = NULL;
 				nfsdarg.dnshostlen = 0;
-				nfsdarg.mirror = NULL;
-				nfsdarg.mirrorlen = 0;
+				nfsdarg.mirrorcnt = 1;
 			}
 		} else
 			error = copyin(uap->argp, &nfsdarg, sizeof(nfsdarg));
@@ -3335,13 +3337,14 @@ nfssvc_nfsd(struct thread *td, struct nfssvc_args *uap)
 		if (nfsdarg.addrlen > 0 && nfsdarg.addrlen < 10000 &&
 		    nfsdarg.dnshostlen > 0 && nfsdarg.dnshostlen < 10000 &&
 		    nfsdarg.dspathlen > 0 && nfsdarg.dspathlen < 10000 &&
-		    nfsdarg.mirrorlen > 0 && nfsdarg.mirrorlen < 10000 &&
+		    nfsdarg.mirrorcnt >= 1 &&
+		    nfsdarg.mirrorcnt <= NFSDEV_MAXMIRRORS &&
 		    nfsdarg.addr != NULL && nfsdarg.dnshost != NULL &&
-		    nfsdarg.dspath != NULL && nfsdarg.mirror != NULL) {
+		    nfsdarg.dspath != NULL) {
 			NFSD_DEBUG(1, "addrlen=%d dspathlen=%d dnslen=%d"
-			    " mirrorlen=%d\n", nfsdarg.addrlen,
+			    " mirrorcnt=%d\n", nfsdarg.addrlen,
 			    nfsdarg.dspathlen, nfsdarg.dnshostlen,
-			    nfsdarg.mirrorlen);
+			    nfsdarg.mirrorcnt);
 			cp = malloc(nfsdarg.addrlen + 1, M_TEMP, M_WAITOK);
 			error = copyin(nfsdarg.addr, cp, nfsdarg.addrlen);
 			if (error != 0) {
@@ -3369,17 +3372,6 @@ nfssvc_nfsd(struct thread *td, struct nfssvc_args *uap)
 			}
 			cp[nfsdarg.dspathlen] = '\0';	/* Ensure nul term. */
 			nfsdarg.dspath = cp;
-			cp = malloc(nfsdarg.mirrorlen + 1, M_TEMP, M_WAITOK);
-			error = copyin(nfsdarg.mirror, cp, nfsdarg.mirrorlen);
-			if (error != 0) {
-				free(nfsdarg.addr, M_TEMP);
-				free(nfsdarg.dnshost, M_TEMP);
-				free(nfsdarg.dspath, M_TEMP);
-				free(cp, M_TEMP);
-				goto out;
-			}
-			cp[nfsdarg.mirrorlen] = '\0';	/* Ensure nul term. */
-			nfsdarg.mirror = cp;
 		} else {
 			nfsdarg.addr = NULL;
 			nfsdarg.addrlen = 0;
@@ -3387,14 +3379,12 @@ nfssvc_nfsd(struct thread *td, struct nfssvc_args *uap)
 			nfsdarg.dnshostlen = 0;
 			nfsdarg.dspath = NULL;
 			nfsdarg.dspathlen = 0;
-			nfsdarg.mirror = NULL;
-			nfsdarg.mirrorlen = 0;
+			nfsdarg.mirrorcnt = 1;
 		}
 		error = nfsrvd_nfsd(td, &nfsdarg);
 		free(nfsdarg.addr, M_TEMP);
 		free(nfsdarg.dnshost, M_TEMP);
 		free(nfsdarg.dspath, M_TEMP);
-		free(nfsdarg.mirror, M_TEMP);
 	} else if (uap->flag & NFSSVC_PNFSDS) {
 		error = copyin(uap->argp, &pnfsdarg, sizeof(pnfsdarg));
 		if (error == 0 && pnfsdarg.op == PNFSDOP_DELDSSERVER) {
@@ -3406,25 +3396,33 @@ nfssvc_nfsd(struct thread *td, struct nfssvc_args *uap)
 			free(cp, M_TEMP);
 		} else if (error == 0 && pnfsdarg.op == PNFSDOP_COPYMR) {
 			cp = malloc(PATH_MAX + 1, M_TEMP, M_WAITOK);
-			cp2 = malloc(PATH_MAX + 1, M_TEMP, M_WAITOK);
-			cp3 = malloc(PATH_MAX + 1, M_TEMP, M_WAITOK);
 			buflen = sizeof(*pf) * NFSDEV_MAXMIRRORS;
 			buf = malloc(buflen, M_TEMP, M_WAITOK);
 			error = copyinstr(pnfsdarg.mdspath, cp, PATH_MAX + 1,
 			    NULL);
-			NFSD_DEBUG(4, "pnfsdop_copymr cp mdspath=%d\n", error);
-			if (error == 0)
+			NFSD_DEBUG(4, "pnfsdcopymr cp mdspath=%d\n", error);
+			if (error == 0 && pnfsdarg.dspath != NULL) {
+				cp2 = malloc(PATH_MAX + 1, M_TEMP, M_WAITOK);
 				error = copyinstr(pnfsdarg.dspath, cp2,
 				    PATH_MAX + 1, NULL);
-			NFSD_DEBUG(4, "pnfsdop_copymr cp dspath=%d\n", error);
-			if (error == 0)
+				NFSD_DEBUG(4, "pnfsdcopymr cp dspath=%d\n",
+				    error);
+			} else
+				cp2 = NULL;
+			if (error == 0 && pnfsdarg.curdspath != NULL) {
+				cp3 = malloc(PATH_MAX + 1, M_TEMP, M_WAITOK);
 				error = copyinstr(pnfsdarg.curdspath, cp3,
 				    PATH_MAX + 1, NULL);
-			NFSD_DEBUG(4, "pnfsdop_copymr cp curdspath=%d\n",
-			    error);
+				NFSD_DEBUG(4, "pnfsdcopymr cp curdspath=%d\n",
+				    error);
+			} else
+				cp3 = NULL;
+			curdvp = NULL;
+			fds = NULL;
 			if (error == 0)
 				error = nfsrv_mdscopymr(cp, cp2, cp3, buf,
-				    &buflen, td, &vp, &nvp, &pf, &ds);
+				    &buflen, fname, td, &vp, &nvp, &pf, &ds,
+				    &fds);
 			NFSD_DEBUG(4, "nfsrv_mdscopymr=%d\n", error);
 			if (error == 0) {
 				if (pf->dsf_dir >= nfsrv_dsdirsize) {
@@ -3438,6 +3436,15 @@ nfssvc_nfsd(struct thread *td, struct nfssvc_args *uap)
 				    buflen / sizeof(*pf), td->td_ucred, td);
 				vput(vp);
 				vput(nvp);
+				if (fds != NULL && error == 0) {
+					curdvp = fds->nfsdev_dsdir[pf->dsf_dir];
+					ret = vn_lock(curdvp, LK_SHARED);
+					if (ret == 0) {
+						nfsrv_dsremove(curdvp, fname,
+						    td->td_ucred, td);
+						NFSVOPUNLOCK(curdvp, 0);
+					}
+				}
 				NFSD_DEBUG(4, "nfsrv_copymr=%d\n", error);
 			}
 			free(cp, M_TEMP);
@@ -3813,25 +3820,33 @@ nfsrv_pnfscreate(struct vnode *vp, struct vattr *vap, struct ucred *cred,
 	/* Get a DS server directory in a round-robin order. */
 	mirrorcnt = 1;
 	NFSDDSLOCK();
-	ds = TAILQ_FIRST(&nfsrv_devidhead);
+	TAILQ_FOREACH(ds, &nfsrv_devidhead, nfsdev_list) {
+		if (ds->nfsdev_nmp != NULL)
+			break;
+	}
 	if (ds == NULL) {
 		NFSDDSUNLOCK();
 		NFSD_DEBUG(4, "nfsrv_pnfscreate: no srv\n");
 		return;
 	}
-	/* Put at end of list to implement round-robin usage. */
-	TAILQ_REMOVE(&nfsrv_devidhead, ds, nfsdev_list);
-	TAILQ_INSERT_TAIL(&nfsrv_devidhead, ds, nfsdev_list);
 	i = dsdir[0] = ds->nfsdev_nextdir;
 	ds->nfsdev_nextdir = (ds->nfsdev_nextdir + 1) % nfsrv_dsdirsize;
 	dvp[0] = ds->nfsdev_dsdir[i];
-	TAILQ_FOREACH(mds, &ds->nfsdev_mirrors, nfsdev_list) {
-		if (mds->nfsdev_nmp != NULL) {
-			dsdir[mirrorcnt] = i;
-			dvp[mirrorcnt] = mds->nfsdev_dsdir[i];
-			mirrorcnt++;
+	if (nfsrv_maxpnfsmirror > 1) {
+		mds = TAILQ_NEXT(ds, nfsdev_list);
+		TAILQ_FOREACH_FROM(mds, &nfsrv_devidhead, nfsdev_list) {
+			if (mds->nfsdev_nmp != NULL) {
+				dsdir[mirrorcnt] = i;
+				dvp[mirrorcnt] = mds->nfsdev_dsdir[i];
+				mirrorcnt++;
+				if (mirrorcnt >= nfsrv_maxpnfsmirror)
+					break;
+			}
 		}
 	}
+	/* Put at end of list to implement round-robin usage. */
+	TAILQ_REMOVE(&nfsrv_devidhead, ds, nfsdev_list);
+	TAILQ_INSERT_TAIL(&nfsrv_devidhead, ds, nfsdev_list);
 	NFSDDSUNLOCK();
 	dsc = NULL;
 	if (mirrorcnt > 1)
@@ -4391,21 +4406,25 @@ tryagain:
 /*
  * Get the DS mount point, fh and directory from the "pnfsd.dsfile" extended
  * attribute.
+ * newnmpp - If it points to a non-NULL nmp, that is the destination and needs
+ *           to be checked.  If it points to a NULL nmp, then it returns
+ *           a suitable destination.
+ * curnmp - If non-NULL, it is the source mount for the copy.
  */
 int
 nfsrv_dsgetsockmnt(struct vnode *vp, int lktype, char *buf, int *buflenp,
     int *mirrorcntp, NFSPROC_T *p, struct vnode **dvpp, fhandle_t *fhp,
-    char *devid, char *fnamep, struct vnode **nvpp, struct nfsmount *newnmp,
-    struct nfsmount *curnmp, int *zeroippos, int *dsdirp)
+    char *devid, char *fnamep, struct vnode **nvpp, struct nfsmount **newnmpp,
+    struct nfsmount *curnmp, int *ippos, int *dsdirp)
 {
 	struct vnode *dvp, *nvp, **tdvpp;
-	struct nfsmount *nmp;
+	struct nfsmount *nmp, *newnmp;
 	struct sockaddr *sad;
 	struct sockaddr_in *sin;
-	struct nfsdevice *ds, *mds;
+	struct nfsdevice *ds, *fndds;
 	struct pnfsdsfile *pf;
 	uint32_t dsdir;
-	int done, error, fnd, fhiszero, gotone, i, mirrorcnt;
+	int error, fhiszero, fnd, gotone, i, mirrorcnt;
 
 	ASSERT_VOP_LOCKED(vp, "nfsrv_dsgetsockmnt vp");
 	*mirrorcntp = 1;
@@ -4416,8 +4435,12 @@ nfsrv_dsgetsockmnt(struct vnode *vp, int lktype, char *buf, int *buflenp,
 		*nvpp = NULL;
 	if (dvpp != NULL)
 		*dvpp = NULL;
-	if (zeroippos != NULL)
-		*zeroippos = -1;
+	if (ippos != NULL)
+		*ippos = -1;
+	if (newnmpp != NULL)
+		newnmp = *newnmpp;
+	else
+		newnmp = NULL;
 	error = vn_extattr_get(vp, IO_NODELOCKED, EXTATTR_NAMESPACE_SYSTEM,
 	    "pnfsd.dsfile", buflenp, buf, p);
 	mirrorcnt = *buflenp / sizeof(*pf);
@@ -4432,13 +4455,14 @@ nfsrv_dsgetsockmnt(struct vnode *vp, int lktype, char *buf, int *buflenp,
 		for (i = 0; i < mirrorcnt; i++, pf++) {
 			sad = (struct sockaddr *)&pf->dsf_sin;
 			if (nfsaddr2_match(sad, curnmp->nm_nam)) {
+				if (ippos != NULL)
+					*ippos = i;
 				fnd = 1;
 				break;
 			}
 		}
-		/* Set EEXIST so that pnfsdscopymr won't report an error. */
 		if (fnd == 0)
-			error = EEXIST;
+			error = ENXIO;
 	}
 
 	gotone = 0;
@@ -4453,50 +4477,46 @@ nfsrv_dsgetsockmnt(struct vnode *vp, int lktype, char *buf, int *buflenp,
 		if (dsdir >= nfsrv_dsdirsize) {
 			printf("nfsrv_dsgetsockmnt: dsdir=%d\n", dsdir);
 			error = ENOATTR;
-		} else if (nvpp != NULL && nfsaddr2_match(sad, newnmp->nm_nam))
+		} else if (nvpp != NULL && newnmp != NULL &&
+		    nfsaddr2_match(sad, newnmp->nm_nam))
 			error = EEXIST;
 		if (error == 0) {
-			if (zeroippos != NULL && sad->sa_family == AF_INET &&
+			if (ippos != NULL && curnmp == NULL &&
+			    sad->sa_family == AF_INET &&
 			    sin->sin_addr.s_addr == 0)
-				*zeroippos = i;
+				*ippos = i;
 			if (NFSBCMP(&zerofh, &pf->dsf_fh, sizeof(zerofh)) == 0)
 				fhiszero = 1;
 			/* Use the socket address to find the mount point. */
-			done = 0;
+			fndds = NULL;
 			NFSDDSLOCK();
 			TAILQ_FOREACH(ds, &nfsrv_devidhead, nfsdev_list) {
-				TAILQ_FOREACH(mds, &ds->nfsdev_mirrors,
-				    nfsdev_list) {
-					if (mds->nfsdev_nmp != NULL) {
-						dvp = mds->nfsdev_dvp;
-						nmp = VFSTONFS(dvp->v_mount);
-						if (nmp != mds->nfsdev_nmp)
-							printf("different nmp "
-							    "%p %p\n", nmp,
-							    mds->nfsdev_nmp);
-						if (nfsaddr2_match(sad,
-						    nmp->nm_nam)) {
-							ds = mds;
-							done = 1;
-							break;
-						}
-					}
+				if (ds->nfsdev_nmp != NULL) {
+					dvp = ds->nfsdev_dvp;
+					nmp = VFSTONFS(dvp->v_mount);
+					if (nmp != ds->nfsdev_nmp)
+						printf("different2 nmp %p %p\n",
+						    nmp, ds->nfsdev_nmp);
+					if (nfsaddr2_match(sad, nmp->nm_nam))
+						fndds = ds;
+					else if (newnmpp != NULL &&
+					    newnmp == NULL &&
+					    (*newnmpp == NULL || fndds == NULL))
+						/*
+						 * Return a destination for the
+						 * copy in newnmpp. Choose the
+						 * last valid one before the
+						 * source mirror, so it isn't
+						 * always the first one.
+						 */
+						*newnmpp = nmp;
 				}
-				if (done != 0)
-					break;
-				dvp = ds->nfsdev_dvp;
-				nmp = VFSTONFS(dvp->v_mount);
-				if (nmp != ds->nfsdev_nmp)
-					printf("different2 nmp %p %p\n",
-					    nmp, ds->nfsdev_nmp);
-				if (nfsaddr2_match(sad, nmp->nm_nam))
-					break;
 			}
 			NFSDDSUNLOCK();
-			if (ds != NULL) {
+			if (fndds != NULL) {
 				if (dvpp != NULL || fhiszero != 0 ||
 				    (nvpp != NULL && *nvpp == NULL)) {
-					dvp = ds->nfsdev_dsdir[dsdir];
+					dvp = fndds->nfsdev_dsdir[dsdir];
 					error = vn_lock(dvp, lktype);
 					/*
 					 * If the file handle is all 0's, try to
@@ -4529,7 +4549,7 @@ nfsrv_dsgetsockmnt(struct vnode *vp, int lktype, char *buf, int *buflenp,
 					gotone++;
 					NFSD_DEBUG(4, "gotone=%d\n", gotone);
 					if (devid != NULL) {
-						NFSBCOPY(ds->nfsdev_deviceid,
+						NFSBCOPY(fndds->nfsdev_deviceid,
 						    devid, NFSX_V4DEVICEID);
 						devid += NFSX_V4DEVICEID;
 					}

@@ -71,7 +71,6 @@ int nfsrv_lease = NFSRV_LEASE;
 int ncl_mbuf_mlen = MLEN;
 int nfsd_enable_stringtouid = 0;
 int nfsrv_doflexfile = 0;
-int nfsrv_maxpnfsmirror = 1;
 static int nfs_enable_uidtostring = 0;
 NFSNAMEIDMUTEX;
 NFSSOCKMUTEX;
@@ -84,6 +83,10 @@ extern struct nfsdevicehead nfsrv_devidhead;
 SYSCTL_DECL(_vfs_nfs);
 SYSCTL_INT(_vfs_nfs, OID_AUTO, enable_uidtostring, CTLFLAG_RW,
     &nfs_enable_uidtostring, 0, "Make nfs always send numeric owner_names");
+
+int nfsrv_maxpnfsmirror = 1;
+SYSCTL_INT(_vfs_nfs, OID_AUTO, pnfsmirror, CTLFLAG_RD,
+    &nfsrv_maxpnfsmirror, 0, "Mirror level for pNFS service");
 
 /*
  * This array of structures indicates, for V4:
@@ -4313,47 +4316,32 @@ nfsv4_freeslot(struct nfsclsession *sep, int slot)
  * Return one if found, NULL otherwise.
  */
 struct nfsdevice *
-nfsv4_findmirror(struct nfsmount *nmp, struct nfsdevice **fndpardsp)
+nfsv4_findmirror(struct nfsmount *nmp)
 {
-	struct nfsdevice *ds, *mds, *fndds;
+	struct nfsdevice *ds, *fndds;
+	int fndmirror;
 
 	mtx_assert(NFSDDSMUTEXPTR, MA_OWNED);
 	/*
-	 * Search the DS server list for a match with dvp.
+	 * Search the DS server list for a match with nmp.
 	 * Remove the DS entry if found and there is a mirror.
 	 */
 	fndds = NULL;
-	if (fndpardsp != NULL)
-		*fndpardsp = NULL;
+	fndmirror = 0;
 	if (nfsrv_devidcnt == 0)
 		return (fndds);
 	TAILQ_FOREACH(ds, &nfsrv_devidhead, nfsdev_list) {
-		if (fndds != NULL)
-			break;
 		if (ds->nfsdev_nmp == nmp) {
-			/* If there are no mirrors, return NULL. */
-			TAILQ_FOREACH(mds, &ds->nfsdev_mirrors, nfsdev_list) {
-				if (mds->nfsdev_nmp != NULL)
-					break;
-			}
-			if (mds == NULL) {
-				NFSCL_DEBUG(4, "no mirror for DS\n");
-				return (NULL);
-			}
 			NFSCL_DEBUG(4, "fnd main ds\n");
 			fndds = ds;
+		} else if (ds->nfsdev_nmp != NULL)
+			fndmirror = 1;
+		if (fndds != NULL && fndmirror != 0)
 			break;
-		} else {
-			TAILQ_FOREACH(mds, &ds->nfsdev_mirrors, nfsdev_list) {
-				if (mds->nfsdev_nmp == nmp) {
-					NFSCL_DEBUG(4, "fnd mirror ds\n");
-					fndds = mds;
-					if (fndpardsp != NULL)
-						*fndpardsp = ds;
-					break;
-				}
-			}
-		}
+	}
+	if (fndmirror == 0) {
+		NFSCL_DEBUG(4, "no mirror for DS\n");
+		return (NULL);
 	}
 	return (fndds);
 }

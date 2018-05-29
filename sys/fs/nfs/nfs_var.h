@@ -162,10 +162,9 @@ struct nfsdevice *nfsrv_deldsnmp(struct nfsmount *, NFSPROC_T *);
 int nfsrv_createdevids(struct nfsd_nfsd_args *, NFSPROC_T *);
 int nfsrv_checkdsattr(struct nfsrv_descript *, vnode_t, NFSPROC_T *);
 int nfsrv_copymr(vnode_t, vnode_t, vnode_t, struct nfsdevice *,
-    struct pnfsdsfile *, struct pnfsdsfile *, int, struct ucred *,
-    NFSPROC_T *);
-int nfsrv_mdscopymr(char *, char *, char *, char *, int *, NFSPROC_T *,
-    struct vnode **, struct vnode **, struct pnfsdsfile **,
+    struct pnfsdsfile *, struct pnfsdsfile *, int, struct ucred *, NFSPROC_T *);
+int nfsrv_mdscopymr(char *, char *, char *, char *, int *, char *, NFSPROC_T *,
+    struct vnode **, struct vnode **, struct pnfsdsfile **, struct nfsdevice **,
     struct nfsdevice **);
 
 /* nfs_nfsdserv.c */
@@ -339,7 +338,7 @@ int nfsv4_sequencelookup(struct nfsmount *, struct nfsclsession *, int *,
     int *, uint32_t *, uint8_t *);
 void nfsv4_freeslot(struct nfsclsession *, int);
 struct ucred *nfsrv_getgrpscred(struct ucred *);
-struct nfsdevice *nfsv4_findmirror(struct nfsmount *, struct nfsdevice **);
+struct nfsdevice *nfsv4_findmirror(struct nfsmount *);
 
 /* nfs_clcomsubs.c */
 void nfsm_uiombuf(struct nfsrv_descript *, struct uio *, int);
@@ -706,7 +705,7 @@ int nfsrv_dsgetdevandfh(struct vnode *, NFSPROC_T *, int *, fhandle_t *,
     char *);
 int nfsrv_dsgetsockmnt(struct vnode *, int, char *, int *, int *,
     NFSPROC_T *, struct vnode **, fhandle_t *, char *, char *,
-    struct vnode **, struct nfsmount *, struct nfsmount *, int *, int *);
+    struct vnode **, struct nfsmount **, struct nfsmount *, int *, int *);
 int nfsrv_dscreate(struct vnode *, struct vattr *, struct vattr *,
     fhandle_t *, struct pnfsdsfile *, struct pnfsdsattr *, char *,
     struct ucred *, NFSPROC_T *, struct vnode **);

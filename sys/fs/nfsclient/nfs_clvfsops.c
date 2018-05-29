@@ -1683,7 +1683,7 @@ nfs_unmount(struct mount *mp, int mntflags)
 	/* In the forced case, cancel any outstanding requests. */
 	if (mntflags & MNT_FORCE) {
 		NFSDDSLOCK();
-		if (nfsv4_findmirror(nmp, NULL) != NULL)
+		if (nfsv4_findmirror(nmp) != NULL)
 			error = ENXIO;
 		NFSDDSUNLOCK();
 		if (error)
