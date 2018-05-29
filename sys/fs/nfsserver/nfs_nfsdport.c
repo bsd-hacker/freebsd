@@ -3438,7 +3438,7 @@ nfssvc_nfsd(struct thread *td, struct nfssvc_args *uap)
 				vput(nvp);
 				if (fds != NULL && error == 0) {
 					curdvp = fds->nfsdev_dsdir[pf->dsf_dir];
-					ret = vn_lock(curdvp, LK_SHARED);
+					ret = vn_lock(curdvp, LK_EXCLUSIVE);
 					if (ret == 0) {
 						nfsrv_dsremove(curdvp, fname,
 						    td->td_ucred, td);
