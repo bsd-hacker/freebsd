@@ -99,8 +99,6 @@ static int stablefd = -1;	/* Fd for the stable restart file */
 static int backupfd;		/* Fd for the backup stable restart file */
 static const char *getopt_shortopts;
 static const char *getopt_usage;
-static char *dshost = NULL;
-static int dshostc = 0;
 
 static int minthreads_set;
 static int maxthreads_set;
