@@ -131,6 +131,7 @@ static int nfsrv_pnfslookupds(struct vnode *, struct vnode *,
 static void nfsrv_pnfssetfh(struct vnode *, struct pnfsdsfile *,
     struct vnode *, NFSPROC_T *);
 static int nfsrv_dsremove(struct vnode *, char *, struct ucred *, NFSPROC_T *);
+static int nfsrv_pnfsstatfs(struct statfs *);
 
 int nfs_pnfsio(task_fn_t *, void *);
 
@@ -1567,10 +1568,27 @@ nfsvno_fsync(struct vnode *vp, u_int64_t off, int cnt, struct ucred *cred,
 int
 nfsvno_statfs(struct vnode *vp, struct statfs *sf)
 {
+	struct statfs *tsf;
 	int error;
 
+	tsf = NULL;
+	if (nfsrv_devidcnt > 0) {
+		/* For a pNFS service, get the DS numbers. */
+		tsf = malloc(sizeof(*tsf), M_TEMP, M_WAITOK | M_ZERO);
+		error = nfsrv_pnfsstatfs(tsf);
+		if (error != 0) {
+			free(tsf, M_TEMP);
+			tsf = NULL;
+		}
+	}
 	error = VFS_STATFS(vp->v_mount, sf);
 	if (error == 0) {
+		if (tsf != NULL) {
+			sf->f_blocks = tsf->f_blocks;
+			sf->f_bavail = tsf->f_bavail;
+			sf->f_bfree = tsf->f_bfree;
+			sf->f_bsize = tsf->f_bsize;
+		}
 		/*
 		 * Since NFS handles these values as unsigned on the
 		 * wire, there is no way to represent negative values,
@@ -1583,6 +1601,7 @@ nfsvno_statfs(struct vnode *vp, struct statfs *sf)
 		if (sf->f_ffree < 0)
 			sf->f_ffree = 0;
 	}
+	free(tsf, M_TEMP);
 	NFSEXITCODE(error);
 	return (error);
 }
@@ -1728,11 +1747,25 @@ nfsvno_fillattr(struct nfsrv_descript *nd, struct mount *mp, struct vnode *vp,
     struct ucred *cred, struct thread *p, int isdgram, int reterr,
     int supports_nfsv4acls, int at_root, uint64_t mounted_on_fileno)
 {
+	struct statfs *sf;
 	int error;
 
+	sf = NULL;
+	if (nfsrv_devidcnt > 0 &&
+	    (NFSISSET_ATTRBIT(attrbitp, NFSATTRBIT_SPACEAVAIL) ||
+	     NFSISSET_ATTRBIT(attrbitp, NFSATTRBIT_SPACEFREE) ||
+	     NFSISSET_ATTRBIT(attrbitp, NFSATTRBIT_SPACETOTAL))) {
+		sf = malloc(sizeof(*sf), M_TEMP, M_WAITOK | M_ZERO);
+		error = nfsrv_pnfsstatfs(sf);
+		if (error != 0) {
+			free(sf, M_TEMP);
+			sf = NULL;
+		}
+	}
 	error = nfsv4_fillattr(nd, mp, vp, NULL, &nvap->na_vattr, fhp, rderror,
 	    attrbitp, cred, p, isdgram, reterr, supports_nfsv4acls, at_root,
-	    mounted_on_fileno);
+	    mounted_on_fileno, sf);
+	free(sf, M_TEMP);
 	NFSEXITCODE2(0, nd);
 	return (error);
 }
@@ -5168,7 +5201,7 @@ nfsrv_setacldsdorpc(fhandle_t *fhp, struct ucred *cred, NFSPROC_T *p,
 	 * the same type (VREG).
 	 */
 	nfsv4_fillattr(nd, NULL, vp, aclp, NULL, NULL, 0, &attrbits, NULL,
-	    NULL, 0, 0, 0, 0, 0);
+	    NULL, 0, 0, 0, 0, 0, NULL);
 	error = newnfs_request(nd, nmp, NULL, &nmp->nm_sockreq, NULL, p, cred,
 	    NFS_PROG, NFS_VER4, NULL, 1, NULL, NULL);
 	if (error != 0) {
@@ -5436,6 +5469,78 @@ nfsrv_killrpcs(struct nfsmount *nmp)
 	 * called.
 	 */
 	newnfs_nmcancelreqs(nmp);
+}
+
+/*
+ * Sum up the statfs info for each of the DSs, so that the client will
+ * receive the total for all DSs.
+ */
+static int
+nfsrv_pnfsstatfs(struct statfs *sf)
+{
+	struct statfs *tsf;
+	struct nfsdevice *ds;
+	struct vnode **dvpp, **tdvpp, *dvp;
+	uint64_t tot;
+	int cnt, error = 0, i;
+
+	if (nfsrv_devidcnt <= 0)
+		return (ENXIO);
+	dvpp = mallocarray(nfsrv_devidcnt, sizeof(*dvpp), M_TEMP, M_WAITOK);
+	tsf = malloc(sizeof(*tsf), M_TEMP, M_WAITOK);
+
+	/* Get an array of the dvps for the DSs. */
+	tdvpp = dvpp;
+	i = 0;
+	NFSDDSLOCK();
+	TAILQ_FOREACH(ds, &nfsrv_devidhead, nfsdev_list) {
+		if (ds->nfsdev_nmp != NULL) {
+			if (++i > nfsrv_devidcnt)
+				break;
+			*tdvpp++ = ds->nfsdev_dvp;
+		}
+	}
+	NFSDDSUNLOCK();
+	cnt = i;
+
+	/* Do a VFS_STATFS() for each of the DSs and sum them up. */
+	tdvpp = dvpp;
+	for (i = 0; i < cnt && error == 0; i++) {
+		dvp = *tdvpp++;
+		error = VFS_STATFS(dvp->v_mount, tsf);
+		if (error == 0) {
+			if (sf->f_bsize == 0) {
+				if (tsf->f_bsize > 0)
+					sf->f_bsize = tsf->f_bsize;
+				else
+					sf->f_bsize = 8192;
+			}
+			if (tsf->f_blocks > 0) {
+				if (sf->f_bsize != tsf->f_bsize) {
+					tot = tsf->f_blocks * tsf->f_bsize;
+					sf->f_blocks += (tot / sf->f_bsize);
+				} else
+					sf->f_blocks += tsf->f_blocks;
+			}
+			if (tsf->f_bfree > 0) {
+				if (sf->f_bsize != tsf->f_bsize) {
+					tot = tsf->f_bfree * tsf->f_bsize;
+					sf->f_bfree += (tot / sf->f_bsize);
+				} else
+					sf->f_bfree += tsf->f_bfree;
+			}
+			if (tsf->f_bavail > 0) {
+				if (sf->f_bsize != tsf->f_bsize) {
+					tot = tsf->f_bavail * tsf->f_bsize;
+					sf->f_bavail += (tot / sf->f_bsize);
+				} else
+					sf->f_bavail += tsf->f_bavail;
+			}
+		}
+	}
+	free(tsf, M_TEMP);
+	free(dvpp, M_TEMP);
+	return (error);
 }
 
 extern int (*nfsd_call_nfsd)(struct thread *, struct nfssvc_args *);

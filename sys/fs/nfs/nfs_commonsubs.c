@@ -2068,7 +2068,8 @@ APPLESTATIC int
 nfsv4_fillattr(struct nfsrv_descript *nd, struct mount *mp, vnode_t vp,
     NFSACL_T *saclp, struct vattr *vap, fhandle_t *fhp, int rderror,
     nfsattrbit_t *attrbitp, struct ucred *cred, NFSPROC_T *p, int isdgram,
-    int reterr, int supports_nfsv4acls, int at_root, uint64_t mounted_on_fileno)
+    int reterr, int supports_nfsv4acls, int at_root, uint64_t mounted_on_fileno,
+    struct statfs *pnfssf)
 {
 	int bitpos, retnum = 0;
 	u_int32_t *tl;
@@ -2470,25 +2471,45 @@ nfsv4_fillattr(struct nfsrv_descript *nd, struct mount *mp, vnode_t vp,
 			break;
 		case NFSATTRBIT_SPACEAVAIL:
 			NFSM_BUILD(tl, u_int32_t *, NFSX_HYPER);
-			if (priv_check_cred(cred, PRIV_VFS_BLOCKRESERVE, 0))
-				uquad = (u_int64_t)fs->f_bfree;
+			if (priv_check_cred(cred, PRIV_VFS_BLOCKRESERVE, 0)) {
+				if (pnfssf != NULL)
+					uquad = (u_int64_t)pnfssf->f_bfree;
+				else
+					uquad = (u_int64_t)fs->f_bfree;
+			} else {
+				if (pnfssf != NULL)
+					uquad = (u_int64_t)pnfssf->f_bavail;
+				else
+					uquad = (u_int64_t)fs->f_bavail;
+			}
+			if (pnfssf != NULL)
+				uquad *= pnfssf->f_bsize;
 			else
-				uquad = (u_int64_t)fs->f_bavail;
-			uquad *= fs->f_bsize;
+				uquad *= fs->f_bsize;
 			txdr_hyper(uquad, tl);
 			retnum += NFSX_HYPER;
 			break;
 		case NFSATTRBIT_SPACEFREE:
 			NFSM_BUILD(tl, u_int32_t *, NFSX_HYPER);
-			uquad = (u_int64_t)fs->f_bfree;
-			uquad *= fs->f_bsize;
+			if (pnfssf != NULL) {
+				uquad = (u_int64_t)pnfssf->f_bfree;
+				uquad *= pnfssf->f_bsize;
+			} else {
+				uquad = (u_int64_t)fs->f_bfree;
+				uquad *= fs->f_bsize;
+			}
 			txdr_hyper(uquad, tl);
 			retnum += NFSX_HYPER;
 			break;
 		case NFSATTRBIT_SPACETOTAL:
 			NFSM_BUILD(tl, u_int32_t *, NFSX_HYPER);
-			uquad = (u_int64_t)fs->f_blocks;
-			uquad *= fs->f_bsize;
+			if (pnfssf != NULL) {
+				uquad = (u_int64_t)pnfssf->f_blocks;
+				uquad *= pnfssf->f_bsize;
+			} else {
+				uquad = (u_int64_t)fs->f_blocks;
+				uquad *= fs->f_bsize;
+			}
 			txdr_hyper(uquad, tl);
 			retnum += NFSX_HYPER;
 			break;
