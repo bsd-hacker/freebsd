@@ -937,6 +937,7 @@ check_type:
 	    }
 	    goto copy_id;	/* move the token into line */
 
+	case type_def:
 	case storage:
 	    prefix_blankline_requested = 0;
 	    goto copy_id;
@@ -955,7 +956,7 @@ check_type:
 	    }
 	    ps.in_or_st = true;	/* this might be a structure or initialization
 				 * declaration */
-	    ps.in_decl = ps.decl_on_line = true;
+	    ps.in_decl = ps.decl_on_line = ps.last_token != type_def;
 	    if ( /* !ps.in_or_st && */ ps.dec_nest <= 0)
 		ps.just_saw_decl = 2;
 	    prefix_blankline_requested = 0;
@@ -1058,7 +1059,9 @@ check_type:
 	    if (ps.p_l_follow == 0) {
 		if (ps.block_init_level <= 0)
 		    ps.block_init = 0;
-		if (break_comma && (!ps.leave_comma || compute_code_target() + (e_code - s_code) > max_col - tabsize))
+		if (break_comma && (!ps.leave_comma ||
+		    count_spaces_until(compute_code_target(), s_code, e_code) >
+		    max_col - tabsize))
 		    force_nl = true;
 	    }
 	    break;
