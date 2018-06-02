@@ -17,7 +17,6 @@
  *  "top" (i.e.:  changing the number of processes to display).
  */
 
-#include <sys/time.h>
 #include <sys/resource.h>
 
 #include <ctype.h>
@@ -32,7 +31,6 @@
 #include "sigdesc.h"		/* generated automatically */
 #include "top.h"
 #include "boolean.h"
-#include "utils.h"
 #include "machine.h"
 
 static int err_compar(const void *p1, const void *p2);
@@ -53,8 +51,7 @@ static int str_addarg(char *str, int len, char *arg, int first);
  */
 
 void
-show_help()
-
+show_help(void)
 {
     printf("Top version FreeBSD, %s\n", copyright);
     fputs("\n\n\
@@ -198,7 +195,7 @@ static char err_listem[] =
 
 #define STRMAX 80
 
-char *err_string()
+char *err_string(void)
 {
     struct errs *errp;
     int  cnt = 0;
@@ -281,13 +278,7 @@ str_adderr(char *str, int len, int err)
  */
 
 static int
-str_addarg(str, len, arg, first)
-
-char *str;
-int  len;
-char *arg;
-int  first;
-
+str_addarg(char str[], int len, char arg[], int first)
 {
     int arglen;
 
@@ -334,8 +325,7 @@ err_compar(const void *p1, const void *p2)
  */
 
 int
-error_count()
-
+error_count(void)
 {
     return(errcnt);
 }
@@ -345,8 +335,7 @@ error_count()
  */
 
 void
-show_errors()
-
+show_errors(void)
 {
     int cnt = 0;
     struct errs *errp = errs;
