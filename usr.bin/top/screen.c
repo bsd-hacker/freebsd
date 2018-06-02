@@ -20,17 +20,16 @@
  *  preprocessor variable "TOStop".   --wnl
  */
 
-#include "top.h"
-
 #include <sys/ioctl.h>
 #include <stdlib.h>
 #include <string.h>
-#define TERMIOS
 #include <termios.h>
 #include <curses.h>
 #include <termcap.h>
+#include <unistd.h>
+
 #include "screen.h"
-#include "boolean.h"
+#include "top.h"
 
 int  overstrike;
 int  screen_length;
@@ -54,11 +53,7 @@ static char *terminal_end;
 
 static struct termios old_settings;
 static struct termios new_settings;
-static char is_a_terminal = No;
-
-#define	STDIN	0
-#define	STDOUT	1
-#define	STDERR	2
+static char is_a_terminal = false;
 
 void
 init_termcap(int interactive)
@@ -75,12 +70,12 @@ init_termcap(int interactive)
     if (!interactive)
     {
 	/* pretend we have a dumb terminal */
-	smart_terminal = No;
+	smart_terminal = false;
 	return;
     }
 
     /* assume we have a smart terminal until proven otherwise */
-    smart_terminal = Yes;
+    smart_terminal = true;
 
     /* get the terminal name */
     term_name = getenv("TERM");
@@ -89,7 +84,7 @@ init_termcap(int interactive)
     /* patch courtesy of Sam Horrocks at telegraph.ics.uci.edu */
     if (term_name == NULL)
     {
-	smart_terminal = No;
+	smart_terminal = false;
 	return;
     }
 
@@ -107,14 +102,14 @@ init_termcap(int interactive)
 	}
 
 	/* pretend it's dumb and proceed */
-	smart_terminal = No;
+	smart_terminal = false;
 	return;
     }
 
     /* "hardcopy" immediately indicates a very stupid terminal */
     if (tgetflag("hc"))
     {
-	smart_terminal = No;
+	smart_terminal = false;
 	return;
     }
 
@@ -151,7 +146,7 @@ init_termcap(int interactive)
     if ((clear_screen  = tgetstr("cl", &bufptr)) == NULL ||
 	(cursor_motion = tgetstr("cm", &bufptr)) == NULL)
     {
-	smart_terminal = No;
+	smart_terminal = false;
 	return;
     }
 
@@ -166,7 +161,7 @@ init_termcap(int interactive)
     PC = (PCptr = tgetstr("pc", &bufptr)) ? *PCptr : 0;
 
     /* set convenience strings */
-    (void) strncpy(home, tgoto(cursor_motion, 0, 0), sizeof(home) - 1);
+    strncpy(home, tgoto(cursor_motion, 0, 0), sizeof(home) - 1);
     home[sizeof(home) - 1] = '\0';
     /* (lower_left is set in get_screensize) */
 
@@ -176,9 +171,9 @@ init_termcap(int interactive)
     get_screensize();
 
     /* if stdout is not a terminal, pretend we are a dumb terminal */
-    if (tcgetattr(STDOUT, &old_settings) == -1)
+    if (tcgetattr(STDOUT_FILENO, &old_settings) == -1)
     {
-	smart_terminal = No;
+	smart_terminal = false;
     }
 }
 
@@ -186,7 +181,7 @@ void
 init_screen(void)
 {
     /* get the old settings for safe keeping */
-    if (tcgetattr(STDOUT, &old_settings) != -1)
+    if (tcgetattr(STDOUT_FILENO, &old_settings) != -1)
     {
 	/* copy the settings so we can modify them */
 	new_settings = old_settings;
@@ -196,14 +191,14 @@ init_screen(void)
 	new_settings.c_oflag &= ~(TAB3);
 	new_settings.c_cc[VMIN] = 1;
 	new_settings.c_cc[VTIME] = 0;
-	(void) tcsetattr(STDOUT, TCSADRAIN, &new_settings);
+	tcsetattr(STDOUT_FILENO, TCSADRAIN, &new_settings);
 
 	/* remember the erase and kill characters */
 	ch_erase = old_settings.c_cc[VERASE];
 	ch_kill  = old_settings.c_cc[VKILL];
 
 	/* remember that it really is a terminal */
-	is_a_terminal = Yes;
+	is_a_terminal = true;
 
 	/* send the termcap initialization string */
 	putcap(terminal_init);
@@ -212,7 +207,7 @@ init_screen(void)
     if (!is_a_terminal)
     {
 	/* not a terminal at all---consider it dumb */
-	smart_terminal = No;
+	smart_terminal = false;
     }
 }
 
@@ -231,7 +226,7 @@ end_screen(void)
     /* if we have settings to reset, then do so */
     if (is_a_terminal)
     {
-	(void) tcsetattr(STDOUT, TCSADRAIN, &old_settings);
+	tcsetattr(STDOUT_FILENO, TCSADRAIN, &old_settings);
     }
 }
 
@@ -241,7 +236,7 @@ reinit_screen(void)
     /* install our settings if it is a terminal */
     if (is_a_terminal)
     {
-	(void) tcsetattr(STDOUT, TCSADRAIN, &new_settings);
+	tcsetattr(STDOUT_FILENO, TCSADRAIN, &new_settings);
     }
 
     /* send init string */

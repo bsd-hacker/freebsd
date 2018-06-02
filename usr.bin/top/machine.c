@@ -35,6 +35,7 @@
 #include <paths.h>
 #include <pwd.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -308,7 +309,7 @@ machine_init(struct statics *statics)
 {
 	int i, j, empty, pagesize;
 	uint64_t arc_size;
-	boolean_t carc_en;
+	bool carc_en;
 	size_t size;
 
 	size = sizeof(smpmode);
@@ -400,6 +401,7 @@ machine_init(struct statics *statics)
 		}
 	}
 	size = sizeof(long) * ncpus * CPUSTATES;
+	assert(size > 0);
 	pcpu_cp_old = calloc(1, size);
 	pcpu_cp_diff = calloc(1, size);
 	pcpu_cpu_states = calloc(1, size);
@@ -839,7 +841,7 @@ get_process_info(struct system_info *si, struct process_select *sel,
 	total_inblock = 0;
 	total_oublock = 0;
 	total_majflt = 0;
-	memset((char *)process_states, 0, sizeof(process_states));
+	memset(process_states, 0, sizeof(process_states));
 	prefp = pref;
 	for (pp = pbase, i = 0; i < nproc; pp++, i++) {
 
@@ -913,7 +915,7 @@ get_process_info(struct system_info *si, struct process_select *sel,
 static char fmt[512];	/* static area where result is built */
 
 char *
-format_next_process(caddr_t xhandle, char *(*get_userid)(int), int flags)
+format_next_process(caddr_t xhandle, char *(*get_userid)(uid_t), int flags)
 {
 	struct kinfo_proc *pp;
 	const struct kinfo_proc *oldp;
@@ -989,7 +991,7 @@ format_next_process(caddr_t xhandle, char *(*get_userid)(int), int flags)
 		break;
 	}
 
-	cmdbuf = (char *)malloc(cmdlen + 1);
+	cmdbuf = malloc(cmdlen + 1);
 	if (cmdbuf == NULL) {
 		warn("malloc(%d)", cmdlen + 1);
 		return NULL;
@@ -1024,7 +1026,7 @@ format_next_process(caddr_t xhandle, char *(*get_userid)(int), int flags)
 			size_t len;
 
 			argbuflen = cmdlen * 4;
-			argbuf = (char *)malloc(argbuflen + 1);
+			argbuf = malloc(argbuflen + 1);
 			if (argbuf == NULL) {
 				warn("malloc(%zu)", argbuflen + 1);
 				free(cmdbuf);

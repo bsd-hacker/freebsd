@@ -20,7 +20,7 @@
 #include <string.h>
 
 int
-atoiwi(char *str)
+atoiwi(const char *str)
 {
     int len;
 
@@ -59,7 +59,7 @@ atoiwi(char *str)
 				 */
 _Static_assert(sizeof(int) <= 4, "buffer too small for this sized int");
 
-char *itoa(int val)
+char *itoa(unsigned int val)
 {
     char *ptr;
     static char buffer[16];	/* result is built here */
@@ -87,7 +87,7 @@ char *itoa(int val)
  *	a front end to a more general routine for efficiency.
  */
 
-char *itoa7(int val)
+char *itoa7(unsigned int val)
 {
     char *ptr;
     static char buffer[16];	/* result is built here */
@@ -136,7 +136,7 @@ int digits(int val)
  */
 
 char *
-strecpy(char *to, char *from)
+strecpy(char *to, const char *from)
 {
     while ((*to++ = *from++) != '\0');
     return(--to);
@@ -147,7 +147,7 @@ strecpy(char *to, char *from)
  */
 
 int
-string_index(char *string, char *array[])
+string_index(const char *string, char *array[])
 {
     size_t i = 0;
 
@@ -170,9 +170,10 @@ string_index(char *string, char *array[])
  *	squat about quotes.
  */
 
-char **argparse(char *line, int *cntp)
+char **
+argparse(char *line, int *cntp)
 {
-    char *from;
+    const char *from;
     char *to;
     int cnt;
     int ch;
