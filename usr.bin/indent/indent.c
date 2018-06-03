@@ -402,7 +402,7 @@ main(int argc, char **argv)
 		     * if there was a newline resulting from the "{" before,
 		     * it must be scanned now and ignored.
 		     */
-		    while (isspace((int)*buf_ptr)) {
+		    while (isspace((unsigned char)*buf_ptr)) {
 			if (++buf_ptr >= buf_end)
 			    fill_buffer();
 			if (*buf_ptr == '\n')
@@ -429,7 +429,7 @@ main(int argc, char **argv)
 			ps.search_brace = false;
 			goto check_type;
 		    }
-		    while (sc_end > save_com && isblank((int)sc_end[-1])) {
+		    while (sc_end > save_com && isblank((unsigned char)sc_end[-1])) {
 			sc_end--;
 		    }
 		    if (swallow_optional_blanklines ||
@@ -495,7 +495,7 @@ main(int argc, char **argv)
 		    while (*buf_ptr == ' ' || *buf_ptr == '\t') {
 			*sc_end++ = *buf_ptr++;
 			if (sc_end >= &save_com[sc_size]) {
-			    abort();
+			    errx(1, "input too long");
 			}
 		    }
 		    if (buf_ptr >= buf_end) {
@@ -1070,7 +1070,7 @@ check_type:
 		e_code = chfont(&bodyf, &keywordf, e_code);
 		for (t_ptr = token; *t_ptr; ++t_ptr) {
 		    CHECK_SIZE_CODE;
-		    *e_code++ = keywordf.allcaps && islower(*t_ptr)
+		    *e_code++ = keywordf.allcaps && islower((unsigned char)*t_ptr)
 			? toupper(*t_ptr) : *t_ptr;
 		}
 		e_code = chfont(&keywordf, &bodyf, e_code);
@@ -1193,10 +1193,10 @@ check_type:
 			*sc_end++ = ' ';
 			--line_no;
 		    }
+		    if (sc_end - save_com + com_end - com_start > sc_size)
+			errx(1, "input too long");
 		    bcopy(s_lab + com_start, sc_end, com_end - com_start);
 		    sc_end += com_end - com_start;
-		    if (sc_end >= &save_com[sc_size])
-			abort();
 		    e_lab = s_lab + com_start;
 		    while (e_lab > s_lab && (e_lab[-1] == ' ' || e_lab[-1] == '\t'))
 			e_lab--;
