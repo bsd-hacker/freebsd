@@ -30,30 +30,40 @@
 .Sh NAME
 .Nm pnfsdsfile
 .Nd display
-a pNFS data storage file's location(s) and/or modify the pnfsd.dsfile extended attribute for them
+a pNFS data storage file's location(s) and/or modify the
+.Dq pnfsd.dsfile
+extended attribute for them
 .Sh SYNOPSIS
 .Nm
 .Op Fl qz
 .Op Fl s Ar dshostname
 .Op Fl c Ar old-dshostname,new-dshostname
 .Op Fl r Ar dshostname
-.Ar file_on_MDS
+.Ar mdsfile
 .Sh DESCRIPTION
 The
 .Nm
 command displays the data storage file's location(s) for a pNFS service and/or
-modifies the pnfsd.dsfile extended attribute on the file.
+modifies the
+.Dq pnfsd.dsfile
+extended attribute on the
+.Ar mdsfile .
 A pNFS service maintains a data storage file for each regular file on
-the MetaData Server(s) (MDS) on one or more of the Data Storage servers (DS).
-If there is more than one DS, the DSs are a mirrored set and all of these
-DSs should have copies of the
-.Ar file_on_MDS
-file's data.
+the MetaData Server (MDS) on one or more of the Data Servers (DS).
+If mirroring is enabled, the data storage file will be on more that one of the DSs.
 Unless command options are specified, this command displays the location(s)
-of the DS file for the MDS file specified by the last command line argument.
+of the data storage file for the MDS file
+.Ar mdsfile .
 It must be used on the MDS and the
-.Ar file_on_MDS
+.Ar mdsfile
 must be a file on the exported local file system and not an NFSv4.1 mount.
+This information is stored in the
+.Dq pnfsd.dsfile
+extended attribute for this
+.Ar mdsfile .
+The command line options allow the information in the
+.Dq pnfsd.dsfile
+extended attribute to be changed.
 .Pp
 The following options are available:
 .Bl -tag -width Ds
@@ -87,14 +97,18 @@ This option sets the IP address of the extended attribute entry for the
 .Ar dshostname
 to 0.0.0.0 so that it will no longer be used.
 .Pp
-This is meant to be used when one of a mirrored set of DSs has been
-disabled so that this DS will not be used when it is re-enabled.
+This is meant to be used when mirroring is enabled and the
+.Ar dshostname
+DS is disabled, so that it can be re-enabled once it is repaired.
 This needs to be done for all files in the exported MDS tree where
-the data may not be up-to-date on the recovered DS when it is re-enabled.
+the data may not be up-to-date on the repaired DS when it is re-enabled.
 After being re-enabled, the command
 .Xr pnfsdscopymr 1
-will be used to copy the the file's data to this DS and then update the extended
-attribute to use it.
+with the
+.Dq -r
+option
+will be used to copy the the file's data to this repaired DS and then update the
+extended attribute to use it.
 .Pp
 A typical use of this will be within a
 .Xr find 1
