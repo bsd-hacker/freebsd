@@ -8310,9 +8310,8 @@ nfsrv_mdscopymr(char *mdspathp, char *dspathp, char *curdspathp, char *buf,
 	 * on the MDS file (as checked via the nmp argument),
 	 * nfsrv_dsgetsockmnt() returns EEXIST, so no copying will occur.
 	 */
-	error = nfsrv_dsgetsockmnt(vp, LK_EXCLUSIVE, buf, buflenp,
-	    &mirrorcnt, p, NULL, NULL, NULL, fname, nvpp, &nmp, curnmp,
-	    &ippos, &dsdir);
+	error = nfsrv_dsgetsockmnt(vp, 0, buf, buflenp, &mirrorcnt, p,
+	    NULL, NULL, NULL, fname, nvpp, &nmp, curnmp, &ippos, &dsdir);
 	if (curvp != NULL)
 		vput(curvp);
 	if (nd.ni_vp == NULL) {

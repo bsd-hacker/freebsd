@@ -285,7 +285,7 @@ nfsvno_getattr(struct vnode *vp, struct nfsvattr *nvap,
 	 * server is not a pNFS one.
 	 */
 	gotattr = 0;
-	if (vp->v_type == VREG && (attrbitp == NULL ||
+	if (vp->v_type == VREG && nfsrv_devidcnt > 0 && (attrbitp == NULL ||
 	    (nd->nd_flag & ND_NFSV4) == 0 ||
 	    NFSISSET_ATTRBIT(attrbitp, NFSATTRBIT_CHANGE) ||
 	    NFSISSET_ATTRBIT(attrbitp, NFSATTRBIT_SIZE) ||
@@ -1211,7 +1211,7 @@ nfsvno_removesub(struct nameidata *ndp, int is_v4, struct ucred *cred,
     struct thread *p, struct nfsexstuff *exp)
 {
 	struct vnode *vp, *dsdvp[NFSDEV_MAXMIRRORS];
-	int error = 0, i, mirrorcnt;
+	int error = 0, mirrorcnt;
 	char fname[PNFS_FILENAME_LEN + 1];
 	fhandle_t fh;
 
@@ -1225,12 +1225,8 @@ nfsvno_removesub(struct nameidata *ndp, int is_v4, struct ucred *cred,
 		nfsrv_pnfsremovesetup(vp, p, dsdvp, &mirrorcnt, fname, &fh);
 	if (!error)
 		error = VOP_REMOVE(ndp->ni_dvp, vp, &ndp->ni_cnd);
-	if (dsdvp[0] != NULL) {
-		if (error == 0)
-			nfsrv_pnfsremove(dsdvp, mirrorcnt, fname, &fh, p);
-		for (i = 0; i < mirrorcnt; i++)
-			NFSVOPUNLOCK(dsdvp[i], 0);
-	}
+	if (error == 0 && dsdvp[0] != NULL)
+		nfsrv_pnfsremove(dsdvp, mirrorcnt, fname, &fh, p);
 	if (ndp->ni_dvp == vp)
 		vrele(ndp->ni_dvp);
 	else
@@ -1291,7 +1287,7 @@ nfsvno_rename(struct nameidata *fromndp, struct nameidata *tondp,
     u_int32_t ndstat, u_int32_t ndflag, struct ucred *cred, struct thread *p)
 {
 	struct vnode *fvp, *tvp, *tdvp, *dsdvp[NFSDEV_MAXMIRRORS];
-	int error = 0, i, mirrorcnt;
+	int error = 0, mirrorcnt;
 	char fname[PNFS_FILENAME_LEN + 1];
 	fhandle_t fh;
 
@@ -1398,13 +1394,9 @@ out:
 	 * if the rename succeeded, the DS file for the tvp needs to be
 	 * removed.
 	 */
-	if (dsdvp[0] != NULL) {
-		if (error == 0) {
-			nfsrv_pnfsremove(dsdvp, mirrorcnt, fname, &fh, p);
-			NFSD_DEBUG(4, "nfsvno_rename: pnfsremove\n");
-		}
-		for (i = 0; i < mirrorcnt; i++)
-			NFSVOPUNLOCK(dsdvp[i], 0);
+	if (error == 0 && dsdvp[0] != NULL) {
+		nfsrv_pnfsremove(dsdvp, mirrorcnt, fname, &fh, p);
+		NFSD_DEBUG(4, "nfsvno_rename: pnfsremove\n");
 	}
 
 	vrele(tondp->ni_startdir);
@@ -4054,8 +4046,8 @@ nfsrv_pnfsremovesetup(struct vnode *vp, NFSPROC_T *p, struct vnode **dvpp,
 	buflen = 1024;
 	buf = malloc(buflen, M_TEMP, M_WAITOK);
 	/* Get the directory vnode for the DS mount and the file handle. */
-	error = nfsrv_dsgetsockmnt(vp, LK_EXCLUSIVE, buf, &buflen, mirrorcntp,
-	    p, dvpp, NULL, NULL, fname, NULL, NULL, NULL, NULL, NULL);
+	error = nfsrv_dsgetsockmnt(vp, 0, buf, &buflen, mirrorcntp, p, dvpp,
+	    NULL, NULL, fname, NULL, NULL, NULL, NULL, NULL);
 	free(buf, M_TEMP);
 	if (error != 0)
 		printf("pNFS: nfsrv_pnfsremovesetup getsockmnt=%d\n", error);
@@ -4087,6 +4079,9 @@ nfsrv_dsremove(struct vnode *dvp, char *fname, struct ucred *tcred,
 	u_long *hashp;
 	int error;
 
+	error = NFSVOPLOCK(dvp, LK_EXCLUSIVE);
+	if (error != 0)
+		return (error);
 	named.ni_cnd.cn_nameiop = DELETE;
 	named.ni_cnd.cn_lkflags = LK_EXCLUSIVE | LK_RETRY;
 	named.ni_cnd.cn_cred = tcred;
@@ -4103,6 +4098,7 @@ nfsrv_dsremove(struct vnode *dvp, char *fname, struct ucred *tcred,
 		error = VOP_REMOVE(dvp, nvp, &named.ni_cnd);
 		vput(nvp);
 	}
+	NFSVOPUNLOCK(dvp, 0);
 	nfsvno_relpathbuf(&named);
 	if (error != 0)
 		printf("pNFS: nfsrv_pnfsremove failed=%d\n", error);
@@ -4462,8 +4458,6 @@ nfsrv_dsgetsockmnt(struct vnode *vp, int lktype, char *buf, int *buflenp,
 	ASSERT_VOP_LOCKED(vp, "nfsrv_dsgetsockmnt vp");
 	*mirrorcntp = 1;
 	tdvpp = dvpp;
-	if (lktype == 0)
-		lktype = LK_SHARED;
 	if (nvpp != NULL)
 		*nvpp = NULL;
 	if (dvpp != NULL)
@@ -4547,10 +4541,16 @@ nfsrv_dsgetsockmnt(struct vnode *vp, int lktype, char *buf, int *buflenp,
 			}
 			NFSDDSUNLOCK();
 			if (fndds != NULL) {
-				if (dvpp != NULL || fhiszero != 0 ||
+				dvp = fndds->nfsdev_dsdir[dsdir];
+				if (lktype != 0 || fhiszero != 0 ||
 				    (nvpp != NULL && *nvpp == NULL)) {
-					dvp = fndds->nfsdev_dsdir[dsdir];
-					error = vn_lock(dvp, lktype);
+					if (fhiszero != 0)
+						error = vn_lock(dvp,
+						    LK_EXCLUSIVE);
+					else if (lktype != 0)
+						error = vn_lock(dvp, lktype);
+					else
+						error = vn_lock(dvp, LK_SHARED);
 					/*
 					 * If the file handle is all 0's, try to
 					 * do a Lookup against the DS to acquire
@@ -4574,7 +4574,7 @@ nfsrv_dsgetsockmnt(struct vnode *vp, int lktype, char *buf, int *buflenp,
 							} else
 								vput(nvp);
 						}
-						if (error != 0 || dvpp == NULL)
+						if (error != 0 || lktype == 0)
 							NFSVOPUNLOCK(dvp, 0);
 					}
 				}
@@ -5345,7 +5345,17 @@ nfsrv_getattrdsrpc(fhandle_t *fhp, struct ucred *cred, NFSPROC_T *p,
 		error = nfsv4_loadattr(nd, NULL, nap, NULL, NULL, 0,
 		    NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL,
 		    NULL, NULL);
-		if (error == 0) {
+		/*
+		 * We can only save the updated values in the extended
+		 * attribute if the vp is exclusively locked.
+		 * This should happen when any of the following operations
+		 * occur on the vnode:
+		 *    Close, Delegreturn, LayoutCommit, LayoutReturn
+		 * As such, the updated extended attribute should get saved
+		 * before nfsrv_checkdsattr() returns 0 and allows the cached
+		 * attributes to be returned without calling this function.
+		 */
+		if (error == 0 && VOP_ISLOCKED(vp) == LK_EXCLUSIVE) {
 			error = nfsrv_setextattr(vp, nap, p);
 			NFSD_DEBUG(4, "nfsrv_getattrdsrpc: aft setextat=%d\n",
 			    error);
