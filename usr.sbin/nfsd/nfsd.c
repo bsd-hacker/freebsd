@@ -1222,7 +1222,6 @@ parse_dsserver(const char *optarg, struct nfsd_nfsd_args *nfsdargp)
 			usage();
 		*dsvol++ = '\0';
 
-printf("pnfs path=%s\n", dsvol);
 		/* Append this pathname to dspath. */
 		pathsiz = strlen(dsvol);
 		if (dspathcnt + pathsiz + 1 > dspathsiz) {
