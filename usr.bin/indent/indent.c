@@ -240,7 +240,7 @@ main(int argc, char **argv)
     if (input == NULL)
 	input = stdin;
     if (output == NULL) {
-	if (troff || input == stdin)
+	if (input == stdin)
 	    output = stdout;
 	else {
 	    out_name = in_name;
@@ -260,26 +260,6 @@ main(int argc, char **argv)
 
     if (ps.com_ind <= 1)
 	ps.com_ind = 2;		/* dont put normal comments before column 2 */
-    if (troff) {
-	if (bodyf.font[0] == 0)
-	    parsefont(&bodyf, "R");
-	if (scomf.font[0] == 0)
-	    parsefont(&scomf, "I");
-	if (blkcomf.font[0] == 0)
-	    blkcomf = scomf, blkcomf.size += 2;
-	if (boxcomf.font[0] == 0)
-	    boxcomf = blkcomf;
-	if (stringf.font[0] == 0)
-	    parsefont(&stringf, "L");
-	if (keywordf.font[0] == 0)
-	    parsefont(&keywordf, "B");
-	writefdef(&bodyf, 'B');
-	writefdef(&scomf, 'C');
-	writefdef(&blkcomf, 'L');
-	writefdef(&boxcomf, 'X');
-	writefdef(&stringf, 'S');
-	writefdef(&keywordf, 'K');
-    }
     if (block_comment_max_col <= 0)
 	block_comment_max_col = max_col;
     if (ps.local_decl_indent < 0)	/* if not specified by user, set this */
@@ -307,15 +287,7 @@ main(int argc, char **argv)
 	if (col > ps.ind_size)
 	    ps.ind_level = ps.i_l_follow = col / ps.ind_size;
     }
-    if (troff) {
-	const char *p = in_name,
-	           *beg = in_name;
 
-	while (*p)
-	    if (*p++ == '/')
-		beg = p;
-	fprintf(output, ".Fn \"%s\"\n", beg);
-    }
     /*
      * START OF MAIN LOOP
      */
@@ -548,11 +520,12 @@ check_type:
 				 * '}' */
 	    if (s_com != e_com) {	/* the turkey has embedded a comment
 					 * in a line. fix it */
+		int len = e_com - s_com;
+
+		CHECK_SIZE_CODE(len + 3);
 		*e_code++ = ' ';
-		for (t_ptr = s_com; *t_ptr; ++t_ptr) {
-		    CHECK_SIZE_CODE;
-		    *e_code++ = *t_ptr;
-		}
+		memcpy(e_code, s_com, len);
+		e_code += len;
 		*e_code++ = ' ';
 		*e_code = '\0';	/* null terminate code sect */
 		ps.want_blank = false;
@@ -568,7 +541,10 @@ check_type:
 	/*-----------------------------------------------------*\
 	|	   do switch on type of token scanned		|
 	\*-----------------------------------------------------*/
-	CHECK_SIZE_CODE;
+	CHECK_SIZE_CODE(3);	/* maximum number of increments of e_code
+				 * before the next CHECK_SIZE_CODE or
+				 * dump_line() is 2. After that there's the
+				 * final increment for the null character. */
 	switch (type_code) {	/* now, decide what to do with the token */
 
 	case form_feed:	/* found a form feed in line */
@@ -593,19 +569,15 @@ check_type:
 		    nitems(ps.paren_indents));
 		ps.p_l_follow--;
 	    }
-	    if (ps.in_decl && !ps.block_init && !ps.dumped_decl_indent &&
+	    if (*token == '[')
+		/* not a function pointer declaration or a function call */;
+	    else if (ps.in_decl && !ps.block_init && !ps.dumped_decl_indent &&
 		ps.procname[0] == '\0' && ps.paren_level == 0) {
 		/* function pointer declarations */
-		if (troff) {
-		    sprintf(e_code, "\n.Du %dp+\200p \"%s\"\n", dec_ind * 7, token);
-		    e_code += strlen(e_code);
-		}
-		else {
-		    indent_declaration(dec_ind, tabs_to_var);
-		}
+		indent_declaration(dec_ind, tabs_to_var);
 		ps.dumped_decl_indent = true;
 	    }
-	    else if (ps.want_blank && *token != '[' &&
+	    else if (ps.want_blank &&
 		    ((ps.last_token != ident && ps.last_token != funcname) ||
 		    proc_calls_space ||
 		    /* offsetof (1) is never allowed a space; sizeof (2) gets
@@ -614,8 +586,7 @@ check_type:
 			ps.keyword + Bill_Shannon > 2))
 		*e_code++ = ' ';
 	    ps.want_blank = false;
-	    if (!troff)
-		*e_code++ = token[0];
+	    *e_code++ = token[0];
 	    ps.paren_indents[ps.p_l_follow - 1] = count_spaces_until(1, s_code, e_code) - 1;
 	    if (sp_sw && ps.p_l_follow == 1 && extra_expression_indent
 		    && ps.paren_indents[0] < 2 * ps.ind_size)
@@ -673,68 +644,38 @@ check_type:
 	    if (!ps.dumped_decl_indent && ps.in_decl && !ps.block_init &&
 		ps.procname[0] == '\0' && ps.paren_level == 0) {
 		/* pointer declarations */
-		if (troff) {
-		    if (ps.want_blank)
-			*e_code++ = ' ';
-		    sprintf(e_code, "\n.Du %dp+\200p \"%s\"\n", dec_ind * 7,
-			token);
-		    e_code += strlen(e_code);
-		}
-		else {
-			/* if this is a unary op in a declaration, we should
-			 * indent this token */
-			for (i = 0; token[i]; ++i)
-			    /* find length of token */;
-			indent_declaration(dec_ind - i, tabs_to_var);
-		}
+
+		/*
+		 * if this is a unary op in a declaration, we should indent
+		 * this token
+		 */
+		for (i = 0; token[i]; ++i)
+		    /* find length of token */;
+		indent_declaration(dec_ind - i, tabs_to_var);
 		ps.dumped_decl_indent = true;
 	    }
 	    else if (ps.want_blank)
 		*e_code++ = ' ';
-	    {
-		const char *res = token;
 
-		if (troff && token[0] == '-' && token[1] == '>')
-		    res = "\\(->";
-		for (t_ptr = res; *t_ptr; ++t_ptr) {
-		    CHECK_SIZE_CODE;
-		    *e_code++ = *t_ptr;
-		}
+	    {
+		int len = e_token - s_token;
+
+		CHECK_SIZE_CODE(len);
+		memcpy(e_code, token, len);
+		e_code += len;
 	    }
 	    ps.want_blank = false;
 	    break;
 
 	case binary_op:	/* any binary operation */
-	    if (ps.want_blank)
-		*e_code++ = ' ';
 	    {
-		const char *res = token;
+		int len = e_token - s_token;
 
-		if (troff)
-		    switch (token[0]) {
-		    case '<':
-			if (token[1] == '=')
-			    res = "\\(<=";
-			break;
-		    case '>':
-			if (token[1] == '=')
-			    res = "\\(>=";
-			break;
-		    case '!':
-			if (token[1] == '=')
-			    res = "\\(!=";
-			break;
-		    case '|':
-			if (token[1] == '|')
-			    res = "\\(br\\(br";
-			else if (token[1] == 0)
-			    res = "\\(br";
-			break;
-		    }
-		for (t_ptr = res; *t_ptr; ++t_ptr) {
-		    CHECK_SIZE_CODE;
-		    *e_code++ = *t_ptr;	/* move the operator */
-		}
+		CHECK_SIZE_CODE(len + 1);
+		if (ps.want_blank)
+		    *e_code++ = ' ';
+		memcpy(e_code, token, len);
+		e_code += len;
 	    }
 	    ps.want_blank = true;
 	    break;
@@ -775,13 +716,19 @@ check_type:
 	    }
 	    ps.in_stmt = false;	/* seeing a label does not imply we are in a
 				 * stmt */
-	    for (t_ptr = s_code; *t_ptr; ++t_ptr)
-		*e_lab++ = *t_ptr;	/* turn everything so far into a label */
-	    e_code = s_code;
-	    *e_lab++ = ':';
-	    *e_lab++ = ' ';
-	    *e_lab = '\0';
+	    /*
+	     * turn everything so far into a label
+	     */
+	    {
+		int len = e_code - s_code;
 
+		CHECK_SIZE_LAB(len + 3);
+		memcpy(e_lab, s_code, len);
+		e_lab += len;
+		*e_lab++ = ':';
+		*e_lab = '\0';
+		e_code = s_code;
+	    }
 	    force_nl = ps.pcase = scase;	/* ps.pcase will be used by
 						 * dump_line to decide how to
 						 * indent the label. force_nl
@@ -885,7 +832,12 @@ check_type:
 					 * with '{' */
 	    if (ps.in_decl && ps.in_or_st) {	/* this is either a structure
 						 * declaration or an init */
-		di_stack[ps.dec_nest++] = dec_ind;
+		di_stack[ps.dec_nest] = dec_ind;
+		if (++ps.dec_nest == nitems(di_stack)) {
+		    diag3(0, "Reached internal limit of %d struct levels",
+			nitems(di_stack));
+		    ps.dec_nest--;
+		}
 		/* ?		dec_ind = 0; */
 	    }
 	    else {
@@ -1044,14 +996,7 @@ check_type:
 		else if (!ps.block_init && !ps.dumped_decl_indent &&
 		    ps.paren_level == 0) { /* if we are in a declaration, we
 					    * must indent identifier */
-
-		    if (troff) {
-			if (ps.want_blank)
-			    *e_code++ = ' ';
-			sprintf(e_code, "\n.De %dp+\200p\n", dec_ind * 7);
-			e_code += strlen(e_code);
-		    } else
-			indent_declaration(dec_ind, tabs_to_var);
+		    indent_declaration(dec_ind, tabs_to_var);
 		    ps.dumped_decl_indent = true;
 		    ps.want_blank = false;
 		}
@@ -1064,32 +1009,28 @@ check_type:
 		parse(hd_type);
 	    }
     copy_id:
-	    if (ps.want_blank)
-		*e_code++ = ' ';
-	    if (troff && ps.keyword) {
-		e_code = chfont(&bodyf, &keywordf, e_code);
-		for (t_ptr = token; *t_ptr; ++t_ptr) {
-		    CHECK_SIZE_CODE;
-		    *e_code++ = keywordf.allcaps && islower((unsigned char)*t_ptr)
-			? toupper(*t_ptr) : *t_ptr;
-		}
-		e_code = chfont(&keywordf, &bodyf, e_code);
+	    {
+		int len = e_token - s_token;
+
+		CHECK_SIZE_CODE(len + 1);
+		if (ps.want_blank)
+		    *e_code++ = ' ';
+		memcpy(e_code, s_token, len);
+		e_code += len;
 	    }
-	    else
-		for (t_ptr = token; *t_ptr; ++t_ptr) {
-		    CHECK_SIZE_CODE;
-		    *e_code++ = *t_ptr;
-		}
 	    if (type_code != funcname)
 		ps.want_blank = true;
 	    break;
 
 	case strpfx:
-	    if (ps.want_blank)
-		*e_code++ = ' ';
-	    for (t_ptr = token; *t_ptr; ++t_ptr) {
-		CHECK_SIZE_CODE;
-		*e_code++ = *t_ptr;
+	    {
+		int len = e_token - s_token;
+
+		CHECK_SIZE_CODE(len + 1);
+		if (ps.want_blank)
+		    *e_code++ = ' ';
+		memcpy(e_code, token, len);
+		e_code += len;
 	    }
 	    ps.want_blank = false;
 	    break;
@@ -1126,6 +1067,7 @@ check_type:
 		    (s_lab != e_lab) ||
 		    (s_code != e_code))
 		dump_line();
+	    CHECK_SIZE_LAB(1);
 	    *e_lab++ = '#';	/* move whole line to 'label' buffer */
 	    {
 		int         in_comment = 0;
@@ -1139,14 +1081,12 @@ check_type:
 			fill_buffer();
 		}
 		while (*buf_ptr != '\n' || (in_comment && !had_eof)) {
-		    CHECK_SIZE_LAB;
+		    CHECK_SIZE_LAB(2);
 		    *e_lab = *buf_ptr++;
 		    if (buf_ptr >= buf_end)
 			fill_buffer();
 		    switch (*e_lab++) {
 		    case BACKSLASH:
-			if (troff)
-			    *e_lab++ = BACKSLASH;
 			if (!in_comment) {
 			    *e_lab++ = *buf_ptr++;
 			    if (buf_ptr >= buf_end)
@@ -1209,6 +1149,7 @@ check_type:
 		    buf_end = sc_end;
 		    sc_end = NULL;
 		}
+		CHECK_SIZE_LAB(1);
 		*e_lab = '\0';	/* null terminate line */
 		ps.pcase = false;
 	    }
@@ -1339,14 +1280,14 @@ indent_declaration(int cur_dec_ind, int tabs_to_var)
     if (tabs_to_var) {
 	int tpos;
 
+	CHECK_SIZE_CODE(cur_dec_ind / tabsize);
 	while ((tpos = tabsize * (1 + pos / tabsize)) <= cur_dec_ind) {
-	    CHECK_SIZE_CODE;
 	    *e_code++ = '\t';
 	    pos = tpos;
 	}
     }
+    CHECK_SIZE_CODE(cur_dec_ind - pos + 1);
     while (pos < cur_dec_ind) {
-	CHECK_SIZE_CODE;
 	*e_code++ = ' ';
 	pos++;
     }

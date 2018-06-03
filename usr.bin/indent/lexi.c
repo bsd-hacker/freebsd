@@ -182,47 +182,32 @@ lexi(struct parser_state *state)
 
 	if (isdigit((unsigned char)*buf_ptr) ||
 	    (buf_ptr[0] == '.' && isdigit((unsigned char)buf_ptr[1]))) {
-	    enum base {
-		BASE_2, BASE_8, BASE_10, BASE_16
-	    };
 	    int         seendot = 0,
 	                seenexp = 0,
 			seensfx = 0;
-	    enum base	in_base = BASE_10;
 
-	    if (*buf_ptr == '0') {
+	    /*
+	     * base 2, base 8, base 16:
+	     */
+	    if (buf_ptr[0] == '0' && buf_ptr[1] != '.') {
+		int len;
+
 		if (buf_ptr[1] == 'b' || buf_ptr[1] == 'B')
-		    in_base = BASE_2;
+		    len = strspn(buf_ptr + 2, "01") + 2;
 		else if (buf_ptr[1] == 'x' || buf_ptr[1] == 'X')
-		    in_base = BASE_16;
-		else if (isdigit((unsigned char)buf_ptr[1]))
-		    in_base = BASE_8;
+		    len = strspn(buf_ptr + 2, "0123456789ABCDEFabcdef") + 2;
+		else
+		    len = strspn(buf_ptr + 1, "012345678") + 1;
+		if (len > 0) {
+		    CHECK_SIZE_TOKEN(len);
+		    memcpy(e_token, buf_ptr, len);
+		    e_token += len;
+		    buf_ptr += len;
+		}
+		else
+		    diag2(1, "Unterminated literal");
 	    }
-	    switch (in_base) {
-	    case BASE_2:
-		*e_token++ = *buf_ptr++;
-		*e_token++ = *buf_ptr++;
-		while (*buf_ptr == '0' || *buf_ptr == '1') {
-		    CHECK_SIZE_TOKEN;
-		    *e_token++ = *buf_ptr++;
-		}
-		break;
-	    case BASE_8:
-		*e_token++ = *buf_ptr++;
-		while (*buf_ptr >= '0' && *buf_ptr <= '8') {
-		    CHECK_SIZE_TOKEN;
-		    *e_token++ = *buf_ptr++;
-		}
-		break;
-	    case BASE_16:
-		*e_token++ = *buf_ptr++;
-		*e_token++ = *buf_ptr++;
-		while (isxdigit((unsigned char)*buf_ptr)) {
-		    CHECK_SIZE_TOKEN;
-		    *e_token++ = *buf_ptr++;
-		}
-		break;
-	    case BASE_10:
+	    else		/* base 10: */
 		while (1) {
 		    if (*buf_ptr == '.') {
 			if (seendot)
@@ -230,7 +215,7 @@ lexi(struct parser_state *state)
 			else
 			    seendot++;
 		    }
-		    CHECK_SIZE_TOKEN;
+		    CHECK_SIZE_TOKEN(3);
 		    *e_token++ = *buf_ptr++;
 		    if (!isdigit((unsigned char)*buf_ptr) && *buf_ptr != '.') {
 			if ((*buf_ptr != 'E' && *buf_ptr != 'e') || seenexp)
@@ -238,24 +223,21 @@ lexi(struct parser_state *state)
 			else {
 			    seenexp++;
 			    seendot++;
-			    CHECK_SIZE_TOKEN;
 			    *e_token++ = *buf_ptr++;
 			    if (*buf_ptr == '+' || *buf_ptr == '-')
 				*e_token++ = *buf_ptr++;
 			}
 		    }
 		}
-		break;
-	    }
+
 	    while (1) {
+		CHECK_SIZE_TOKEN(2);
 		if (!(seensfx & 1) && (*buf_ptr == 'U' || *buf_ptr == 'u')) {
-		    CHECK_SIZE_TOKEN;
 		    *e_token++ = *buf_ptr++;
 		    seensfx |= 1;
 		    continue;
 		}
 		if (!(seensfx & 2) && (strchr("fFlL", *buf_ptr) != NULL)) {
-		    CHECK_SIZE_TOKEN;
 		    if (buf_ptr[1] == buf_ptr[0])
 		        *e_token++ = *buf_ptr++;
 		    *e_token++ = *buf_ptr++;
@@ -276,13 +258,13 @@ lexi(struct parser_state *state)
 			} else
 			    break;
 		}
-		CHECK_SIZE_TOKEN;
+		CHECK_SIZE_TOKEN(1);
 		/* copy it over */
 		*e_token++ = *buf_ptr++;
 		if (buf_ptr >= buf_end)
 		    fill_buffer();
 	    }
-	*e_token++ = '\0';
+	*e_token = '\0';
 
 	if (s_token[0] == 'L' && s_token[1] == '\0' &&
 	      (*buf_ptr == '"' || *buf_ptr == '\''))
@@ -338,6 +320,10 @@ lexi(struct parser_state *state)
 		if (state->p_l_follow) {
 		    /* inside parens: cast, param list, offsetof or sizeof */
 		    state->cast_mask |= (1 << state->p_l_follow) & ~state->not_cast_mask;
+		}
+		if (state->last_token == period || state->last_token == unary_op) {
+		    state->keyword = 0;
+		    break;
 		}
 		if (p != NULL && p->rwcode == 3)
 		    return (structure);
@@ -397,6 +383,7 @@ lexi(struct parser_state *state)
 
     /* Scan a non-alphanumeric token */
 
+    CHECK_SIZE_TOKEN(3);		/* things like "<<=" */
     *e_token++ = *buf_ptr;		/* if it is only a one-character token, it is
 				 * moved here */
     *e_token = '\0';
@@ -418,32 +405,19 @@ lexi(struct parser_state *state)
     case '\'':			/* start of quoted character */
     case '"':			/* start of string */
 	qchar = *token;
-	if (troff) {
-	    e_token[-1] = '`';
-	    if (qchar == '"')
-		*e_token++ = '`';
-	    e_token = chfont(&bodyf, &stringf, e_token);
-	}
 	do {			/* copy the string */
 	    while (1) {		/* move one character or [/<char>]<char> */
 		if (*buf_ptr == '\n') {
 		    diag2(1, "Unterminated literal");
 		    goto stop_lit;
 		}
-		CHECK_SIZE_TOKEN;	/* Only have to do this once in this loop,
-					 * since CHECK_SIZE guarantees that there
-					 * are at least 5 entries left */
+		CHECK_SIZE_TOKEN(2);
 		*e_token = *buf_ptr++;
 		if (buf_ptr >= buf_end)
 		    fill_buffer();
 		if (*e_token == BACKSLASH) {	/* if escape, copy extra char */
 		    if (*buf_ptr == '\n')	/* check for escaped newline */
 			++line_no;
-		    if (troff) {
-			*++e_token = BACKSLASH;
-			if (*buf_ptr == BACKSLASH)
-			    *++e_token = BACKSLASH;
-		    }
 		    *++e_token = *buf_ptr++;
 		    ++e_token;	/* we must increment this again because we
 				 * copied two chars */
@@ -454,11 +428,6 @@ lexi(struct parser_state *state)
 		    break;	/* we copied one character */
 	    }			/* end of while (1) */
 	} while (*e_token++ != qchar);
-	if (troff) {
-	    e_token = chfont(&stringf, &bodyf, e_token - 1);
-	    if (qchar == '"')
-		*e_token++ = '\'';
-	}
 stop_lit:
 	code = ident;
 	break;
@@ -601,8 +570,10 @@ stop_lit:
 	    break;
 	}
 	while (*buf_ptr == '*' || isspace((unsigned char)*buf_ptr)) {
-	    if (*buf_ptr == '*')
+	    if (*buf_ptr == '*') {
+		CHECK_SIZE_TOKEN(1);
 		*e_token++ = *buf_ptr;
+	    }
 	    if (++buf_ptr >= buf_end)
 		fill_buffer();
 	}
@@ -636,6 +607,7 @@ stop_lit:
 	    /*
 	     * handle ||, &&, etc, and also things as in int *****i
 	     */
+	    CHECK_SIZE_TOKEN(1);
 	    *e_token++ = *buf_ptr;
 	    if (++buf_ptr >= buf_end)
 		fill_buffer();
@@ -648,6 +620,7 @@ stop_lit:
     if (buf_ptr >= buf_end)	/* check for input buffer empty */
 	fill_buffer();
     state->last_u_d = unary_delim;
+    CHECK_SIZE_TOKEN(1);
     *e_token = '\0';		/* null terminate the token */
     return (code);
 }
