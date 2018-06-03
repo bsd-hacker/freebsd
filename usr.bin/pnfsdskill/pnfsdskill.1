@@ -33,21 +33,25 @@
 disables a pNFS data storage server (DS)
 .Sh SYNOPSIS
 .Nm
-.Ar mounted_on_path_of_DS
+.Ar mounted-on-DS-dir
 .Sh DESCRIPTION
 The
 .Nm
-command disables one mirror of a mirrored set of DSs.
-Two or more DSs may be configured as a mirrored set.
-If one of these mirrored DSs is malfunctioning, a system administrator
+command disables one DS when mirroring is enabled.
+If one mirrored DS is malfunctioning, a system administrator
 may use this command on the metadata server (MDS) to disable use of this mirror.
 This command must be used on the MDS and the
-.Ar mounted_on_path_of_DS
+.Ar mounted-on-DS-dir
 must be the exact pathname used when mounting the DS on the MDS.
 .Pp
-If this command fails with ``Device not configured'' (ENXIO), it probably
+If this command fails with
+.Dq Device not configured
+(ENXIO), it probably
 means that the DS has already been disabled due to an error either detected
 by the MDS or reported to the MDS by a client.
+.Pp
+The pNFS service should continue to run normally so long as the number of
+operational DSs is at least as many as the level of mirroring.
 .El
 .Sh SEE ALSO
 .Xr pnfsdscopymr 1 ,
