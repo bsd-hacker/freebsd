@@ -43,7 +43,7 @@ command copies a data storage file for an MDS file from one DS to another DS.
 It is normally used to recover data files onto a repaired DS, but can also
 be used to manually migrate a data storage file from one DS to a different one.
 By default, the command will copy the data storage file for
-``mdsfile''
+.Dq mdsfile
 to one of the other DSs to create a mirror of it.
 This might be done if the file was created before mirroring was enabled on
 the pNFS service and now needs to be mirrored.
@@ -52,7 +52,8 @@ The following options are available:
 .Bl -tag -width Ds
 .It Fl r Ar mounted-on-DS-dir
 This option indicates that the data storage file should be created on the DS
-that is mounted on the directory ``mounted-on-DS-dir''.
+that is mounted on the directory
+.Dq mounted-on-DS-dir .
 It will only do the copy if there is an entry in the pnfsd.dsfile extended
 attribute that has an IP address of 0.0.0.0.
 See
@@ -64,8 +65,10 @@ in order to recover the data
 storage files onto a repaired DS.
 .It Fl m Ar source-mounted-on-DS-dir destination-mounted-on-DS-dir
 This option indicates that the data storage file is to be migrated from
-the source DS mounted on the diectory ``source-mounted-on-DS-dir'' to
-the DS mounted on the directory ``destination-mounted-on-DS-dir''.
+the source DS mounted on the diectory
+.Dq source-mounted-on-DS-dir
+to the DS mounted on the directory
+.Dq destination-mounted-on-DS-dir .
 In this case, the data storage file will be removed from the source DS
 when the copy is completed.
 .El
