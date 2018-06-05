@@ -6783,7 +6783,7 @@ nfsrv_flexmirrordel(char *devid, NFSPROC_T *p)
 				tl += 3;
 				for (j = 0; j < lyp->lay_mirrorcnt; j++) {
 					tl++;
-					if (!NFSBCMP(devid, tl, NFSX_V4DEVICEID)
+					if (NFSBCMP(devid, tl, NFSX_V4DEVICEID)
 					    == 0) {
 						/* Found one. */
 						NFSD_DEBUG(4, "fnd one\n");
