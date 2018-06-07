@@ -278,6 +278,10 @@
 /* variants for multiple versions */
 #define	NFSX_STATFS(v3)		((v3) ? NFSX_V3STATFS : NFSX_V2STATFS)
 
+/*
+ * Beware.  NFSPROC_NULL and friends are defined in
+ * <rpcsvc/nfs_prot.h> as well and the numbers are different.
+ */
 #ifndef	NFSPROC_NULL
 /* nfs rpc procedure numbers (before version mapping) */
 #define	NFSPROC_NULL		0
