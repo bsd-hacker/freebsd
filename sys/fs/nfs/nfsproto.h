@@ -278,7 +278,7 @@
 /* variants for multiple versions */
 #define	NFSX_STATFS(v3)		((v3) ? NFSX_V3STATFS : NFSX_V2STATFS)
 
-#if defined(_KERNEL) || defined(KERNEL)
+#ifndef	NFSPROC_NULL
 /* nfs rpc procedure numbers (before version mapping) */
 #define	NFSPROC_NULL		0
 #define	NFSPROC_GETATTR		1
@@ -302,6 +302,7 @@
 #define	NFSPROC_FSINFO		19
 #define	NFSPROC_PATHCONF	20
 #define	NFSPROC_COMMIT		21
+#endif	/* NFSPROC_NULL */
 
 /*
  * The lower numbers -> 21 are used by NFSv2 and v3. These define higher
@@ -360,7 +361,6 @@
 #define	NFSV41_NPROCS		56
 
 #endif	/* NFS_V3NPROCS */
-#endif	/* _KERNEL */
 
 /*
  * Define NFS_NPROCS as NFSV4_NPROCS for the experimental kernel code.
