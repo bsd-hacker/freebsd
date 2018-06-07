@@ -426,8 +426,6 @@ int nfsrv_dissectace(struct nfsrv_descript *, struct acl_entry *,
     int *, int *, NFSPROC_T *);
 int nfsrv_buildacl(struct nfsrv_descript *, NFSACL_T *, enum vtype,
     NFSPROC_T *);
-int nfsrv_setacl(vnode_t, NFSACL_T *, struct ucred *,
-    NFSPROC_T *);
 int nfsrv_compareacl(NFSACL_T *, NFSACL_T *);
 
 /* nfs_clrpcops.c */
@@ -716,8 +714,8 @@ int nfsrv_dscreate(struct vnode *, struct vattr *, struct vattr *,
     fhandle_t *, struct pnfsdsfile *, struct pnfsdsattr *, char *,
     struct ucred *, NFSPROC_T *, struct vnode **);
 int nfsrv_updatemdsattr(struct vnode *, struct nfsvattr *, NFSPROC_T *);
-int nfsrv_dssetacl(struct vnode *, struct acl *, struct ucred *, NFSPROC_T *);
 void nfsrv_killrpcs(struct nfsmount *);
+int nfsrv_setacl(struct vnode *, NFSACL_T *, struct ucred *, NFSPROC_T *);
 
 /* nfs_commonkrpc.c */
 int newnfs_nmcancelreqs(struct nfsmount *);

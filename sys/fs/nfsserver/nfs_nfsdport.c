@@ -131,6 +131,8 @@ static int nfsrv_pnfslookupds(struct vnode *, struct vnode *,
 static void nfsrv_pnfssetfh(struct vnode *, struct pnfsdsfile *,
     struct vnode *, NFSPROC_T *);
 static int nfsrv_dsremove(struct vnode *, char *, struct ucred *, NFSPROC_T *);
+static int nfsrv_dssetacl(struct vnode *, struct acl *, struct ucred *,
+    NFSPROC_T *);
 static int nfsrv_pnfsstatfs(struct statfs *);
 
 int nfs_pnfsio(task_fn_t *, void *);
@@ -4250,7 +4252,7 @@ nfsrv_updatemdsattr(struct vnode *vp, struct nfsvattr *nap, NFSPROC_T *p)
 /*
  * Set the NFSv4 ACL on the DS file to the same ACL as the MDS file.
  */
-int
+static int
 nfsrv_dssetacl(struct vnode *vp, struct acl *aclp, struct ucred *cred,
     NFSPROC_T *p)
 {
@@ -5550,6 +5552,40 @@ nfsrv_pnfsstatfs(struct statfs *sf)
 	}
 	free(tsf, M_TEMP);
 	free(dvpp, M_TEMP);
+	return (error);
+}
+
+/*
+ * Set an NFSv4 acl.
+ */
+int
+nfsrv_setacl(struct vnode *vp, NFSACL_T *aclp, struct ucred *cred, NFSPROC_T *p)
+{
+	int error;
+
+	if (nfsrv_useacl == 0 || nfs_supportsnfsv4acls(vp) == 0) {
+		error = NFSERR_ATTRNOTSUPP;
+		goto out;
+	}
+	/*
+	 * With NFSv4 ACLs, chmod(2) may need to add additional entries.
+	 * Make sure it has enough room for that - splitting every entry
+	 * into two and appending "canonical six" entries at the end.
+	 * Cribbed out of kern/vfs_acl.c - Rick M.
+	 */
+	if (aclp->acl_cnt > (ACL_MAX_ENTRIES - 6) / 2) {
+		error = NFSERR_ATTRNOTSUPP;
+		goto out;
+	}
+	error = VOP_SETACL(vp, ACL_TYPE_NFS4, aclp, cred, p);
+	if (error == 0) {
+		error = nfsrv_dssetacl(vp, aclp, cred, p);
+		if (error == ENOENT)
+			error = 0;
+	}
+
+out:
+	NFSEXITCODE(error);
 	return (error);
 }
 
