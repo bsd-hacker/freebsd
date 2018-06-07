@@ -1175,15 +1175,16 @@ backup_stable(__unused int signo)
  * Parse the pNFS string and extract the DS servers and ports numbers.
  */
 static void
-parse_dsserver(const char *optarg, struct nfsd_nfsd_args *nfsdargp)
+parse_dsserver(const char *optionarg, struct nfsd_nfsd_args *nfsdargp)
 {
 	char *ad, *cp, *cp2, *dsaddr, *dshost, *dspath, *dsvol, nfsprt[9];
-	int adsiz, dsaddrcnt, dshostcnt, dspathcnt, ecode, hostsiz, pathsiz;
+	int ecode;
+	u_int adsiz, dsaddrcnt, dshostcnt, dspathcnt, hostsiz, pathsiz;
 	size_t dsaddrsiz, dshostsiz, dspathsiz, nfsprtsiz;
 	struct addrinfo hints, *ai_tcp;
-	struct sockaddr_in *sin;
+	struct sockaddr_in sin;
 
-	cp = strdup(optarg);
+	cp = strdup(optionarg);
 	if (cp == NULL)
 		errx(1, "Out of memory");
 
@@ -1248,12 +1249,14 @@ parse_dsserver(const char *optarg, struct nfsd_nfsd_args *nfsdargp)
 		if (ecode != 0)
 			err(1, "getaddrinfo pnfs: %s %s", cp,
 			    gai_strerror(ecode));
-		sin = (struct sockaddr_in *)ai_tcp->ai_addr;
-		if (sin->sin_family != AF_INET)
+		if (ai_tcp->ai_addr->sa_family != AF_INET ||
+		    ai_tcp->ai_addr->sa_len < sizeof(sin))
 			err(1, "getaddrinfo() returned non-INET address");
+		/* Mips cares about sockaddr_in alignment, so copy the addr. */
+		memcpy(&sin, ai_tcp->ai_addr, sizeof(sin));
 
 		/* Append this address to dsaddr. */
-		ad = inet_ntoa(sin->sin_addr);
+		ad = inet_ntoa(sin.sin_addr);
 		adsiz = strlen(ad);
 		if (dsaddrcnt + adsiz + nfsprtsiz + 1 > dsaddrsiz) {
 			dsaddrsiz *= 2;
@@ -1279,12 +1282,6 @@ parse_dsserver(const char *optarg, struct nfsd_nfsd_args *nfsdargp)
 		cp = cp2;
 	} while (cp != NULL);
 
-	/*
-	 * At the point, ai_tcp refers to the last DS server host and
-	 * sin is set to point to the sockaddr structure in it.
-	 * Set the port# for the DS Mount protocol and get the DS root FH.
-	 */
-	sin->sin_port = htons(2049);
 	nfsdargp->addr = dsaddr;
 	nfsdargp->addrlen = dsaddrcnt;
 	nfsdargp->dnshost = dshost;
@@ -1293,5 +1290,4 @@ parse_dsserver(const char *optarg, struct nfsd_nfsd_args *nfsdargp)
 	nfsdargp->dspathlen = dspathcnt;
 	freeaddrinfo(ai_tcp);
 }
-
 

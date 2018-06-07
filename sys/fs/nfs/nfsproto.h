@@ -278,6 +278,7 @@
 /* variants for multiple versions */
 #define	NFSX_STATFS(v3)		((v3) ? NFSX_V3STATFS : NFSX_V2STATFS)
 
+#if defined(_KERNEL) || defined(KERNEL)
 /* nfs rpc procedure numbers (before version mapping) */
 #define	NFSPROC_NULL		0
 #define	NFSPROC_GETATTR		1
@@ -359,6 +360,7 @@
 #define	NFSV41_NPROCS		56
 
 #endif	/* NFS_V3NPROCS */
+#endif	/* _KERNEL */
 
 /*
  * Define NFS_NPROCS as NFSV4_NPROCS for the experimental kernel code.
