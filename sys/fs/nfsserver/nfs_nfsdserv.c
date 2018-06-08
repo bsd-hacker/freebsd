@@ -4399,7 +4399,7 @@ nfsrvd_layoutget(struct nfsrv_descript *nd, __unused int isdgram,
 	stateid.seqid = fxdr_unsigned(uint32_t, *tl++);
 	NFSBCOPY(tl, stateid.other, NFSX_STATEIDOTHER);
 	tl += (NFSX_STATEIDOTHER / NFSX_UNSIGNED);
-	maxcnt = fxdr_unsigned(int, tl);
+	maxcnt = fxdr_unsigned(int, *tl);
 	NFSD_DEBUG(4, "layoutget ltyp=%d iom=%d off=%ju len=%ju mlen=%ju\n",
 	    layouttype, iomode, (uintmax_t)offset, (uintmax_t)len,
 	    (uintmax_t)minlen);
