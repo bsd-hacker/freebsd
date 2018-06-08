@@ -32,6 +32,7 @@
 # UNIX datagram socket test.
 
 # "panic: mutex unp not owned at ../../../kern/uipc_usrreq.c:879" seen.
+# Fixed by r334756.
 
 . ../default.cfg
 
