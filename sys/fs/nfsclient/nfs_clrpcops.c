@@ -6040,8 +6040,14 @@ nfscl_dofflayoutio(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 					    *dspp, fhp, dp->nfsdi_vers,
 					    dp->nfsdi_minorvers, tcred, p);
 				NFSCL_DEBUG(4, "commitds=%d\n", error);
-				/* ENXIO indicates a problem with the DS. */
-				if (error == ENXIO) {
+				/*
+				 * ENXIO indicates that the krpc cannot do
+				 * an RPC on the DS.  EIO is returned by the
+				 * RPC as an indication of I/O problems on the
+				 * server.
+				 * Are there other fatal errors?
+				 */
+				if (error == ENXIO || error == EIO) {
 					NFSCL_DEBUG(4,
 					    "DS layreterr for commit\n");
 					nfscl_dserr(NFSV4OP_COMMIT, dp, lyp);
@@ -6065,8 +6071,14 @@ nfscl_dofflayoutio(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 			    off, xfer, fhp, 1, dp->nfsdi_vers,
 			    dp->nfsdi_minorvers, tcred, p);
 			NFSCL_DEBUG(4, "readds=%d\n", error);
-			if (error == ENXIO) {
-				/* ENXIO indicates a problem with the DS. */
+			if (error == ENXIO || error == EIO) {
+				/*
+				 * ENXIO indicates that the krpc cannot do
+				 * an RPC on the DS.  EIO is returned by the
+				 * RPC as an indication of I/O problems on the
+				 * server.
+				 * Are there other fatal errors?
+				 */
 				NFSCL_DEBUG(4, "DS layreterr for read\n");
 				nfscl_dserr(NFSV4OP_READ, dp, lyp);
 			}
@@ -6101,8 +6113,14 @@ nfscl_dofflayoutio(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 					    xfer, fhp, m, dp->nfsdi_vers,
 					    dp->nfsdi_minorvers, tcred, p);
 				NFSCL_DEBUG(4, "nfsio_writedsmir=%d\n", error);
-				if (error == ENXIO) {
-					/* ENXIO indicates a DS problem. */
+				if (error == ENXIO || error == EIO) {
+					/*
+					 * ENXIO indicates that the krpc cannot
+					 * do an RPC on the DS.  EIO is returned
+					 * by the RPC as an indication of I/O
+					 * problems on the server.
+					 * Are there other fatal errors?
+					 */
 					NFSCL_DEBUG(4,
 					    "DS layreterr for write\n");
 					nfscl_dserr(NFSV4OP_WRITE, dp, lyp);

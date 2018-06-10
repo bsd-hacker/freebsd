@@ -810,6 +810,56 @@ tryagain:
 		error = EINTR;
 	} else if (stat == RPC_CANTSEND || stat == RPC_CANTRECV ||
 	     stat == RPC_SYSTEMERROR) {
+		if ((nd->nd_flag & ND_NFSV41) != 0 && nmp != NULL &&
+		    nd->nd_procnum != NFSPROC_NULL) {
+			/*
+			 * The nfsess_defunct field is protected by
+			 * the NFSLOCKMNT()/nm_mtx lock and not the
+			 * nfsess_mtx lock to simplify its handling,
+			 * for the MDS session. This lock is also
+			 * sufficient for nfsess_sessionid, since it
+			 * never changes in the structure.
+			 */
+			NFSLOCKCLSTATE();
+			NFSLOCKMNT(nmp);
+			/* The session must be marked defunct. */
+			if (dssep == NULL) {
+				/*
+				 * This is either an MDS proxy operation or
+				 * a client mount with "soft,retrans=N" options.
+				 * Mark the MDS session defunct and initiate
+				 * recovery, as required.
+				 */
+				NFSCL_DEBUG(1, "Failed soft proxy RPC\n");
+				sep = NFSMNT_MDSSESSION(nmp);
+				if (bcmp(sep->nfsess_sessionid, nd->nd_sequence,
+				    NFSX_V4SESSIONID) == 0) {
+					/* Initiate recovery. */
+					sep->nfsess_defunct = 1;
+					NFSCL_DEBUG(1, "Marked defunct\n");
+					if (nmp->nm_clp != NULL) {
+						nmp->nm_clp->nfsc_flags |=
+						    NFSCLFLAGS_RECOVER;
+						wakeup(nmp->nm_clp);
+					}
+				}
+			} else {
+				/*
+				 * This is a client side DS RPC. Just mark
+				 * the session defunct.  A subsequent LayoutGet
+				 * should get a new session.
+				 */
+				NFSCL_DEBUG(1, "Failed client DS RPC\n");
+				if (bcmp(dssep->nfsess_sessionid,
+				    nd->nd_sequence, NFSX_V4SESSIONID) == 0) {
+					/* Mark it defunct. */
+					dssep->nfsess_defunct = 1;
+					NFSCL_DEBUG(1, "Marked defunct\n");
+				}
+			}
+			NFSUNLOCKMNT(nmp);
+			NFSUNLOCKCLSTATE();
+		}
 		NFSINCRGLOBAL(nfsstatsv1.rpcinvalid);
 		error = ENXIO;
 	} else {
