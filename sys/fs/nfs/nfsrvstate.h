@@ -226,9 +226,8 @@ struct nfsstate {
 	struct nfslockfile	*ls_lfp;	/* Back pointer */
 	struct nfsrvcache	*ls_op;		/* Op cache reference */
 	struct nfsclient	*ls_clp;	/* Back pointer */
-	u_int32_t		ls_ownerlen;	/* Length of ls_owner */
+	u_short			ls_ownerlen;	/* Length of ls_owner */
 	u_char			ls_owner[1];	/* malloc'd the correct size */
-						/* Must be uint32_t * aligned */
 };
 #define	ls_lock			ls_head.lock
 #define	ls_open			ls_head.open
@@ -240,8 +239,6 @@ struct nfsstate {
 #define	ls_delegtime		ls_un.deleg.expiry
 #define	ls_delegtimelimit	ls_un.deleg.limit
 #define	ls_compref		ls_un.deleg.compref
-#define	ls_layout		ls_owner
-#define	ls_layoutlen		ls_ownerlen
 
 /*
  * Nfs lock structure.
