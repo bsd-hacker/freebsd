@@ -1045,6 +1045,15 @@ struct nfsreq {
  */
 extern const char nfs_vnode_tag[];
 
+/*
+ * Check for the errors that indicate a DS should be disabled.
+ * ENXIO indicates that the krpc cannot do an RPC on the DS.
+ * EIO is returned by the RPC as an indication of I/O problems on the
+ * server.
+ * Are there other fatal errors?
+ */
+#define	nfsds_failerr(e)	((e) == ENXIO || (e) == EIO)
+
 #endif	/* _KERNEL */
 
 #endif	/* _NFS_NFSPORT_H */
