@@ -3930,7 +3930,7 @@ nfsrv_pnfscreate(struct vnode *vp, struct vattr *vap, struct ucred *cred,
 			if (ret != 0) {
 				KASSERT(error == 0, ("nfsrv_dscreate err=%d",
 				    error));
-				if (failpos == -1 && ret == ENXIO)
+				if (failpos == -1 && nfsds_failerr(ret))
 					failpos = i;
 				else
 					error = ret;
@@ -3941,7 +3941,7 @@ nfsrv_pnfscreate(struct vnode *vp, struct vattr *vap, struct ucred *cred,
 		tpf->dsf_dir = dsdir[mirrorcnt - 1];
 		error = nfsrv_dscreate(dvp[mirrorcnt - 1], vap, &va, &fh, tpf,
 		    &dsattr, NULL, tcred, p, NULL);
-		if (failpos == -1 && mirrorcnt > 1 && error == ENXIO) {
+		if (failpos == -1 && mirrorcnt > 1 && nfsds_failerr(error)) {
 			failpos = mirrorcnt - 1;
 			error = 0;
 		}
@@ -3954,7 +3954,7 @@ nfsrv_pnfscreate(struct vnode *vp, struct vattr *vap, struct ucred *cred,
 		while (tdsc->inprog != 0 && tdsc->done == 0)
 			tsleep(&tdsc->tsk, PVFS, "srvdcr", timo);
 		if (tdsc->err != 0) {
-			if (failpos == -1 && tdsc->err == ENXIO)
+			if (failpos == -1 && nfsds_failerr(tdsc->err))
 				failpos = i;
 			else if (error == 0)
 				error = tdsc->err;
@@ -4161,12 +4161,12 @@ nfsrv_pnfsremove(struct vnode **dvp, int mirrorcnt, char *fname, fhandle_t *fhp,
 		}
 		if (ret != 0) {
 			ret = nfsrv_dsremove(dvp[i], fname, tcred, p);
-			if (failpos == -1 && ret == ENXIO)
+			if (failpos == -1 && nfsds_failerr(ret))
 				failpos = i;
 		}
 	}
 	ret = nfsrv_dsremove(dvp[mirrorcnt - 1], fname, tcred, p);
-	if (failpos == -1 && mirrorcnt > 1 && ret == ENXIO)
+	if (failpos == -1 && mirrorcnt > 1 && nfsds_failerr(ret))
 		failpos = mirrorcnt - 1;
 	timo = hz / 50;		/* Wait for 20msec. */
 	if (timo < 1)
@@ -4175,7 +4175,7 @@ nfsrv_pnfsremove(struct vnode **dvp, int mirrorcnt, char *fname, fhandle_t *fhp,
 	for (tdsrm = dsrm, i = 0; i < mirrorcnt - 1; i++, tdsrm++) {
 		while (tdsrm->inprog != 0 && tdsrm->done == 0)
 			tsleep(&tdsrm->tsk, PVFS, "srvdsrm", timo);
-		if (failpos == -1 && tdsrm->err == ENXIO)
+		if (failpos == -1 && nfsds_failerr(tdsrm->err))
 			failpos = i;
 	}
 
@@ -4364,9 +4364,8 @@ tryagain:
 		if (ioproc == NFSPROC_READDS) {
 			error = nfsrv_readdsrpc(fh, off, cnt, cred, p, nmp[0],
 			    mpp, mpp2);
-			if (error == ENXIO && mirrorcnt > 1) {
+			if (nfsds_failerr(error) && mirrorcnt > 1) {
 				/*
-				 * ENXIO indicates a problem with the mirror.
 				 * Setting failpos will cause the mirror
 				 * to be disabled and then a retry of this
 				 * read is required.
@@ -4387,9 +4386,8 @@ tryagain:
 		else {
 			error = nfsrv_getattrdsrpc(&fh[mirrorcnt - 1], cred, p,
 			    vp, nmp[mirrorcnt - 1], nap);
-			if (error == ENXIO && mirrorcnt > 1) {
+			if (nfsds_failerr(error) && mirrorcnt > 1) {
 				/*
-				 * ENXIO indicates a problem with the mirror.
 				 * Setting failpos will cause the mirror
 				 * to be disabled and then a retry of this
 				 * getattr is required.
@@ -4951,7 +4949,7 @@ nfsrv_writedsrpc(fhandle_t *fhp, off_t off, int len, struct ucred *cred,
 		if (ret != 0) {
 			ret = nfsrv_writedsdorpc(*nmpp, fhp, off, len, NULL,
 			    tdrpc->m, cred, p);
-			if (ret == ENXIO && *failposp == -1)
+			if (nfsds_failerr(ret) && *failposp == -1)
 				*failposp = i;
 			else if (error == 0 && ret != 0)
 				error = ret;
@@ -4961,7 +4959,7 @@ nfsrv_writedsrpc(fhandle_t *fhp, off_t off, int len, struct ucred *cred,
 	}
 	m = m_copym(*mpp, offs, NFSM_RNDUP(len), M_WAITOK);
 	ret = nfsrv_writedsdorpc(*nmpp, fhp, off, len, &na, m, cred, p);
-	if (ret == ENXIO && *failposp == -1 && mirrorcnt > 1)
+	if (nfsds_failerr(ret) && *failposp == -1 && mirrorcnt > 1)
 		*failposp = mirrorcnt - 1;
 	else if (error == 0 && ret != 0)
 		error = ret;
@@ -4976,7 +4974,7 @@ nfsrv_writedsrpc(fhandle_t *fhp, off_t off, int len, struct ucred *cred,
 		/* Wait for RPCs on separate threads to complete. */
 		while (tdrpc->inprog != 0 && tdrpc->done == 0)
 			tsleep(&tdrpc->tsk, PVFS, "srvwrds", timo);
-		if (tdrpc->err == ENXIO && *failposp == -1)
+		if (nfsds_failerr(tdrpc->err) && *failposp == -1)
 			*failposp = i;
 		else if (error == 0 && tdrpc->err != 0)
 			error = tdrpc->err;
@@ -5135,7 +5133,7 @@ nfsrv_setattrdsrpc(fhandle_t *fhp, struct ucred *cred, NFSPROC_T *p,
 		if (ret != 0) {
 			ret = nfsrv_setattrdsdorpc(fhp, cred, p, vp, *nmpp, nap,
 			    &na);
-			if (ret == ENXIO && *failposp == -1)
+			if (nfsds_failerr(ret) && *failposp == -1)
 				*failposp = i;
 			else if (error == 0 && ret != 0)
 				error = ret;
@@ -5144,7 +5142,7 @@ nfsrv_setattrdsrpc(fhandle_t *fhp, struct ucred *cred, NFSPROC_T *p,
 		fhp++;
 	}
 	ret = nfsrv_setattrdsdorpc(fhp, cred, p, vp, *nmpp, nap, &na);
-	if (ret == ENXIO && *failposp == -1 && mirrorcnt > 1)
+	if (nfsds_failerr(ret) && *failposp == -1 && mirrorcnt > 1)
 		*failposp = mirrorcnt - 1;
 	else if (error == 0 && ret != 0)
 		error = ret;
@@ -5159,7 +5157,7 @@ nfsrv_setattrdsrpc(fhandle_t *fhp, struct ucred *cred, NFSPROC_T *p,
 		/* Wait for RPCs on separate threads to complete. */
 		while (tdrpc->inprog != 0 && tdrpc->done == 0)
 			tsleep(&tdrpc->tsk, PVFS, "srvsads", timo);
-		if (tdrpc->err == ENXIO && *failposp == -1)
+		if (nfsds_failerr(tdrpc->err) && *failposp == -1)
 			*failposp = i;
 		else if (error == 0 && tdrpc->err != 0)
 			error = tdrpc->err;
@@ -5283,7 +5281,7 @@ nfsrv_setacldsrpc(fhandle_t *fhp, struct ucred *cred, NFSPROC_T *p,
 		if (ret != 0) {
 			ret = nfsrv_setacldsdorpc(fhp, cred, p, vp, *nmpp,
 			    aclp);
-			if (ret == ENXIO && *failposp == -1)
+			if (nfsds_failerr(ret) && *failposp == -1)
 				*failposp = i;
 			else if (error == 0 && ret != 0)
 				error = ret;
@@ -5292,7 +5290,7 @@ nfsrv_setacldsrpc(fhandle_t *fhp, struct ucred *cred, NFSPROC_T *p,
 		fhp++;
 	}
 	ret = nfsrv_setacldsdorpc(fhp, cred, p, vp, *nmpp, aclp);
-	if (ret == ENXIO && *failposp == -1 && mirrorcnt > 1)
+	if (nfsds_failerr(ret) && *failposp == -1 && mirrorcnt > 1)
 		*failposp = mirrorcnt - 1;
 	else if (error == 0 && ret != 0)
 		error = ret;
@@ -5305,7 +5303,7 @@ nfsrv_setacldsrpc(fhandle_t *fhp, struct ucred *cred, NFSPROC_T *p,
 		/* Wait for RPCs on separate threads to complete. */
 		while (tdrpc->inprog != 0 && tdrpc->done == 0)
 			tsleep(&tdrpc->tsk, PVFS, "srvacds", timo);
-		if (tdrpc->err == ENXIO && *failposp == -1)
+		if (nfsds_failerr(tdrpc->err) && *failposp == -1)
 			*failposp = i;
 		else if (error == 0 && tdrpc->err != 0)
 			error = tdrpc->err;
