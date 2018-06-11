@@ -8090,7 +8090,7 @@ tryagain2:
 			 * This case should be recognized as a trivial ACL
 			 * by UFS's VOP_SETACL() and succeed, but...
 			 */
-			if (ret == ENOATTR || ret == EOPNOTSUPP)
+			if (ret == ENOATTR || ret == EOPNOTSUPP || ret == EPERM)
 				ret = 0;
 		}
 
