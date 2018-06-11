@@ -192,7 +192,6 @@ struct nfsdsession {
  * - open file structures chained off an open_owner structure
  * - lock_owner structures chained off an open file structure
  * - delegated file structures chained off of nfsclient and nfslockfile
- * - pNFS layouts chained off of nfsclient and nfslockfile
  * - the ls_list field is used for the chain it is in
  * - the ls_head structure is used to chain off the sibling structure
  *   (it is a union between an nfsstate and nfslock structure head)
