@@ -4237,13 +4237,14 @@ nfsrv_docallback(struct nfsclient *clp, int procnum, nfsv4stateid_t *stateidp,
 {
 	mbuf_t m;
 	u_int32_t *tl;
-	struct nfsrv_descript nfsd, *nd = &nfsd;
+	struct nfsrv_descript *nd;
 	struct ucred *cred;
 	int error = 0;
 	u_int32_t callback;
 	struct nfsdsession *sep = NULL;
 	uint64_t tval;
 
+	nd = malloc(sizeof(*nd), M_TEMP, M_WAITOK | M_ZERO);
 	cred = newnfs_getcred();
 	NFSLOCKSTATE();	/* mostly for lc_cbref++ */
 	if (clp->lc_flags & LCL_NEEDSCONFIRM) {
@@ -4448,6 +4449,7 @@ errout:
 	}
 	NFSUNLOCKSTATE();
 
+	free(nd, M_TEMP);
 	NFSEXITCODE(error);
 	return (error);
 }
