@@ -36,12 +36,15 @@ typedef int (*psci_callfn_t)(register_t, register_t, register_t, register_t);
 
 extern int psci_present;
 
-void	psci_reset(void);
 int	psci_cpu_on(unsigned long, unsigned long, unsigned long);
+void	psci_reset(void);
+int32_t	psci_features(uint32_t);
+int	psci_get_version(void);
+
+/* One of these handlers will be selected during the boot */
 int	psci_hvc_despatch(register_t, register_t, register_t, register_t);
 int	psci_smc_despatch(register_t, register_t, register_t, register_t);
 
-int	psci_get_version(void);
 
 /*
  * PSCI return codes.
@@ -74,6 +77,7 @@ int	psci_get_version(void);
 #define	PSCI_FNID_MIGRATE_INFO_UP_CPU	0xc4000007
 #define	PSCI_FNID_SYSTEM_OFF		0x84000008
 #define	PSCI_FNID_SYSTEM_RESET		0x84000009
+#define	PSCI_FNID_FEATURES		0x8400000a
 #else
 #define	PSCI_FNID_VERSION		0x84000000
 #define	PSCI_FNID_CPU_SUSPEND		0x84000001
@@ -85,6 +89,7 @@ int	psci_get_version(void);
 #define	PSCI_FNID_MIGRATE_INFO_UP_CPU	0x84000007
 #define	PSCI_FNID_SYSTEM_OFF		0x84000008
 #define	PSCI_FNID_SYSTEM_RESET		0x84000009
+#define	PSCI_FNID_FEATURES		0x8400000a
 #endif
 
 #define	PSCI_VER_MAJOR(v)		(((v) >> 16) & 0xFF)

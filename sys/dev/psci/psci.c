@@ -74,6 +74,7 @@ __FBSDID("$FreeBSD$");
 struct psci_softc {
 	device_t        dev;
 
+	uint32_t	psci_version;
 	uint32_t	psci_fnids[PSCI_FN_MAX];
 };
 
@@ -413,6 +414,20 @@ psci_find_callfn(psci_callfn_t *callfn)
 	return (PSCI_RETVAL_SUCCESS);
 }
 
+int32_t
+psci_features(uint32_t psci_func_id)
+{
+
+	if (psci_softc == NULL)
+		return (PSCI_RETVAL_NOT_SUPPORTED);
+
+	/* The feature flags were added to PSCI 1.0 */
+	if (PSCI_VER_MAJOR(psci_softc->psci_version) < 1)
+		return (PSCI_RETVAL_NOT_SUPPORTED);
+
+	return (psci_call(PSCI_FNID_FEATURES, psci_func_id, 0, 0));
+}
+
 int
 psci_cpu_on(unsigned long cpu, unsigned long entry, unsigned long context_id)
 {
@@ -493,6 +508,7 @@ psci_v0_1_init(device_t dev)
 		sc->psci_fnids[PSCI_FN_MIGRATE] = psci_fnid;
 	}
 
+	sc->psci_version = (0 << 16) | 1;
 	if (bootverbose)
 		device_printf(dev, "PSCI version 0.1 available\n");
 
@@ -523,6 +539,7 @@ psci_v0_2_init(device_t dev)
 	if (version == PSCI_RETVAL_NOT_SUPPORTED)
 		return (1);
 
+	sc->psci_version = version;
 	if ((PSCI_VER_MAJOR(version) == 0 && PSCI_VER_MINOR(version) == 2) ||
 	    PSCI_VER_MAJOR(version) == 1) {
 		if (bootverbose)
