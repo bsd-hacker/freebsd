@@ -1,6 +1,4 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
- *
  * Copyright (c) 2017 Rick Macklem
  *
  * Redistribution and use in source and binary forms, with or without
@@ -67,13 +65,13 @@ int
 main(int argc, char *argv[])
 {
 	struct addrinfo *res, *ad, *newres;
-	struct sockaddr_in *sin, *adsin;
-	struct sockaddr_in6 *sin6, *adsin6;
+	struct sockaddr_in *sin, adsin;
+	struct sockaddr_in6 *sin6, adsin6;
 	char hostn[2 * NI_MAXHOST + 2], *cp;
 	struct pnfsdsfile dsfile[NFSDEV_MAXMIRRORS];
 	int ch, dosetxattr, i, mirrorcnt, quiet, zerods, zerofh;
 	in_port_t tport;
-	ssize_t xattrsize;
+	ssize_t xattrsize, xattrsize2;
 
 	zerods = 0;
 	zerofh = 0;
@@ -81,6 +79,7 @@ main(int argc, char *argv[])
 	dosetxattr = 0;
 	res = NULL;
 	newres = NULL;
+	cp = NULL;
 	while ((ch = getopt_long(argc, argv, "c:qr:s:z", longopts, NULL)) != -1)
 	    {
 		switch (ch) {
@@ -145,7 +144,8 @@ main(int argc, char *argv[])
 	xattrsize = extattr_get_file(*argv, EXTATTR_NAMESPACE_SYSTEM,
 	    "pnfsd.dsfile", dsfile, sizeof(dsfile));
 	mirrorcnt = xattrsize / sizeof(struct pnfsdsfile);
-	if (mirrorcnt < 1 || xattrsize != mirrorcnt * sizeof(struct pnfsdsfile))
+	xattrsize2 = mirrorcnt * sizeof(struct pnfsdsfile);
+	if (mirrorcnt < 1 || xattrsize != xattrsize2)
 		err(1, "Can't get extattr pnfsd.dsfile for %s", *argv);
 
 	if (quiet == 0)
@@ -166,16 +166,22 @@ main(int argc, char *argv[])
 			sin6 = &dsfile[i].dsf_sin6;
 			ad = res;
 			while (ad != NULL) {
-				adsin = (struct sockaddr_in *)ad->ai_addr;
-				adsin6 = (struct sockaddr_in6 *)ad->ai_addr;
-				if (adsin->sin_family == sin->sin_family) {
-					if (sin->sin_family == AF_INET &&
-					    sin->sin_addr.s_addr ==
-					    adsin->sin_addr.s_addr)
+				if (ad->ai_addr->sa_family == AF_INET &&
+				    sin->sin_family == AF_INET &&
+				    ad->ai_addrlen >= sizeof(adsin)) {
+					memcpy(&adsin, ad->ai_addr,
+					    sizeof(adsin));
+					if (sin->sin_addr.s_addr ==
+					    adsin.sin_addr.s_addr)
 						break;
-					else if (sin->sin_family == AF_INET6 &&
-					    IN6_ARE_ADDR_EQUAL(&sin6->sin6_addr,
-					    &adsin6->sin6_addr))
+				}
+				if (ad->ai_addr->sa_family == AF_INET6 &&
+				    sin6->sin6_family == AF_INET6 &&
+				    ad->ai_addrlen >= sizeof(adsin6)) {
+					memcpy(&adsin6, ad->ai_addr,
+					    sizeof(adsin6));
+					if (IN6_ARE_ADDR_EQUAL(&sin6->sin6_addr,
+					    &adsin6.sin6_addr))
 						break;
 				}
 				ad = ad->ai_next;
@@ -198,16 +204,22 @@ main(int argc, char *argv[])
 			sin6 = &dsfile[i].dsf_sin6;
 			ad = res;
 			while (ad != NULL) {
-				adsin = (struct sockaddr_in *)ad->ai_addr;
-				adsin6 = (struct sockaddr_in6 *)ad->ai_addr;
-				if (adsin->sin_family == sin->sin_family) {
-					if (sin->sin_family == AF_INET &&
-					    sin->sin_addr.s_addr ==
-					    adsin->sin_addr.s_addr)
+				if (ad->ai_addr->sa_family == AF_INET &&
+				    sin->sin_family == AF_INET &&
+				    ad->ai_addrlen >= sizeof(adsin)) {
+					memcpy(&adsin, ad->ai_addr,
+					    sizeof(adsin));
+					if (sin->sin_addr.s_addr ==
+					    adsin.sin_addr.s_addr)
 						break;
-					else if (sin->sin_family == AF_INET6 &&
-					    IN6_ARE_ADDR_EQUAL(&sin6->sin6_addr,
-					    &adsin6->sin6_addr))
+				}
+				if (ad->ai_addr->sa_family == AF_INET6 &&
+				    sin6->sin6_family == AF_INET6 &&
+				    ad->ai_addrlen >= sizeof(adsin6)) {
+					memcpy(&adsin6, ad->ai_addr,
+					    sizeof(adsin6));
+					if (IN6_ARE_ADDR_EQUAL(&sin6->sin6_addr,
+					    &adsin6.sin6_addr))
 						break;
 				}
 				ad = ad->ai_next;
@@ -234,16 +246,22 @@ main(int argc, char *argv[])
 			sin6 = &dsfile[i].dsf_sin6;
 			ad = res;
 			while (ad != NULL) {
-				adsin = (struct sockaddr_in *)ad->ai_addr;
-				adsin6 = (struct sockaddr_in6 *)ad->ai_addr;
-				if (adsin->sin_family == sin->sin_family) {
-					if (sin->sin_family == AF_INET &&
-					    sin->sin_addr.s_addr ==
-					    adsin->sin_addr.s_addr)
+				if (ad->ai_addr->sa_family == AF_INET &&
+				    sin->sin_family == AF_INET &&
+				    ad->ai_addrlen >= sizeof(adsin)) {
+					memcpy(&adsin, ad->ai_addr,
+					    sizeof(adsin));
+					if (sin->sin_addr.s_addr ==
+					    adsin.sin_addr.s_addr)
 						break;
-					else if (sin->sin_family == AF_INET6 &&
-					    IN6_ARE_ADDR_EQUAL(&sin6->sin6_addr,
-					    &adsin6->sin6_addr))
+				}
+				if (ad->ai_addr->sa_family == AF_INET6 &&
+				    sin6->sin6_family == AF_INET6 &&
+				    ad->ai_addrlen >= sizeof(adsin6)) {
+					memcpy(&adsin6, ad->ai_addr,
+					    sizeof(adsin6));
+					if (IN6_ARE_ADDR_EQUAL(&sin6->sin6_addr,
+					    &adsin6.sin6_addr))
 						break;
 				}
 				ad = ad->ai_next;
