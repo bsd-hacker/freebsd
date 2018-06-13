@@ -1250,7 +1250,7 @@ parse_dsserver(const char *optionarg, struct nfsd_nfsd_args *nfsdargp)
 			err(1, "getaddrinfo pnfs: %s %s", cp,
 			    gai_strerror(ecode));
 		if (ai_tcp->ai_addr->sa_family != AF_INET ||
-		    ai_tcp->ai_addr->sa_len < sizeof(sin))
+		    ai_tcp->ai_addrlen < sizeof(sin))
 			err(1, "getaddrinfo() returned non-INET address");
 		/* Mips cares about sockaddr_in alignment, so copy the addr. */
 		memcpy(&sin, ai_tcp->ai_addr, sizeof(sin));
