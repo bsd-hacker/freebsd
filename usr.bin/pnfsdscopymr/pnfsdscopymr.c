@@ -205,7 +205,7 @@ main(int argc, char *argv[])
 					    AF_INET6 && nres->ai_addrlen >=
 					    sizeof(sin6)) {
 						memcpy(&sin6, nres->ai_addr,
-						    sizeof(sin));
+						    sizeof(sin6));
 						if (IN6_ARE_ADDR_EQUAL(&sin6.sin6_addr,
 						    &dsfile[i].dsf_sin6.sin6_addr))
 							exit(0);
@@ -268,7 +268,7 @@ main(int argc, char *argv[])
 					    AF_INET6 && nres->ai_addrlen >=
 					    sizeof(sin6)) {
 						memcpy(&sin6, nres->ai_addr,
-						    sizeof(sin));
+						    sizeof(sin6));
 						if (IN6_ARE_ADDR_EQUAL(&sin6.sin6_addr,
 						    &dsfile[i].dsf_sin6.sin6_addr)) {
 							fnd = 1;
