@@ -1,6 +1,4 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
- *
  * Copyright (c) 2017 Rick Macklem
  *
  * Redistribution and use in source and binary forms, with or without
@@ -74,9 +72,9 @@ main(int argc, char *argv[])
 	struct stat sb;
 	struct statfs sf;
 	struct addrinfo hints, *res, *nres;
-	struct sockaddr_in *sin;
-	struct sockaddr_in6 *sin6;
-	ssize_t xattrsize;
+	struct sockaddr_in sin;
+	struct sockaddr_in6 sin6;
+	ssize_t xattrsize, xattrsize2;
 	size_t mirlen;
 	int ch, fnd, fndzero, i, migrateit, mirrorcnt, mirrorit, ret;
 	int mirrorlevel;
@@ -134,7 +132,8 @@ main(int argc, char *argv[])
 	xattrsize = extattr_get_file(*argv, EXTATTR_NAMESPACE_SYSTEM,
 	    "pnfsd.dsfile", dsfile, sizeof(dsfile));
 	mirrorcnt = xattrsize / sizeof(struct pnfsdsfile);
-	if (mirrorcnt < 1 || xattrsize != mirrorcnt * sizeof(struct pnfsdsfile))
+	xattrsize2 = mirrorcnt * sizeof(struct pnfsdsfile);
+	if (mirrorcnt < 1 || xattrsize != xattrsize2)
 		errx(1, "Can't get extattr pnfsd.dsfile for %s", *argv);
 
 	/* See if there is a 0.0.0.0 entry. */
@@ -195,16 +194,19 @@ main(int argc, char *argv[])
 					 * DS, just exit(0), since copying isn't
 					 * required.
 					 */
-					if (nres->ai_family == AF_INET) {
-						sin = (struct sockaddr_in *)
-						    nres->ai_addr;
-						if (sin->sin_addr.s_addr ==
+					if (nres->ai_family == AF_INET &&
+					    nres->ai_addrlen >= sizeof(sin)) {
+						memcpy(&sin, nres->ai_addr,
+						    sizeof(sin));
+						if (sin.sin_addr.s_addr ==
 						    dsfile[i].dsf_sin.sin_addr.s_addr)
 							exit(0);
-					} else if (nres->ai_family == AF_INET6) {
-						sin6 = (struct sockaddr_in6 *)
-						    nres->ai_addr;
-						if (IN6_ARE_ADDR_EQUAL(&sin6->sin6_addr,
+					} else if (nres->ai_family ==
+					    AF_INET6 && nres->ai_addrlen >=
+					    sizeof(sin6)) {
+						memcpy(&sin6, nres->ai_addr,
+						    sizeof(sin));
+						if (IN6_ARE_ADDR_EQUAL(&sin6.sin6_addr,
 						    &dsfile[i].dsf_sin6.sin6_addr))
 							exit(0);
 					}
@@ -253,18 +255,21 @@ main(int argc, char *argv[])
 					/*
 					 * Note if the entry is found.
 					 */
-					if (nres->ai_family == AF_INET) {
-						sin = (struct sockaddr_in *)
-						    nres->ai_addr;
-						if (sin->sin_addr.s_addr ==
+					if (nres->ai_family == AF_INET &&
+					    nres->ai_addrlen >= sizeof(sin)) {
+						memcpy(&sin, nres->ai_addr,
+						    sizeof(sin));
+						if (sin.sin_addr.s_addr ==
 						    dsfile[i].dsf_sin.sin_addr.s_addr) {
 							fnd = 1;
 							break;
 						}
-					} else if (nres->ai_family == AF_INET6) {
-						sin6 = (struct sockaddr_in6 *)
-						    nres->ai_addr;
-						if (IN6_ARE_ADDR_EQUAL(&sin6->sin6_addr,
+					} else if (nres->ai_family ==
+					    AF_INET6 && nres->ai_addrlen >=
+					    sizeof(sin6)) {
+						memcpy(&sin6, nres->ai_addr,
+						    sizeof(sin));
+						if (IN6_ARE_ADDR_EQUAL(&sin6.sin6_addr,
 						    &dsfile[i].dsf_sin6.sin6_addr)) {
 							fnd = 1;
 							break;
