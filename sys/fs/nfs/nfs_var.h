@@ -298,6 +298,11 @@ void nfsrvd_delcache(struct nfsrvcache *);
 void nfsrc_trimcache(uint64_t, uint32_t, int);
 
 /* nfs_commonsubs.c */
+void nfscl_reqstart(struct nfsrv_descript *, int, struct nfsmount *,
+    u_int8_t *, int, u_int32_t **, struct nfsclsession *, int, int);
+void nfsm_stateidtom(struct nfsrv_descript *, nfsv4stateid_t *, int);
+void nfscl_fillsattr(struct nfsrv_descript *, struct vattr *,
+      vnode_t, int, u_int32_t);
 void newnfs_init(void);
 int nfsaddr_match(int, union nethostaddr *, NFSSOCKADDR_T);
 int nfsaddr2_match(NFSSOCKADDR_T, NFSSOCKADDR_T);
@@ -347,11 +352,7 @@ struct nfsdevice *nfsv4_findmirror(struct nfsmount *);
 /* nfs_clcomsubs.c */
 void nfsm_uiombuf(struct nfsrv_descript *, struct uio *, int);
 struct mbuf *nfsm_uiombuflist(struct uio *, int, struct mbuf **, char **);
-void nfscl_reqstart(struct nfsrv_descript *, int, struct nfsmount *,
-    u_int8_t *, int, u_int32_t **, struct nfsclsession *, int, int);
 nfsuint64 *nfscl_getcookie(struct nfsnode *, off_t off, int);
-void nfscl_fillsattr(struct nfsrv_descript *, struct vattr *,
-      vnode_t, int, u_int32_t);
 u_int8_t *nfscl_getmyip(struct nfsmount *, struct in6_addr *, int *);
 int nfsm_getfh(struct nfsrv_descript *, struct nfsfh **);
 int nfscl_mtofh(struct nfsrv_descript *, struct nfsfh **,
@@ -363,7 +364,6 @@ int nfscl_wcc_data(struct nfsrv_descript *, vnode_t,
 int nfsm_loadattr(struct nfsrv_descript *, struct nfsvattr *);
 int nfscl_request(struct nfsrv_descript *, vnode_t,
          NFSPROC_T *, struct ucred *, void *);
-void nfsm_stateidtom(struct nfsrv_descript *, nfsv4stateid_t *, int);
 
 /* nfs_nfsdsubs.c */
 void nfsd_fhtovp(struct nfsrv_descript *, struct nfsrvfh *, int,
@@ -601,7 +601,8 @@ int nfscl_layout(struct nfsmount *, vnode_t, u_int8_t *, int, nfsv4stateid_t *,
     NFSPROC_T *);
 struct nfscllayout *nfscl_getlayout(struct nfsclclient *, uint8_t *, int,
     uint64_t, struct nfsclflayout **, int *);
-void nfscl_dserr(uint32_t, struct nfscldevinfo *, struct nfscllayout *);
+void nfscl_dserr(uint32_t, struct nfscldevinfo *, struct nfscllayout *,
+    struct nfsclds *);
 void nfscl_rellayout(struct nfscllayout *, int);
 struct nfscldevinfo *nfscl_getdevinfo(struct nfsclclient *, uint8_t *,
     struct nfscldevinfo *);
@@ -717,6 +718,7 @@ int nfsrv_setacl(struct vnode *, NFSACL_T *, struct ucred *, NFSPROC_T *);
 
 /* nfs_commonkrpc.c */
 int newnfs_nmcancelreqs(struct nfsmount *);
+void newnfs_canceldspreq(struct nfsclds *);
 void newnfs_set_sigmask(struct thread *, sigset_t *);
 void newnfs_restore_sigmask(struct thread *, sigset_t *);
 int newnfs_msleep(struct thread *, void *, struct mtx *, int, char *, int);

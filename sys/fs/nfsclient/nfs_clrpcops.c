@@ -6043,7 +6043,8 @@ nfscl_dofflayoutio(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 				if (nfsds_failerr(error)) {
 					NFSCL_DEBUG(4,
 					    "DS layreterr for commit\n");
-					nfscl_dserr(NFSV4OP_COMMIT, dp, lyp);
+					nfscl_dserr(NFSV4OP_COMMIT, dp, lyp,
+					    *dspp);
 				}
 			}
 			NFSCL_DEBUG(4, "aft nfsio_commitds=%d\n", error);
@@ -6066,7 +6067,7 @@ nfscl_dofflayoutio(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 			NFSCL_DEBUG(4, "readds=%d\n", error);
 			if (nfsds_failerr(error)) {
 				NFSCL_DEBUG(4, "DS layreterr for read\n");
-				nfscl_dserr(NFSV4OP_READ, dp, lyp);
+				nfscl_dserr(NFSV4OP_READ, dp, lyp, *dspp);
 			}
 		} else {
 			if (flp->nfsfl_mirrorcnt == 1) {
@@ -6102,7 +6103,8 @@ nfscl_dofflayoutio(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 				if (nfsds_failerr(error)) {
 					NFSCL_DEBUG(4,
 					    "DS layreterr for write\n");
-					nfscl_dserr(NFSV4OP_WRITE, dp, lyp);
+					nfscl_dserr(NFSV4OP_WRITE, dp, lyp,
+					    *dspp);
 				}
 			}
 		}

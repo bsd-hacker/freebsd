@@ -510,7 +510,7 @@ newnfs_request(struct nfsrv_descript *nd, struct nfsmount *nmp,
 	uint32_t retseq, retval, slotseq, *tl;
 	time_t waituntil;
 	int i = 0, j = 0, opcnt, set_sigset = 0, slot;
-	int error = 0, usegssname = 0, secflavour = AUTH_SYS, trycnt;
+	int error = 0, usegssname = 0, secflavour = AUTH_SYS;
 	int freeslot, maxslot, reterr, slotpos, timeo;
 	u_int16_t procnum;
 	u_int trylater_delay = 1;
@@ -719,7 +719,6 @@ newnfs_request(struct nfsrv_descript *nd, struct nfsmount *nmp,
 		}
 #endif
 	}
-	trycnt = 0;
 	freeslot = -1;		/* Set to slot that needs to be free'd */
 tryagain:
 	slot = -1;		/* Slot that needs a sequence# increment. */
@@ -810,55 +809,31 @@ tryagain:
 		error = EINTR;
 	} else if (stat == RPC_CANTSEND || stat == RPC_CANTRECV ||
 	     stat == RPC_SYSTEMERROR) {
-		if ((nd->nd_flag & ND_NFSV41) != 0 && nmp != NULL &&
+		/* Check for a session slot that needs to be free'd. */
+		if ((nd->nd_flag & (ND_NFSV41 | ND_HASSLOTID)) ==
+		    (ND_NFSV41 | ND_HASSLOTID) && nmp != NULL &&
 		    nd->nd_procnum != NFSPROC_NULL) {
 			/*
-			 * The nfsess_defunct field is protected by
-			 * the NFSLOCKMNT()/nm_mtx lock and not the
-			 * nfsess_mtx lock to simplify its handling,
-			 * for the MDS session. This lock is also
-			 * sufficient for nfsess_sessionid, since it
-			 * never changes in the structure.
+			 * This should only occur when either the MDS or
+			 * a client has an RPC against a DS fail.
+			 * This happens because these cases use "soft"
+			 * connections that can time out and fail.
+			 * The slot used for this RPC is now in a
+			 * non-deterministic state, but if the slot isn't
+			 * free'd, threads can get stuck waiting for a slot.
 			 */
-			NFSLOCKCLSTATE();
-			NFSLOCKMNT(nmp);
-			/* The session must be marked defunct. */
-			if (dssep == NULL) {
-				/*
-				 * This is either an MDS proxy operation or
-				 * a client mount with "soft,retrans=N" options.
-				 * Mark the MDS session defunct and initiate
-				 * recovery, as required.
-				 */
-				NFSCL_DEBUG(1, "Failed soft proxy RPC\n");
-				sep = NFSMNT_MDSSESSION(nmp);
-				if (bcmp(sep->nfsess_sessionid, nd->nd_sequence,
-				    NFSX_V4SESSIONID) == 0) {
-					/* Initiate recovery. */
-					sep->nfsess_defunct = 1;
-					NFSCL_DEBUG(1, "Marked defunct\n");
-					if (nmp->nm_clp != NULL) {
-						nmp->nm_clp->nfsc_flags |=
-						    NFSCLFLAGS_RECOVER;
-						wakeup(nmp->nm_clp);
-					}
-				}
-			} else {
-				/*
-				 * This is a client side DS RPC. Just mark
-				 * the session defunct.  A subsequent LayoutGet
-				 * should get a new session.
-				 */
-				NFSCL_DEBUG(1, "Failed client DS RPC\n");
-				if (bcmp(dssep->nfsess_sessionid,
-				    nd->nd_sequence, NFSX_V4SESSIONID) == 0) {
-					/* Mark it defunct. */
-					dssep->nfsess_defunct = 1;
-					NFSCL_DEBUG(1, "Marked defunct\n");
-				}
-			}
-			NFSUNLOCKMNT(nmp);
-			NFSUNLOCKCLSTATE();
+			if (sep == NULL)
+				sep = nfsmnt_mdssession(nmp);
+			/*
+			 * Bump the sequence# out of range, so that reuse of
+			 * this slot will result in an NFSERR_SEQMISORDERED
+			 * error and not a bogus cached RPC reply.
+			 */
+			mtx_lock(&sep->nfsess_mtx);
+			sep->nfsess_slotseq[nd->nd_slotid] += 10;
+			mtx_unlock(&sep->nfsess_mtx);
+			/* And free the slot. */
+			nfsv4_freeslot(sep, nd->nd_slotid);
 		}
 		NFSINCRGLOBAL(nfsstatsv1.rpcinvalid);
 		error = ENXIO;
@@ -1220,6 +1195,30 @@ lookformore:
 	}
 	NFSUNLOCKMNT(nmp);
 	return (0);
+}
+
+/*
+ * Sinilar to newnfs_nmcancelreqs(), except that it is called for a
+ * single DS's dsp.
+ * It also marks the session defunct.
+ */
+void
+newnfs_canceldspreq(struct nfsclds *dsp)
+{
+	struct __rpc_client *cl;
+
+	NFSLOCKDS(dsp);
+	if ((dsp->nfsclds_flags & NFSCLDS_CLOSED) == 0 &&
+	    dsp->nfsclds_sockp != NULL &&
+	    dsp->nfsclds_sockp->nr_client != NULL) {
+		dsp->nfsclds_flags |= NFSCLDS_CLOSED;
+		dsp->nfsclds_sess.nfsess_defunct = 1;
+		cl = dsp->nfsclds_sockp->nr_client;
+		NFSUNLOCKDS(dsp);
+		CLNT_CLOSE(cl);
+		return;
+	}
+	NFSUNLOCKDS(dsp);
 }
 
 /*

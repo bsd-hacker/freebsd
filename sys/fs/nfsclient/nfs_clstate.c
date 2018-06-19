@@ -4971,13 +4971,16 @@ nfscl_retoncloselayout(vnode_t vp, struct nfsclclient *clp, uint8_t *fhp,
 
 /*
  * Mark the layout to be recalled and with an error.
+ * Also, disable the dsp from further use.
  */
 void
-nfscl_dserr(uint32_t op, struct nfscldevinfo *dp, struct nfscllayout *lyp)
+nfscl_dserr(uint32_t op, struct nfscldevinfo *dp, struct nfscllayout *lyp,
+    struct nfsclds *dsp)
 {
 	struct nfsclrecalllayout *recallp;
 	uint32_t iomode;
 
+	/* Set up the return of the layout. */
 	recallp = malloc(sizeof(*recallp), M_NFSLAYRECALL, M_WAITOK);
 	iomode = 0;
 	NFSLOCKCLSTATE();
@@ -4995,6 +4998,9 @@ nfscl_dserr(uint32_t op, struct nfscldevinfo *dp, struct nfscllayout *lyp)
 		NFSUNLOCKCLSTATE();
 		free(recallp, M_NFSLAYRECALL);
 	}
+
+	/* Disable the dsp. */
+	newnfs_canceldspreq(dsp);
 }
 
 /*
