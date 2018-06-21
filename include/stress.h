@@ -47,8 +47,8 @@ typedef struct {
 	int hog;
 	int nodelay;
 	int kill;
-	int kblocks;
-	int inodes;
+	int64_t kblocks;
+	int64_t inodes;
 } opt_t;
 
 extern opt_t *op;
