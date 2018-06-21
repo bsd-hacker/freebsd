@@ -1205,6 +1205,7 @@ lookformore:
 void
 newnfs_canceldspreq(struct nfsclds *dsp)
 {
+#ifdef notnow
 	struct __rpc_client *cl;
 
 	NFSLOCKDS(dsp);
@@ -1219,6 +1220,7 @@ newnfs_canceldspreq(struct nfsclds *dsp)
 		return;
 	}
 	NFSUNLOCKDS(dsp);
+#endif
 }
 
 /*
