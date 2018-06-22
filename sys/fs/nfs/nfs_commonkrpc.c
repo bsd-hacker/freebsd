@@ -1198,32 +1198,6 @@ lookformore:
 }
 
 /*
- * Sinilar to newnfs_nmcancelreqs(), except that it is called for a
- * single DS's dsp.
- * It also marks the session defunct.
- */
-void
-newnfs_canceldspreq(struct nfsclds *dsp)
-{
-#ifdef notnow
-	struct __rpc_client *cl;
-
-	NFSLOCKDS(dsp);
-	if ((dsp->nfsclds_flags & NFSCLDS_CLOSED) == 0 &&
-	    dsp->nfsclds_sockp != NULL &&
-	    dsp->nfsclds_sockp->nr_client != NULL) {
-		dsp->nfsclds_flags |= NFSCLDS_CLOSED;
-		dsp->nfsclds_sess.nfsess_defunct = 1;
-		cl = dsp->nfsclds_sockp->nr_client;
-		NFSUNLOCKDS(dsp);
-		CLNT_CLOSE(cl);
-		return;
-	}
-	NFSUNLOCKDS(dsp);
-#endif
-}
-
-/*
  * Any signal that can interrupt an NFS operation in an intr mount
  * should be added to this set. SIGSTOP and SIGKILL cannot be masked.
  */

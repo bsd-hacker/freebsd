@@ -601,8 +601,8 @@ int nfscl_layout(struct nfsmount *, vnode_t, u_int8_t *, int, nfsv4stateid_t *,
     NFSPROC_T *);
 struct nfscllayout *nfscl_getlayout(struct nfsclclient *, uint8_t *, int,
     uint64_t, struct nfsclflayout **, int *);
-void nfscl_dserr(uint32_t, struct nfscldevinfo *, struct nfscllayout *,
-    struct nfsclds *);
+void nfscl_dserr(uint32_t, uint32_t, struct nfscldevinfo *,
+    struct nfscllayout *, struct nfsclds *);
 void nfscl_rellayout(struct nfscllayout *, int);
 struct nfscldevinfo *nfscl_getdevinfo(struct nfsclclient *, uint8_t *,
     struct nfscldevinfo *);
@@ -718,7 +718,6 @@ int nfsrv_setacl(struct vnode *, NFSACL_T *, struct ucred *, NFSPROC_T *);
 
 /* nfs_commonkrpc.c */
 int newnfs_nmcancelreqs(struct nfsmount *);
-void newnfs_canceldspreq(struct nfsclds *);
 void newnfs_set_sigmask(struct thread *, sigset_t *);
 void newnfs_restore_sigmask(struct thread *, sigset_t *);
 int newnfs_msleep(struct thread *, void *, struct mtx *, int, char *, int);

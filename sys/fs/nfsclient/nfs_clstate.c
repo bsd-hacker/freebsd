@@ -4974,8 +4974,8 @@ nfscl_retoncloselayout(vnode_t vp, struct nfsclclient *clp, uint8_t *fhp,
  * Also, disable the dsp from further use.
  */
 void
-nfscl_dserr(uint32_t op, struct nfscldevinfo *dp, struct nfscllayout *lyp,
-    struct nfsclds *dsp)
+nfscl_dserr(uint32_t op, uint32_t stat, struct nfscldevinfo *dp,
+    struct nfscllayout *lyp, __unused struct nfsclds *dsp)
 {
 	struct nfsclrecalllayout *recallp;
 	uint32_t iomode;
@@ -4990,17 +4990,14 @@ nfscl_dserr(uint32_t op, struct nfscldevinfo *dp, struct nfscllayout *lyp,
 		if (!LIST_EMPTY(&lyp->nfsly_flayrw))
 			iomode |= NFSLAYOUTIOMODE_RW;
 		(void)nfscl_layoutrecall(NFSLAYOUTRETURN_FILE, lyp, iomode,
-		    0, UINT64_MAX, lyp->nfsly_stateid.seqid, NFSERR_IO, op,
+		    0, UINT64_MAX, lyp->nfsly_stateid.seqid, stat, op,
 		    dp->nfsdi_deviceid, recallp);
 		NFSUNLOCKCLSTATE();
-		NFSCL_DEBUG(4, "retoncls recall iomode=%d\n", iomode);
+		NFSCL_DEBUG(4, "nfscl_dserr recall iomode=%d\n", iomode);
 	} else {
 		NFSUNLOCKCLSTATE();
 		free(recallp, M_NFSLAYRECALL);
 	}
-
-	/* Disable the dsp. */
-	newnfs_canceldspreq(dsp);
 }
 
 /*
@@ -5253,6 +5250,19 @@ nfscl_layoutrecall(int recalltype, struct nfscllayout *lyp, uint32_t iomode,
 			LIST_INSERT_BEFORE(rp, recallp, nfsrecly_list);
 			break;
 		}
+
+		/*
+		 * Put any error return on all the file returns that will
+		 * preceed this one.
+		 */
+		if (rp->nfsrecly_recalltype == NFSLAYOUTRETURN_FILE &&
+		   stat != 0 && rp->nfsrecly_stat == 0) {
+			rp->nfsrecly_stat = stat;
+			rp->nfsrecly_op = op;
+			if (devid != NULL)
+				NFSBCOPY(devid, rp->nfsrecly_devid,
+				    NFSX_V4DEVICEID);
+		}
 	}
 	if (rp == NULL) {
 		if (orp == NULL)
@@ -5262,6 +5272,7 @@ nfscl_layoutrecall(int recalltype, struct nfscllayout *lyp, uint32_t iomode,
 			LIST_INSERT_AFTER(orp, recallp, nfsrecly_list);
 	}
 	lyp->nfsly_flags |= NFSLY_RECALL;
+	wakeup(lyp->nfsly_clp);
 	return (0);
 }
 
