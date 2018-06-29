@@ -28,7 +28,7 @@
 .\"	@(#)nfsd.8	8.4 (Berkeley) 3/29/95
 .\" $FreeBSD$
 .\"
-.Dd June 29, 2018
+.Dd June 30, 2018
 .Dt NFSD 8
 .Os
 .Sh NAME
@@ -127,11 +127,6 @@ If this is specified, it means that this DS is to be used to store data
 files for this mds_path file system only.
 If this optional component does not exist, the DS will be used to store data
 files for all exported MDS file systems.
-At this time, only IPv4 addresses are supported by the interface to the kernel,
-so the
-.Dq server hostname
-must resolve to an IPv4 address and support mounts on that address.
-This needs to be extended to support IPv6 addresses in the near future.
 The DS storage file systems must be mounted on this system before the
 .Nm
 is started with this option specified.
