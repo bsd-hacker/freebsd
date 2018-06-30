@@ -130,18 +130,18 @@ main(int argc, char *argv[])
 			break;
 		case 's':
 			/* Translate the server name to an IP address. */
-			if (zerofh != 0 || zerods != 0 || mirrorit != 0 ||
-			    newres != NULL || res != NULL)
-				errx(1, "-c, -m, -r, -s and -z are mutually "
-				    "exclusive and only can be used once");
+			if (zerods != 0 || mirrorit != 0 || newres != NULL ||
+			    res != NULL)
+				errx(1, "-c, -m and -r are mutually exclusive "
+				    "from use with -s and -z");
 			if (getaddrinfo(optarg, NULL, NULL, &res) != 0)
 				errx(1, "Can't get IP# for %s", optarg);
 			break;
 		case 'z':
 			if (zerofh != 0 || zerods != 0 || mirrorit != 0 ||
-			    newres != NULL || res != NULL)
-				errx(1, "-c, -m, -r, -s and -z are mutually "
-				    "exclusive and only can be used once");
+			    newres != NULL)
+				errx(1, "-c, -m and -r are mutually exclusive "
+				    "from use with -s and -z");
 			zerofh = 1;
 			break;
 		default:
