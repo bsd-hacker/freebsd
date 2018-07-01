@@ -60,6 +60,9 @@ rcvar="panicmail_enable"
 start_cmd="panicmail_run"
 stop_cmd=":"
 
+# On HEAD, gdb will be installed from ports
+PATH=${PATH}:/usr/local/bin
+
 # Gather the data we want to include in a panic report.
 panicmail_gather()
 {
