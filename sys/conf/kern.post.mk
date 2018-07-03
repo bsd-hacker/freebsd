@@ -156,7 +156,7 @@ ${FULLKERNEL}: ${SYSTEM_DEP} vers.o
 .endif
 	${SYSTEM_LD_TAIL}
 
-OBJS_DEPEND_GUESS+=	assym.inc vnode_if.h ${BEFORE_DEPEND:M*.h} \
+OBJS_DEPEND_GUESS+=	offset.inc assym.inc vnode_if.h ${BEFORE_DEPEND:M*.h} \
 			${MFILES:T:S/.m$/.h/}
 
 .for mfile in ${MFILES}
@@ -194,6 +194,9 @@ genoffset.o: $S/kern/genoffset.c
 genoffset_test.c: $S/kern/genoffset.c
 	cp $S/kern/genoffset.c genoffset_test.c
 
+# genoffset_test.o is not actually used for anything - the point of compiling it
+# is to exercise the CTASSERT that checks that the offsets in the offset.inc
+# _lite struct(s) match those in the original(s). 
 genoffset_test.o: genoffset_test.c offset.inc
 	${CC} -c ${CFLAGS:N-flto:N-fno-common} -DOFFSET_TEST genoffset_test.c
 
