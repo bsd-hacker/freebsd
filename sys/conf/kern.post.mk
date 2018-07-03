@@ -191,14 +191,12 @@ offset.inc: $S/kern/genoffset.sh genoffset.o
 genoffset.o: $S/kern/genoffset.c
 	${CC} -c ${CFLAGS:N-flto:N-fno-common} $S/kern/genoffset.c
 
-genoffset_test.c: $S/kern/genoffset.c
-	cp $S/kern/genoffset.c genoffset_test.c
-
 # genoffset_test.o is not actually used for anything - the point of compiling it
 # is to exercise the CTASSERT that checks that the offsets in the offset.inc
 # _lite struct(s) match those in the original(s). 
-genoffset_test.o: genoffset_test.c offset.inc
-	${CC} -c ${CFLAGS:N-flto:N-fno-common} -DOFFSET_TEST genoffset_test.c
+genoffset_test.o: $S/kern/genoffset.c offset.inc
+	${CC} -c ${CFLAGS:N-flto:N-fno-common} -DOFFSET_TEST ${.ALLSRC:M*.c} \
+	    -o ${.TARGET}
 
 assym.inc: $S/kern/genassym.sh genassym.o genoffset_test.o
 	NM='${NM}' NMFLAGS='${NMFLAGS}' sh $S/kern/genassym.sh genassym.o > ${.TARGET}
@@ -231,7 +229,7 @@ kernel-depend: .depend
 SRCS=	assym.inc offset.inc vnode_if.h ${BEFORE_DEPEND} ${CFILES} \
 	${SYSTEM_CFILES} ${GEN_CFILES} ${SFILES} \
 	${MFILES:T:S/.m$/.h/}
-DEPENDOBJS+=	${SYSTEM_OBJS} genassym.o genoffset.o
+DEPENDOBJS+=	${SYSTEM_OBJS} genassym.o genoffset.o genoffset_test.o
 DEPENDFILES=	${DEPENDOBJS:O:u:C/^/.depend./}
 .if ${MAKE_VERSION} < 20160220
 DEPEND_MP?=	-MP
