@@ -174,10 +174,21 @@ clnt_reconnect_connect(CLIENT *cl)
 		newclient = clnt_dg_create(so,
 		    (struct sockaddr *) &rc->rc_addr, rc->rc_prog, rc->rc_vers,
 		    rc->rc_sendsz, rc->rc_recvsz);
-	else
+	else {
+		if (rc->rc_timeout.tv_sec > 0 && rc->rc_timeout.tv_usec != -1) {
+			error = so_setsockopt(so, SOL_SOCKET, SO_SNDTIMEO,
+			    &rc->rc_timeout, sizeof(struct timeval));
+			if (error != 0) {
+				stat = rpc_createerr.cf_stat = RPC_CANTSEND;
+				rpc_createerr.cf_error.re_errno = error;
+				td->td_ucred = oldcred;
+				goto out;
+			}
+		}
 		newclient = clnt_vc_create(so,
 		    (struct sockaddr *) &rc->rc_addr, rc->rc_prog, rc->rc_vers,
 		    rc->rc_sendsz, rc->rc_recvsz, rc->rc_intr);
+	}
 	td->td_ucred = oldcred;
 
 	if (!newclient) {

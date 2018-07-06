@@ -195,7 +195,7 @@ newnfs_connect(struct nfsmount *nmp, struct nfssockreq *nrp,
 	 */
 	if (nrp->nr_cred != NULL)
 		td->td_ucred = nrp->nr_cred;
-	else
+	else if (cred != NULL)
 		td->td_ucred = cred;
 	saddr = nrp->nr_nam;
 
@@ -298,6 +298,13 @@ newnfs_connect(struct nfsmount *nmp, struct nfssockreq *nrp,
 			retries = INT_MAX;
 		if (NFSHASNFSV4N(nmp)) {
 			if (cred != NULL) {
+				if (NFSHASSOFT(nmp)) {
+					/* This should be a DS mount. */
+					timo.tv_sec = 15;
+					timo.tv_usec = 0;
+					CLNT_CONTROL(client, CLSET_TIMEOUT,
+					    &timo);
+				}
 				/*
 				 * Make sure the nfscbd_pool doesn't get
 				 * destroyed while doing this.
@@ -326,6 +333,9 @@ newnfs_connect(struct nfsmount *nmp, struct nfssockreq *nrp,
 				 * only case where using a "soft" mount is
 				 * recommended for NFSv4.
 				 */
+				timo.tv_sec = 15;
+				timo.tv_usec = 0;
+				CLNT_CONTROL(client, CLSET_TIMEOUT, &timo);
 				retries = 2;
 			}
 		}
