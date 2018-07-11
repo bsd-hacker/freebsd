@@ -34,6 +34,9 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 [ -d /usr/src/sys ] || exit 0
+builddir=`sysctl kern.version | grep @ | sed 's/.*://'`
+[ -d "$builddir" ] && export KERNBUILDDIR=$builddir || exit 0
+export SYSDIR=`echo $builddir | sed 's#/sys.*#/sys#'`
 kldstat -v | grep -q pty || { kldload pty || exit 0; }
 
 . ../default.cfg
