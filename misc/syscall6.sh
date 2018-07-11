@@ -29,14 +29,15 @@
 #
 
 # Run selected syscall fuzz tests as root.
-# No problems seen on HEAD.
+# https://people.freebsd.org/~pho/stress/log/syscall6.txt
+# Fixed by r336149
 
 . ../default.cfg
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 [ -f /usr/include/sys/syscall.h ] || exit 0
 
-list="mount ktrace unmount"
+list="fdatasync mount ktrace unmount"
 
 for i in $list; do
 	num=`grep SYS_$i /usr/include/sys/syscall.h | tail -1 | awk '{print $NF}'`
