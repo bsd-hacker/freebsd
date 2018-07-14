@@ -142,6 +142,8 @@ clnt_vc_create(
 	XDR xdrs;
 	int error, interrupted, one = 1, sleep_flag;
 	struct sockopt sopt;
+	struct timeval tv;
+	int timo;
 
 	if (disrupt == 0)
 		disrupt = (uint32_t)(long)raddr;
@@ -156,6 +158,18 @@ clnt_vc_create(
 	ct->ct_upcallrefs = 0;
 
 	if ((so->so_state & (SS_ISCONNECTED|SS_ISCONFIRMING)) == 0) {
+		/* Check for a timeout on the soconnect(). */
+		bzero(&sopt, sizeof(sopt));
+		sopt.sopt_dir = SOPT_GET;
+		sopt.sopt_level = SOL_SOCKET;
+		sopt.sopt_name = SO_SNDTIMEO;
+		sopt.sopt_val = &tv;
+		sopt.sopt_valsize = sizeof(tv);
+		error = sogetopt(so, &sopt);
+		timo = 0;
+		if (error == 0 && tv.tv_sec > 0 && tv.tv_sec <= 600 &&
+		    tv.tv_usec >= 0)
+			timo = hz * tv.tv_sec;
 		error = soconnect(so, raddr, curthread);
 		SOCK_LOCK(so);
 		interrupted = 0;
@@ -165,9 +179,10 @@ clnt_vc_create(
 		while ((so->so_state & SS_ISCONNECTING)
 		    && so->so_error == 0) {
 			error = msleep(&so->so_timeo, SOCK_MTX(so),
-			    sleep_flag, "connec", 0);
+			    sleep_flag, "connec", timo);
 			if (error) {
-				if (error == EINTR || error == ERESTART)
+				if (error == EINTR || error == ERESTART ||
+				    error == EAGAIN)
 					interrupted = 1;
 				break;
 			}

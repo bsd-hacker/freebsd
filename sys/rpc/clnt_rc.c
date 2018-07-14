@@ -175,7 +175,7 @@ clnt_reconnect_connect(CLIENT *cl)
 		    (struct sockaddr *) &rc->rc_addr, rc->rc_prog, rc->rc_vers,
 		    rc->rc_sendsz, rc->rc_recvsz);
 	else {
-		if (rc->rc_timeout.tv_sec > 0 && rc->rc_timeout.tv_usec != -1) {
+		if (rc->rc_timeout.tv_sec > 0 && rc->rc_timeout.tv_usec >= 0) {
 			error = so_setsockopt(so, SOL_SOCKET, SO_SNDTIMEO,
 			    &rc->rc_timeout, sizeof(struct timeval));
 			if (error != 0) {
