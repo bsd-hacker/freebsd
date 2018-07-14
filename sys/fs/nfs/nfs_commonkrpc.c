@@ -302,7 +302,16 @@ newnfs_connect(struct nfsmount *nmp, struct nfssockreq *nrp,
 		if (NFSHASNFSV4N(nmp)) {
 			if (cred != NULL) {
 				if (NFSHASSOFT(nmp)) {
-					/* This should be a DS mount. */
+					/*
+					 * This should be a DS mount.  If the
+					 * timeout is set to 1/4th of the lease
+					 * duration, the DS should be disabled
+					 * at approximately 1/2 lease duration,
+					 * due to a retry count of 2.
+					 * This will hopefully cause the client
+					 * to continue without the disabled
+					 * DS in less than the lease duration.
+					 */
 					timo.tv_sec = nfsrv_lease / 4;
 					if (timo.tv_sec < 10)
 						timo.tv_sec = 10;
@@ -337,6 +346,7 @@ newnfs_connect(struct nfsmount *nmp, struct nfssockreq *nrp,
 				 * not maintain open/lock state and is the
 				 * only case where using a "soft" mount is
 				 * recommended for NFSv4.
+				 * See the comment above w.r.t. timeout.
 				 */
 				timo.tv_sec = nfsrv_lease / 4;
 				if (timo.tv_sec < 10)
