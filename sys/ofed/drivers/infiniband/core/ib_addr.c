@@ -33,9 +33,10 @@
  * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- *
- * $FreeBSD$
  */
+
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
 #include <linux/mutex.h>
 #include <linux/inetdevice.h>
@@ -88,6 +89,22 @@ int rdma_addr_size(struct sockaddr *addr)
 	}
 }
 EXPORT_SYMBOL(rdma_addr_size);
+
+int rdma_addr_size_in6(struct sockaddr_in6 *addr)
+{
+	int ret = rdma_addr_size((struct sockaddr *) addr);
+
+	return ret <= sizeof(*addr) ? ret : 0;
+}
+EXPORT_SYMBOL(rdma_addr_size_in6);
+
+int rdma_addr_size_kss(struct sockaddr_storage *addr)
+{
+	int ret = rdma_addr_size((struct sockaddr *) addr);
+
+	return ret <= sizeof(*addr) ? ret : 0;
+}
+EXPORT_SYMBOL(rdma_addr_size_kss);
 
 static struct rdma_addr_client self;
 
@@ -333,6 +350,10 @@ static int addr4_resolve(struct sockaddr_in *src_in,
 				error = EHOSTUNREACH;
 				goto error_put_ifp;
 			}
+			/* get destination network interface from route */
+			dev_put(ifp);
+			ifp = rte->rt_ifp;
+			dev_hold(ifp);
 		} else if (ifp != rte->rt_ifp) {
 			/*
 			 * Source and destination interfaces are
@@ -528,6 +549,10 @@ static int addr6_resolve(struct sockaddr_in6 *src_in,
 				error = EHOSTUNREACH;
 				goto error_put_ifp;
 			}
+			/* get destination network interface from route */
+			dev_put(ifp);
+			ifp = rte->rt_ifp;
+			dev_hold(ifp);
 		} else if (ifp != rte->rt_ifp) {
 			/*
 			 * Source and destination interfaces are

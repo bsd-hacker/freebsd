@@ -33,9 +33,10 @@
  * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- *
- * $FreeBSD$
  */
+
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
 #define	LINUXKPI_PARAM_PREFIX ibcore_
 
@@ -1943,6 +1944,9 @@ static int create_qp(struct ib_uverbs_file *file,
 			atomic_inc(&attr.srq->usecnt);
 		if (ind_tbl)
 			atomic_inc(&ind_tbl->usecnt);
+	} else {
+		/* It is done in _ib_create_qp for other QP types */
+		qp->uobject = &obj->uevent.uobject;
 	}
 	qp->uobject = &obj->uevent.uobject;
 
@@ -2361,6 +2365,25 @@ ssize_t ib_uverbs_modify_qp(struct ib_uverbs_file *file,
 	if (!qp) {
 		ret = -EINVAL;
 		goto out;
+	}
+
+	if ((cmd.attr_mask & IB_QP_PORT) &&
+	    !rdma_is_port_valid(qp->device, cmd.port_num)) {
+		ret = -EINVAL;
+		goto release_qp;
+	}
+
+	if ((cmd.attr_mask & IB_QP_AV) &&
+	    !rdma_is_port_valid(qp->device, cmd.dest.port_num)) {
+		ret = -EINVAL;
+		goto release_qp;
+	}
+
+	if ((cmd.attr_mask & IB_QP_ALT_PATH) &&
+	    (!rdma_is_port_valid(qp->device, cmd.alt_port_num) ||
+	    !rdma_is_port_valid(qp->device, cmd.alt_dest.port_num))) {
+		ret = -EINVAL;
+		goto release_qp;
 	}
 
 	attr->qp_state 		  = cmd.qp_state;
@@ -2892,6 +2915,9 @@ ssize_t ib_uverbs_create_ah(struct ib_uverbs_file *file,
 
 	if (copy_from_user(&cmd, buf, sizeof cmd))
 		return -EFAULT;
+
+	if (!rdma_is_port_valid(ib_dev, cmd.attr.port_num))
+		return -EINVAL;
 
 	INIT_UDATA(&udata, buf + sizeof(cmd),
 		   (unsigned long)cmd.response + sizeof(resp),

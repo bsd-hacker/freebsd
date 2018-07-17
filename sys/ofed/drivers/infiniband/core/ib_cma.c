@@ -33,9 +33,10 @@
  * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- *
- * $FreeBSD$
  */
+
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
 #define	LINUXKPI_PARAM_PREFIX ibcore_
 
@@ -983,6 +984,8 @@ int rdma_init_qp_attr(struct rdma_cm_id *id, struct ib_qp_attr *qp_attr,
 		} else
 			ret = iw_cm_init_qp_attr(id_priv->cm_id.iw, qp_attr,
 						 qp_attr_mask);
+		qp_attr->port_num = id_priv->id.port_num;
+		*qp_attr_mask |= IB_QP_PORT;
 	} else
 		ret = -ENOSYS;
 
@@ -2449,14 +2452,8 @@ static int cma_resolve_iw_route(struct rdma_id_private *id_priv, int timeout_ms)
 
 static int iboe_tos_to_sl(struct net_device *ndev, int tos)
 {
-	/* get service level, SL, from type of service, TOS */
-	int sl = tos;
-
-	/* range check input argument and map 1:1 */
-	if (sl > 255)
-		sl = 255;
-	else if (sl < 0)
-		sl = 0;
+	/* get service level, SL, from IPv4 type of service, TOS */
+	int sl = (tos >> 5) & 0x7;
 
 	/* final mappings are done by the vendor specific drivers */
 	return sl;
@@ -2541,6 +2538,7 @@ static int cma_resolve_iboe_route(struct rdma_id_private *id_priv)
 	route->path_rec->pkey = cpu_to_be16(0xffff);
 	route->path_rec->mtu_selector = IB_SA_EQ;
 	route->path_rec->sl = iboe_tos_to_sl(ndev, id_priv->tos);
+	route->path_rec->traffic_class = id_priv->tos;
 	route->path_rec->mtu = iboe_get_mtu(ndev->if_mtu);
 	route->path_rec->rate_selector = IB_SA_EQ;
 	route->path_rec->rate = iboe_get_rate(ndev);
@@ -3767,10 +3765,14 @@ static int cma_ib_mc_handler(int status, struct ib_sa_multicast *multicast)
 			rdma_start_port(id_priv->cma_dev->device)];
 
 		event.event = RDMA_CM_EVENT_MULTICAST_JOIN;
-		ib_init_ah_from_mcmember(id_priv->id.device,
-					 id_priv->id.port_num, &multicast->rec,
-					 ndev, gid_type,
-					 &event.param.ud.ah_attr);
+		ret = ib_init_ah_from_mcmember(id_priv->id.device,
+					       id_priv->id.port_num,
+					       &multicast->rec,
+					       ndev, gid_type,
+					       &event.param.ud.ah_attr);
+		if (ret)
+			event.event = RDMA_CM_EVENT_MULTICAST_ERROR;
+
 		event.param.ud.qp_num = 0xFFFFFF;
 		event.param.ud.qkey = be32_to_cpu(multicast->rec.qkey);
 		if (ndev)
@@ -3947,7 +3949,8 @@ static void iboe_mcast_work_handler(struct work_struct *work)
 	kfree(mw);
 }
 
-static void cma_iboe_set_mgid(struct sockaddr *addr, union ib_gid *mgid)
+static void cma_iboe_set_mgid(struct sockaddr *addr, union ib_gid *mgid,
+			      enum ib_gid_type gid_type)
 {
 	struct sockaddr_in *sin = (struct sockaddr_in *)addr;
 	struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)addr;
@@ -3957,8 +3960,10 @@ static void cma_iboe_set_mgid(struct sockaddr *addr, union ib_gid *mgid)
 	} else if (addr->sa_family == AF_INET6) {
 		memcpy(mgid, &sin6->sin6_addr, sizeof *mgid);
 	} else {
-		mgid->raw[0] = 0xff;
-		mgid->raw[1] = 0x0e;
+		mgid->raw[0] =
+			(gid_type == IB_GID_TYPE_ROCE_UDP_ENCAP) ? 0 : 0xff;
+		mgid->raw[1] =
+			(gid_type == IB_GID_TYPE_ROCE_UDP_ENCAP) ? 0 : 0x0e;
 		mgid->raw[2] = 0;
 		mgid->raw[3] = 0;
 		mgid->raw[4] = 0;
@@ -3999,7 +4004,9 @@ static int cma_iboe_join_multicast(struct rdma_id_private *id_priv,
 		goto out1;
 	}
 
-	cma_iboe_set_mgid(addr, &mc->multicast.ib->rec.mgid);
+	gid_type = id_priv->cma_dev->default_gid_type[id_priv->id.port_num -
+		   rdma_start_port(id_priv->cma_dev->device)];
+	cma_iboe_set_mgid(addr, &mc->multicast.ib->rec.mgid, gid_type);
 
 	mc->multicast.ib->rec.pkey = cpu_to_be16(0xffff);
 	if (id_priv->id.ps == RDMA_PS_UDP)
@@ -4015,9 +4022,7 @@ static int cma_iboe_join_multicast(struct rdma_id_private *id_priv,
 	mc->multicast.ib->rec.hop_limit = 1;
 	mc->multicast.ib->rec.mtu = iboe_get_mtu(ndev->if_mtu);
 
-	gid_type = id_priv->cma_dev->default_gid_type[id_priv->id.port_num -
-		   rdma_start_port(id_priv->cma_dev->device)];
-	if (addr->sa_family == AF_INET) {
+	if (addr->sa_family == AF_INET || addr->sa_family == AF_INET6) {
 		if (gid_type == IB_GID_TYPE_ROCE_UDP_ENCAP) {
 			mc->multicast.ib->rec.hop_limit = IPV6_DEFAULT_HOPLIMIT;
 			if (!send_only) {
@@ -4060,6 +4065,9 @@ int rdma_join_multicast(struct rdma_cm_id *id, struct sockaddr *addr,
 	struct rdma_id_private *id_priv;
 	struct cma_multicast *mc;
 	int ret;
+
+	if (!id->device)
+		return -EINVAL;
 
 	id_priv = container_of(id, struct rdma_id_private, id);
 	if (!cma_comp(id_priv, RDMA_CM_ADDR_BOUND) &&
