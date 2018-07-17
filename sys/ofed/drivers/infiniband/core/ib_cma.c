@@ -427,6 +427,30 @@ static inline void cma_set_ip_ver(struct cma_hdr *hdr, u8 ip_ver)
 	hdr->ip_version = (ip_ver << 4) | (hdr->ip_version & 0xF);
 }
 
+static int cma_igmp_send(struct net_device *ndev, const union ib_gid *mgid, bool join)
+{
+	int retval;
+
+	if (ndev) {
+		union {
+			struct sockaddr sock;
+			struct sockaddr_storage storage;
+		} addr;
+
+		rdma_gid2ip(&addr.sock, mgid);
+
+		CURVNET_SET_QUIET(ndev->if_vnet);
+		if (join)
+			retval = -if_addmulti(ndev, &addr.sock, NULL);
+		else
+			retval = -if_delmulti(ndev, &addr.sock);
+		CURVNET_RESTORE();
+	} else {
+		retval = -ENODEV;
+	}
+	return retval;
+}
+
 static void _cma_attach_to_dev(struct rdma_id_private *id_priv,
 			       struct cma_device *cma_dev)
 {
@@ -544,12 +568,12 @@ static int cma_translate_addr(struct sockaddr *addr, struct rdma_dev_addr *dev_a
 
 static inline int cma_validate_port(struct ib_device *device, u8 port,
 				    enum ib_gid_type gid_type,
-				      union ib_gid *gid, int dev_type,
-				      struct vnet *net,
-				      int bound_if_index)
+				    union ib_gid *gid,
+				    const struct rdma_dev_addr *dev_addr)
 {
+	const int dev_type = dev_addr->dev_type;
+	struct net_device *ndev;
 	int ret = -ENODEV;
-	struct net_device *ndev = NULL;
 
 	if ((dev_type == ARPHRD_INFINIBAND) && !rdma_protocol_ib(device, port))
 		return ret;
@@ -558,19 +582,9 @@ static inline int cma_validate_port(struct ib_device *device, u8 port,
 		return ret;
 
 	if (dev_type == ARPHRD_ETHER && rdma_protocol_roce(device, port)) {
-		ndev = dev_get_by_index(net, bound_if_index);
-		if (ndev && ndev->if_flags & IFF_LOOPBACK) {
-			pr_info("detected loopback device\n");
-			dev_put(ndev);
-
-			if (!device->get_netdev)
-				return -EOPNOTSUPP;
-
-			ndev = device->get_netdev(device, port);
-			if (!ndev)
-				return -ENODEV;
-		}
+		ndev = dev_get_by_index(dev_addr->net, dev_addr->bound_dev_if);
 	} else {
+		ndev = NULL;
 		gid_type = IB_GID_TYPE_IB;
 	}
 
@@ -612,10 +626,7 @@ static int cma_acquire_dev(struct rdma_id_private *id_priv,
 		ret = cma_validate_port(cma_dev->device, port,
 					rdma_protocol_ib(cma_dev->device, port) ?
 					IB_GID_TYPE_IB :
-					listen_id_priv->gid_type, gidp,
-					dev_addr->dev_type,
-					dev_addr->net,
-					dev_addr->bound_dev_if);
+					listen_id_priv->gid_type, gidp, dev_addr);
 		if (!ret) {
 			id_priv->id.port_num = port;
 			goto out;
@@ -636,9 +647,7 @@ static int cma_acquire_dev(struct rdma_id_private *id_priv,
 						rdma_protocol_ib(cma_dev->device, port) ?
 						IB_GID_TYPE_IB :
 						cma_dev->default_gid_type[port - 1],
-						gidp, dev_addr->dev_type,
-						dev_addr->net,
-						dev_addr->bound_dev_if);
+						gidp, dev_addr);
 			if (!ret) {
 				id_priv->id.port_num = port;
 				goto out;
@@ -1621,6 +1630,9 @@ static void cma_leave_mc_groups(struct rdma_id_private *id_priv)
 					ndev = dev_get_by_index(dev_addr->net,
 								dev_addr->bound_dev_if);
 				if (ndev) {
+					cma_igmp_send(ndev,
+						      &mc->multicast.ib->rec.mgid,
+						      false);
 					dev_put(ndev);
 				}
 			}
@@ -2494,21 +2506,6 @@ static int cma_resolve_iboe_route(struct rdma_id_private *id_priv)
 		if (!ndev) {
 			ret = -ENODEV;
 			goto err2;
-		}
-
-		if (ndev->if_flags & IFF_LOOPBACK) {
-			dev_put(ndev);
-			if (!id_priv->id.device->get_netdev) {
-				ret = -EOPNOTSUPP;
-				goto err2;
-			}
-
-			ndev = id_priv->id.device->get_netdev(id_priv->id.device,
-							      id_priv->id.port_num);
-			if (!ndev) {
-				ret = -ENODEV;
-				goto err2;
-			}
 		}
 
 		route->path_rec->net = ndev->if_vnet;
@@ -4024,7 +4021,10 @@ static int cma_iboe_join_multicast(struct rdma_id_private *id_priv,
 		if (gid_type == IB_GID_TYPE_ROCE_UDP_ENCAP) {
 			mc->multicast.ib->rec.hop_limit = IPV6_DEFAULT_HOPLIMIT;
 			if (!send_only) {
-				mc->igmp_joined = true;
+				err = cma_igmp_send(ndev, &mc->multicast.ib->rec.mgid,
+						    true);
+				if (!err)
+					mc->igmp_joined = true;
 			}
 		}
 	} else {
@@ -4129,6 +4129,9 @@ void rdma_leave_multicast(struct rdma_cm_id *id, struct sockaddr *addr)
 						ndev = dev_get_by_index(dev_addr->net,
 									dev_addr->bound_dev_if);
 					if (ndev) {
+						cma_igmp_send(ndev,
+							      &mc->multicast.ib->rec.mgid,
+							      false);
 						dev_put(ndev);
 					}
 					mc->igmp_joined = false;
