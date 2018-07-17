@@ -1337,7 +1337,7 @@ mlx5e_open_sq(struct mlx5e_channel *c,
 	if (err)
 		goto err_disable_sq;
 
-	atomic_store_rel_int(&sq->queue_state, MLX5E_SQ_READY);
+	WRITE_ONCE(sq->queue_state, MLX5E_SQ_READY);
 
 	return (0);
 
@@ -3367,8 +3367,8 @@ mlx5e_setup_pauseframes(struct mlx5e_priv *priv)
 	char path[96];
 	int error;
 
-	/* Only receiving pauseframes is enabled by default */
-	priv->params.tx_pauseframe_control = 0;
+	/* enable pauseframes by default */
+	priv->params.tx_pauseframe_control = 1;
 	priv->params.rx_pauseframe_control = 1;
 
 	/* disable ports flow control, PFC, by default */
@@ -3528,6 +3528,8 @@ mlx5e_create_ifp(struct mlx5_core_dev *mdev)
 		ifp->if_hwassist |= (CSUM_TCP | CSUM_UDP | CSUM_IP);
 	if (ifp->if_capenable & IFCAP_TXCSUM_IPV6)
 		ifp->if_hwassist |= (CSUM_UDP_IPV6 | CSUM_TCP_IPV6);
+
+	sysctl_ctx_init(&priv->sysctl_ctx_channel_debug);
 
 	/* ifnet sysctl tree */
 	sysctl_ctx_init(&priv->sysctl_ctx);
@@ -3706,6 +3708,7 @@ err_free_wq:
 
 err_free_sysctl:
 	sysctl_ctx_free(&priv->sysctl_ctx);
+	sysctl_ctx_free(&priv->sysctl_ctx_channel_debug);
 
 	if_free(ifp);
 
@@ -3770,8 +3773,10 @@ mlx5e_destroy_ifp(struct mlx5_core_dev *mdev, void *vpriv)
 	mlx5e_rl_cleanup(priv);
 #endif
 	/* destroy all remaining sysctl nodes */
-	if (priv->sysctl_debug)
+	if (priv->sysctl_debug) {
+		sysctl_ctx_free(&priv->sysctl_ctx_channel_debug);
 		sysctl_ctx_free(&priv->stats.port_stats_debug.ctx);
+	}
 	sysctl_ctx_free(&priv->stats.vport.ctx);
 	sysctl_ctx_free(&priv->stats.pport.ctx);
 	sysctl_ctx_free(&priv->sysctl_ctx);
