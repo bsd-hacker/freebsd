@@ -77,7 +77,8 @@ sctp_set_rwnd(struct sctp_tcb *stcb, struct sctp_association *asoc)
 
 /* Calculate what the rwnd would be */
 uint32_t
-sctp_calc_rwnd(struct sctp_tcb *stcb, struct sctp_association *asoc){
+sctp_calc_rwnd(struct sctp_tcb *stcb, struct sctp_association *asoc)
+{
 	uint32_t calc = 0;
 
 	/*
@@ -102,14 +103,14 @@ sctp_calc_rwnd(struct sctp_tcb *stcb, struct sctp_association *asoc){
 		return (calc);
 	}
 	/* get actual space */
-	calc = (uint32_t) sctp_sbspace(&stcb->asoc, &stcb->sctp_socket->so_rcv);
+	calc = (uint32_t)sctp_sbspace(&stcb->asoc, &stcb->sctp_socket->so_rcv);
 	/*
 	 * take out what has NOT been put on socket queue and we yet hold
 	 * for putting up.
 	 */
-	calc = sctp_sbspace_sub(calc, (uint32_t) (asoc->size_on_reasm_queue +
+	calc = sctp_sbspace_sub(calc, (uint32_t)(asoc->size_on_reasm_queue +
 	    asoc->cnt_on_reasm_queue * MSIZE));
-	calc = sctp_sbspace_sub(calc, (uint32_t) (asoc->size_on_all_streams +
+	calc = sctp_sbspace_sub(calc, (uint32_t)(asoc->size_on_all_streams +
 	    asoc->cnt_on_all_streams * MSIZE));
 	if (calc == 0) {
 		/* out of space */
@@ -445,7 +446,7 @@ sctp_abort_in_reasm(struct sctp_tcb *stcb,
 		    chk->rec.data.tsn,
 		    chk->rec.data.sid,
 		    chk->rec.data.fsn,
-		    (uint16_t) chk->rec.data.mid);
+		    (uint16_t)chk->rec.data.mid);
 	}
 	oper = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
 	sctp_m_freem(chk->data);
@@ -529,10 +530,10 @@ sctp_queue_data_to_stream(struct sctp_tcb *stcb,
 			    control->sinfo_stream, control->mid);
 		} else {
 			snprintf(msg, sizeof(msg), "Delivered SSN=%4.4x, got TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
-			    (uint16_t) strm->last_mid_delivered,
+			    (uint16_t)strm->last_mid_delivered,
 			    control->sinfo_tsn,
 			    control->sinfo_stream,
-			    (uint16_t) control->mid);
+			    (uint16_t)control->mid);
 		}
 		op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
 		stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_2;
@@ -695,7 +696,7 @@ sctp_setup_tail_pointer(struct sctp_queued_to_read *control)
 }
 
 static void
-sctp_add_to_tail_pointer(struct sctp_queued_to_read *control, struct mbuf *m, uint32_t * added)
+sctp_add_to_tail_pointer(struct sctp_queued_to_read *control, struct mbuf *m, uint32_t *added)
 {
 	struct mbuf *prev = NULL;
 	struct sctp_tcb *stcb;
@@ -1286,7 +1287,8 @@ uint32_t
 sctp_add_chk_to_control(struct sctp_queued_to_read *control,
     struct sctp_stream_in *strm,
     struct sctp_tcb *stcb, struct sctp_association *asoc,
-    struct sctp_tmit_chunk *chk, int hold_rlock){
+    struct sctp_tmit_chunk *chk, int hold_rlock)
+{
 	/*
 	 * Given a control and a chunk, merge the data from the chk onto the
 	 * control and free up the chunk resources.
@@ -1670,7 +1672,7 @@ sctp_find_reasm_entry(struct sctp_stream_in *strm, uint32_t mid, int ordered, in
 static int
 sctp_process_a_data_chunk(struct sctp_tcb *stcb, struct sctp_association *asoc,
     struct mbuf **m, int offset, int chk_length,
-    struct sctp_nets *net, uint32_t * high_tsn, int *abort_flag,
+    struct sctp_nets *net, uint32_t *high_tsn, int *abort_flag,
     int *break_flag, int last_chunk, uint8_t chk_type)
 {
 	struct sctp_tmit_chunk *chk = NULL;	/* make gcc happy */
@@ -1693,7 +1695,7 @@ sctp_process_a_data_chunk(struct sctp_tcb *stcb, struct sctp_association *asoc,
 		struct sctp_idata_chunk *chunk, chunk_buf;
 
 		chunk = (struct sctp_idata_chunk *)sctp_m_getptr(*m, offset,
-		    sizeof(struct sctp_idata_chunk), (uint8_t *) & chunk_buf);
+		    sizeof(struct sctp_idata_chunk), (uint8_t *)&chunk_buf);
 		chk_flags = chunk->ch.chunk_flags;
 		clen = sizeof(struct sctp_idata_chunk);
 		tsn = ntohl(chunk->dp.tsn);
@@ -1710,12 +1712,12 @@ sctp_process_a_data_chunk(struct sctp_tcb *stcb, struct sctp_association *asoc,
 		struct sctp_data_chunk *chunk, chunk_buf;
 
 		chunk = (struct sctp_data_chunk *)sctp_m_getptr(*m, offset,
-		    sizeof(struct sctp_data_chunk), (uint8_t *) & chunk_buf);
+		    sizeof(struct sctp_data_chunk), (uint8_t *)&chunk_buf);
 		chk_flags = chunk->ch.chunk_flags;
 		clen = sizeof(struct sctp_data_chunk);
 		tsn = ntohl(chunk->dp.tsn);
 		sid = ntohs(chunk->dp.sid);
-		mid = (uint32_t) (ntohs(chunk->dp.ssn));
+		mid = (uint32_t)(ntohs(chunk->dp.ssn));
 		fsn = tsn;
 		ppid = chunk->dp.ppid;
 	}
@@ -1757,7 +1759,7 @@ sctp_process_a_data_chunk(struct sctp_tcb *stcb, struct sctp_association *asoc,
 		/* Can't hold the bit in the mapping at max array, toss it */
 		return (0);
 	}
-	if (gap >= (uint32_t) (asoc->mapping_array_size << 3)) {
+	if (gap >= (uint32_t)(asoc->mapping_array_size << 3)) {
 		SCTP_TCB_LOCK_ASSERT(stcb);
 		if (sctp_expand_mapping_array(asoc, gap)) {
 			/* Can't expand, drop it */
@@ -2005,10 +2007,10 @@ sctp_process_a_data_chunk(struct sctp_tcb *stcb, struct sctp_association *asoc,
 			    mid);
 		} else {
 			snprintf(msg, sizeof(msg), "Delivered SSN=%4.4x, got TSN=%8.8x, SID=%4.4x, SSN=%4.4x",
-			    (uint16_t) asoc->strmin[sid].last_mid_delivered,
+			    (uint16_t)asoc->strmin[sid].last_mid_delivered,
 			    tsn,
 			    sid,
-			    (uint16_t) mid);
+			    (uint16_t)mid);
 		}
 		op_err = sctp_generate_cause(SCTP_CAUSE_PROTOCOL_VIOLATION, msg);
 		stcb->sctp_ep->last_abort_code = SCTP_FROM_SCTP_INDATA + SCTP_LOC_16;
@@ -2505,8 +2507,8 @@ sctp_slide_mapping_arrays(struct sctp_tcb *stcb)
 		if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_MAP_LOGGING_ENABLE) {
 			sctp_log_map(old_base, old_cumack, old_highest,
 			    SCTP_MAP_PREPARE_SLIDE);
-			sctp_log_map((uint32_t) slide_from, (uint32_t) slide_end,
-			    (uint32_t) lgap, SCTP_MAP_SLIDE_FROM);
+			sctp_log_map((uint32_t)slide_from, (uint32_t)slide_end,
+			    (uint32_t)lgap, SCTP_MAP_SLIDE_FROM);
 		}
 		if (distance + slide_from > asoc->mapping_array_size ||
 		    distance < 0) {
@@ -2518,8 +2520,8 @@ sctp_slide_mapping_arrays(struct sctp_tcb *stcb)
 			 */
 
 			if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_MAP_LOGGING_ENABLE) {
-				sctp_log_map((uint32_t) distance, (uint32_t) slide_from,
-				    (uint32_t) asoc->mapping_array_size,
+				sctp_log_map((uint32_t)distance, (uint32_t)slide_from,
+				    (uint32_t)asoc->mapping_array_size,
 				    SCTP_MAP_SLIDE_NONE);
 			}
 		} else {
@@ -2645,7 +2647,7 @@ sctp_sack_check(struct sctp_tcb *stcb, int was_a_gap)
 int
 sctp_process_data(struct mbuf **mm, int iphlen, int *offset, int length,
     struct sctp_inpcb *inp, struct sctp_tcb *stcb,
-    struct sctp_nets *net, uint32_t * high_tsn)
+    struct sctp_nets *net, uint32_t *high_tsn)
 {
 	struct sctp_chunkhdr *ch, chunk_buf;
 	struct sctp_association *asoc;
@@ -2708,7 +2710,7 @@ sctp_process_data(struct mbuf **mm, int iphlen, int *offset, int length,
 	/* get pointer to the first chunk header */
 	ch = (struct sctp_chunkhdr *)sctp_m_getptr(m, *offset,
 	    sizeof(struct sctp_chunkhdr),
-	    (uint8_t *) & chunk_buf);
+	    (uint8_t *)&chunk_buf);
 	if (ch == NULL) {
 		return (1);
 	}
@@ -2872,7 +2874,7 @@ sctp_process_data(struct mbuf **mm, int iphlen, int *offset, int length,
 					if (op_err != NULL) {
 						cause = mtod(op_err, struct sctp_gen_error_cause *);
 						cause->code = htons(SCTP_CAUSE_UNRECOG_CHUNK);
-						cause->length = htons((uint16_t) (chk_length + sizeof(struct sctp_gen_error_cause)));
+						cause->length = htons((uint16_t)(chk_length + sizeof(struct sctp_gen_error_cause)));
 						SCTP_BUF_LEN(op_err) = sizeof(struct sctp_gen_error_cause);
 						SCTP_BUF_NEXT(op_err) = SCTP_M_COPYM(m, *offset, chk_length, M_NOWAIT);
 						if (SCTP_BUF_NEXT(op_err) != NULL) {
@@ -2898,7 +2900,7 @@ sctp_process_data(struct mbuf **mm, int iphlen, int *offset, int length,
 		}
 		ch = (struct sctp_chunkhdr *)sctp_m_getptr(m, *offset,
 		    sizeof(struct sctp_chunkhdr),
-		    (uint8_t *) & chunk_buf);
+		    (uint8_t *)&chunk_buf);
 		if (ch == NULL) {
 			*offset = length;
 			stop_proc = 1;
@@ -2941,8 +2943,8 @@ static int
 sctp_process_segment_range(struct sctp_tcb *stcb, struct sctp_tmit_chunk **p_tp1, uint32_t last_tsn,
     uint16_t frag_strt, uint16_t frag_end, int nr_sacking,
     int *num_frs,
-    uint32_t * biggest_newly_acked_tsn,
-    uint32_t * this_sack_lowest_newack,
+    uint32_t *biggest_newly_acked_tsn,
+    uint32_t *this_sack_lowest_newack,
     int *rto_ok)
 {
 	struct sctp_tmit_chunk *tp1;
@@ -3063,7 +3065,7 @@ sctp_process_segment_range(struct sctp_tcb *stcb, struct sctp_tmit_chunk **p_tp1
 							sctp_misc_ints(SCTP_FLIGHT_LOG_DOWN_GAP,
 							    tp1->whoTo->flight_size,
 							    tp1->book_size,
-							    (uint32_t) (uintptr_t) tp1->whoTo,
+							    (uint32_t)(uintptr_t)tp1->whoTo,
 							    tp1->rec.data.tsn);
 						}
 						sctp_flight_size_decrease(tp1);
@@ -3180,8 +3182,8 @@ sctp_process_segment_range(struct sctp_tcb *stcb, struct sctp_tmit_chunk **p_tp1
 
 static int
 sctp_handle_segments(struct mbuf *m, int *offset, struct sctp_tcb *stcb, struct sctp_association *asoc,
-    uint32_t last_tsn, uint32_t * biggest_tsn_acked,
-    uint32_t * biggest_newly_acked_tsn, uint32_t * this_sack_lowest_newack,
+    uint32_t last_tsn, uint32_t *biggest_tsn_acked,
+    uint32_t *biggest_newly_acked_tsn, uint32_t *this_sack_lowest_newack,
     int num_seg, int num_nr_seg, int *rto_ok)
 {
 	struct sctp_gap_ack_block *frag, block;
@@ -3202,7 +3204,7 @@ sctp_handle_segments(struct mbuf *m, int *offset, struct sctp_tcb *stcb, struct 
 			tp1 = TAILQ_FIRST(&asoc->sent_queue);
 		}
 		frag = (struct sctp_gap_ack_block *)sctp_m_getptr(m, *offset,
-		    sizeof(struct sctp_gap_ack_block), (uint8_t *) & block);
+		    sizeof(struct sctp_gap_ack_block), (uint8_t *)&block);
 		*offset += sizeof(block);
 		if (frag == NULL) {
 			return (chunk_freed);
@@ -3272,7 +3274,7 @@ sctp_check_for_revoked(struct sctp_tcb *stcb,
 					sctp_misc_ints(SCTP_FLIGHT_LOG_UP_REVOKE,
 					    tp1->whoTo->flight_size,
 					    tp1->book_size,
-					    (uint32_t) (uintptr_t) tp1->whoTo,
+					    (uint32_t)(uintptr_t)tp1->whoTo,
 					    tp1->rec.data.tsn);
 				}
 				sctp_flight_size_increase(tp1);
@@ -3590,7 +3592,7 @@ sctp_strike_gap_ack_chunks(struct sctp_tcb *stcb, struct sctp_association *asoc,
 				sctp_misc_ints(SCTP_FLIGHT_LOG_DOWN_RSND,
 				    (tp1->whoTo ? (tp1->whoTo->flight_size) : 0),
 				    tp1->book_size,
-				    (uint32_t) (uintptr_t) tp1->whoTo,
+				    (uint32_t)(uintptr_t)tp1->whoTo,
 				    tp1->rec.data.tsn);
 			}
 			if (tp1->whoTo) {
@@ -3904,7 +3906,7 @@ sctp_window_probe_recovery(struct sctp_tcb *stcb,
 		sctp_misc_ints(SCTP_FLIGHT_LOG_DWN_WP_FWD,
 		    tp1->whoTo ? tp1->whoTo->flight_size : 0,
 		    tp1->book_size,
-		    (uint32_t) (uintptr_t) tp1->whoTo,
+		    (uint32_t)(uintptr_t)tp1->whoTo,
 		    tp1->rec.data.tsn);
 		return;
 	}
@@ -3923,7 +3925,7 @@ sctp_window_probe_recovery(struct sctp_tcb *stcb,
 		sctp_misc_ints(SCTP_FLIGHT_LOG_DOWN_WP,
 		    tp1->whoTo->flight_size,
 		    tp1->book_size,
-		    (uint32_t) (uintptr_t) tp1->whoTo,
+		    (uint32_t)(uintptr_t)tp1->whoTo,
 		    tp1->rec.data.tsn);
 	}
 }
@@ -3962,7 +3964,7 @@ sctp_express_handle_sack(struct sctp_tcb *stcb, uint32_t cumack,
 	} else if (asoc->last_acked_seq == cumack) {
 		/* Window update sack */
 		asoc->peers_rwnd = sctp_sbspace_sub(rwnd,
-		    (uint32_t) (asoc->total_flight + (asoc->total_flight_count * SCTP_BASE_SYSCTL(sctp_peer_chunk_oh))));
+		    (uint32_t)(asoc->total_flight + (asoc->total_flight_count * SCTP_BASE_SYSCTL(sctp_peer_chunk_oh))));
 		if (asoc->peers_rwnd < stcb->sctp_ep->sctp_ep.sctp_sws_sender) {
 			/* SWS sender side engages */
 			asoc->peers_rwnd = 0;
@@ -4040,7 +4042,7 @@ sctp_express_handle_sack(struct sctp_tcb *stcb, uint32_t cumack,
 							sctp_misc_ints(SCTP_FLIGHT_LOG_DOWN_CA,
 							    tp1->whoTo->flight_size,
 							    tp1->book_size,
-							    (uint32_t) (uintptr_t) tp1->whoTo,
+							    (uint32_t)(uintptr_t)tp1->whoTo,
 							    tp1->rec.data.tsn);
 						}
 						sctp_flight_size_decrease(tp1);
@@ -4241,7 +4243,7 @@ sctp_express_handle_sack(struct sctp_tcb *stcb, uint32_t cumack,
 
 	/* RWND update */
 	asoc->peers_rwnd = sctp_sbspace_sub(rwnd,
-	    (uint32_t) (asoc->total_flight + (asoc->total_flight_count * SCTP_BASE_SYSCTL(sctp_peer_chunk_oh))));
+	    (uint32_t)(asoc->total_flight + (asoc->total_flight_count * SCTP_BASE_SYSCTL(sctp_peer_chunk_oh))));
 	if (asoc->peers_rwnd < stcb->sctp_ep->sctp_ep.sctp_sws_sender) {
 		/* SWS sender side engages */
 		asoc->peers_rwnd = 0;
@@ -4515,8 +4517,8 @@ sctp_handle_sack(struct mbuf *m, int offset_seg, int offset_dup,
 		uint32_t *dupdata, dblock;
 
 		for (i = 0; i < num_dup; i++) {
-			dupdata = (uint32_t *) sctp_m_getptr(m, offset_dup + i * sizeof(uint32_t),
-			    sizeof(uint32_t), (uint8_t *) & dblock);
+			dupdata = (uint32_t *)sctp_m_getptr(m, offset_dup + i * sizeof(uint32_t),
+			    sizeof(uint32_t), (uint8_t *)&dblock);
 			if (dupdata == NULL) {
 				break;
 			}
@@ -4656,7 +4658,7 @@ hopeless_peer:
 							sctp_misc_ints(SCTP_FLIGHT_LOG_DOWN_CA,
 							    tp1->whoTo->flight_size,
 							    tp1->book_size,
-							    (uint32_t) (uintptr_t) tp1->whoTo,
+							    (uint32_t)(uintptr_t)tp1->whoTo,
 							    tp1->rec.data.tsn);
 						}
 						sctp_flight_size_decrease(tp1);
@@ -4917,7 +4919,7 @@ hopeless_peer:
 					sctp_misc_ints(SCTP_FLIGHT_LOG_UP_REVOKE,
 					    tp1->whoTo->flight_size,
 					    tp1->book_size,
-					    (uint32_t) (uintptr_t) tp1->whoTo,
+					    (uint32_t)(uintptr_t)tp1->whoTo,
 					    tp1->rec.data.tsn);
 				}
 				sctp_flight_size_increase(tp1);
@@ -5133,7 +5135,7 @@ hopeless_peer:
 		    asoc->peers_rwnd, asoc->total_flight, (asoc->total_flight_count * SCTP_BASE_SYSCTL(sctp_peer_chunk_oh)), a_rwnd);
 	}
 	asoc->peers_rwnd = sctp_sbspace_sub(a_rwnd,
-	    (uint32_t) (asoc->total_flight + (asoc->total_flight_count * SCTP_BASE_SYSCTL(sctp_peer_chunk_oh))));
+	    (uint32_t)(asoc->total_flight + (asoc->total_flight_count * SCTP_BASE_SYSCTL(sctp_peer_chunk_oh))));
 	if (asoc->peers_rwnd < stcb->sctp_ep->sctp_ep.sctp_sws_sender) {
 		/* SWS sender side engages */
 		asoc->peers_rwnd = 0;
@@ -5663,7 +5665,7 @@ sctp_handle_forward_tsn(struct sctp_tcb *stcb,
 			if (asoc->idata_supported) {
 				stseq_m = (struct sctp_strseq_mid *)sctp_m_getptr(m, offset,
 				    sizeof(struct sctp_strseq_mid),
-				    (uint8_t *) & strseqbuf_m);
+				    (uint8_t *)&strseqbuf_m);
 				offset += sizeof(struct sctp_strseq_mid);
 				if (stseq_m == NULL) {
 					break;
@@ -5679,13 +5681,13 @@ sctp_handle_forward_tsn(struct sctp_tcb *stcb,
 			} else {
 				stseq = (struct sctp_strseq *)sctp_m_getptr(m, offset,
 				    sizeof(struct sctp_strseq),
-				    (uint8_t *) & strseqbuf);
+				    (uint8_t *)&strseqbuf);
 				offset += sizeof(struct sctp_strseq);
 				if (stseq == NULL) {
 					break;
 				}
 				sid = ntohs(stseq->sid);
-				mid = (uint32_t) ntohs(stseq->ssn);
+				mid = (uint32_t)ntohs(stseq->ssn);
 				ordered = 1;
 			}
 			/* Convert */

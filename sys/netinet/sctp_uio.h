@@ -127,7 +127,7 @@ struct sctp_sndrcvinfo {
 	sctp_assoc_t sinfo_assoc_id;
 	uint16_t sinfo_keynumber;
 	uint16_t sinfo_keynumber_valid;
-	         uint8_t __reserve_pad[SCTP_ALIGN_RESV_PAD];
+	uint8_t __reserve_pad[SCTP_ALIGN_RESV_PAD];
 };
 
 struct sctp_extrcvinfo {
@@ -147,7 +147,7 @@ struct sctp_extrcvinfo {
 	uint32_t serinfo_next_ppid;
 	uint16_t sinfo_keynumber;
 	uint16_t sinfo_keynumber_valid;
-	         uint8_t __reserve_pad[SCTP_ALIGN_RESV_PAD_SHORT];
+	uint8_t __reserve_pad[SCTP_ALIGN_RESV_PAD_SHORT];
 };
 #define sinfo_pr_value sinfo_timetolive
 #define sreinfo_next_flags serinfo_next_flags
@@ -1177,7 +1177,7 @@ struct xsctp_inpcb {
 	uint16_t local_port;
 	uint16_t qlen_old;
 	uint16_t maxqlen_old;
-	         uint16_t __spare16;
+	uint16_t __spare16;
 	kvaddr_t socket;
 	uint32_t qlen;
 	uint32_t maxqlen;

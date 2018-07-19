@@ -146,7 +146,8 @@ sctp_gather_internal_ifa_flags(struct sctp_ifa *ifa)
 
 
 static uint32_t
-sctp_is_desired_interface_type(struct ifnet *ifn){
+sctp_is_desired_interface_type(struct ifnet *ifn)
+{
 	int result;
 
 	/* check the interface type to see if it's one we care about */
@@ -477,7 +478,7 @@ again_locked:
 	lenat++;
 	*lenat = value;
 	lenat++;
-	tick_tock = (uint32_t *) lenat;
+	tick_tock = (uint32_t *)lenat;
 	lenat++;
 	*tick_tock = sctp_get_tick_count();
 	copyto = (void *)lenat;
@@ -498,7 +499,7 @@ no_log:
 
 
 int
-sctp_copy_out_packet_log(uint8_t * target, int length)
+sctp_copy_out_packet_log(uint8_t *target, int length)
 {
 	/*
 	 * We wind through the packet log starting at start copying up to

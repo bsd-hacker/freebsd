@@ -1572,7 +1572,7 @@ sctp_findasoc_ep_asocid_locked(struct sctp_inpcb *inp, sctp_assoc_t asoc_id, int
 		SCTP_PRINTF("TSNH ep_associd0\n");
 		return (NULL);
 	}
-	id = (uint32_t) asoc_id;
+	id = (uint32_t)asoc_id;
 	head = &inp->sctp_asocidhash[SCTP_PCBHASH_ASOC(id, inp->hashasocidmark)];
 	if (head == NULL) {
 		/* invalid id TSNH */
@@ -2325,7 +2325,7 @@ sctp_findassociation_ep_asconf(struct mbuf *m, int offset,
 		    __func__);
 		return NULL;
 	}
-	ptype = (int)((uint32_t) ntohs(phdr->param_type));
+	ptype = (int)((uint32_t)ntohs(phdr->param_type));
 	/* get the correlation address */
 	switch (ptype) {
 #ifdef INET6
@@ -2457,13 +2457,13 @@ sctp_inpcb_alloc(struct socket *so, uint32_t vrf_id)
 	inp->sctp_frag_point = SCTP_DEFAULT_MAXSEGMENT;
 	inp->max_cwnd = 0;
 	inp->sctp_cmt_on_off = SCTP_BASE_SYSCTL(sctp_cmt_on_off);
-	inp->ecn_supported = (uint8_t) SCTP_BASE_SYSCTL(sctp_ecn_enable);
-	inp->prsctp_supported = (uint8_t) SCTP_BASE_SYSCTL(sctp_pr_enable);
-	inp->auth_supported = (uint8_t) SCTP_BASE_SYSCTL(sctp_auth_enable);
-	inp->asconf_supported = (uint8_t) SCTP_BASE_SYSCTL(sctp_asconf_enable);
-	inp->reconfig_supported = (uint8_t) SCTP_BASE_SYSCTL(sctp_reconfig_enable);
-	inp->nrsack_supported = (uint8_t) SCTP_BASE_SYSCTL(sctp_nrsack_enable);
-	inp->pktdrop_supported = (uint8_t) SCTP_BASE_SYSCTL(sctp_pktdrop_enable);
+	inp->ecn_supported = (uint8_t)SCTP_BASE_SYSCTL(sctp_ecn_enable);
+	inp->prsctp_supported = (uint8_t)SCTP_BASE_SYSCTL(sctp_pr_enable);
+	inp->auth_supported = (uint8_t)SCTP_BASE_SYSCTL(sctp_auth_enable);
+	inp->asconf_supported = (uint8_t)SCTP_BASE_SYSCTL(sctp_asconf_enable);
+	inp->reconfig_supported = (uint8_t)SCTP_BASE_SYSCTL(sctp_reconfig_enable);
+	inp->nrsack_supported = (uint8_t)SCTP_BASE_SYSCTL(sctp_nrsack_enable);
+	inp->pktdrop_supported = (uint8_t)SCTP_BASE_SYSCTL(sctp_pktdrop_enable);
 	inp->idata_supported = 0;
 
 	inp->fibnum = so->so_fibnum;
@@ -3942,7 +3942,7 @@ sctp_add_remote_addr(struct sctp_tcb *stcb, struct sockaddr *newaddr,
 		sin6->sin6_scope_id = 0;
 	}
 #endif
-	SCTP_RTALLOC((sctp_route_t *) & net->ro,
+	SCTP_RTALLOC((sctp_route_t *)&net->ro,
 	    stcb->asoc.vrf_id,
 	    stcb->sctp_ep->fibnum);
 
@@ -3951,7 +3951,7 @@ sctp_add_remote_addr(struct sctp_tcb *stcb, struct sockaddr *newaddr,
 		/* Get source address */
 		net->ro._s_addr = sctp_source_address_selection(stcb->sctp_ep,
 		    stcb,
-		    (sctp_route_t *) & net->ro,
+		    (sctp_route_t *)&net->ro,
 		    net,
 		    0,
 		    stcb->asoc.vrf_id);
@@ -3973,7 +3973,7 @@ sctp_add_remote_addr(struct sctp_tcb *stcb, struct sockaddr *newaddr,
 			}
 #if defined(INET) || defined(INET6)
 			if (net->port) {
-				net->mtu += (uint32_t) sizeof(struct udphdr);
+				net->mtu += (uint32_t)sizeof(struct udphdr);
 			}
 #endif
 		} else if (net->ro._s_addr != NULL) {
@@ -4018,7 +4018,7 @@ sctp_add_remote_addr(struct sctp_tcb *stcb, struct sockaddr *newaddr,
 			}
 #if defined(INET) || defined(INET6)
 			if (net->port) {
-				net->mtu += (uint32_t) sizeof(struct udphdr);
+				net->mtu += (uint32_t)sizeof(struct udphdr);
 			}
 #endif
 		} else {
@@ -4040,7 +4040,7 @@ sctp_add_remote_addr(struct sctp_tcb *stcb, struct sockaddr *newaddr,
 	}
 #if defined(INET) || defined(INET6)
 	if (net->port) {
-		net->mtu -= (uint32_t) sizeof(struct udphdr);
+		net->mtu -= (uint32_t)sizeof(struct udphdr);
 	}
 #endif
 	if (from == SCTP_ALLOC_ASOC) {
@@ -4152,7 +4152,8 @@ sctp_add_remote_addr(struct sctp_tcb *stcb, struct sockaddr *newaddr,
 
 
 static uint32_t
-sctp_aloc_a_assoc_id(struct sctp_inpcb *inp, struct sctp_tcb *stcb){
+sctp_aloc_a_assoc_id(struct sctp_inpcb *inp, struct sctp_tcb *stcb)
+{
 	uint32_t id;
 	struct sctpasochead *head;
 	struct sctp_tcb *lstcb;
@@ -4173,7 +4174,7 @@ try_again:
 	}
 	id = inp->sctp_associd_counter;
 	inp->sctp_associd_counter++;
-	lstcb = sctp_findasoc_ep_asocid_locked(inp, (sctp_assoc_t) id, 0);
+	lstcb = sctp_findasoc_ep_asocid_locked(inp, (sctp_assoc_t)id, 0);
 	if (lstcb) {
 		goto try_again;
 	}
@@ -5801,12 +5802,12 @@ sctp_pcb_init()
 	(void)SCTP_GETTIME_TIMEVAL(&tv);
 #if defined(__FreeBSD__) && defined(SMP) && defined(SCTP_USE_PERCPU_STAT)
 	memset(SCTP_BASE_STATS, 0, sizeof(struct sctpstat) * (mp_maxid + 1));
-	SCTP_BASE_STATS[PCPU_GET(cpuid)].sctps_discontinuitytime.tv_sec = (uint32_t) tv.tv_sec;
-	SCTP_BASE_STATS[PCPU_GET(cpuid)].sctps_discontinuitytime.tv_usec = (uint32_t) tv.tv_usec;
+	SCTP_BASE_STATS[PCPU_GET(cpuid)].sctps_discontinuitytime.tv_sec = (uint32_t)tv.tv_sec;
+	SCTP_BASE_STATS[PCPU_GET(cpuid)].sctps_discontinuitytime.tv_usec = (uint32_t)tv.tv_usec;
 #else
 	memset(&SCTP_BASE_STATS, 0, sizeof(struct sctpstat));
-	SCTP_BASE_STAT(sctps_discontinuitytime).tv_sec = (uint32_t) tv.tv_sec;
-	SCTP_BASE_STAT(sctps_discontinuitytime).tv_usec = (uint32_t) tv.tv_usec;
+	SCTP_BASE_STAT(sctps_discontinuitytime).tv_sec = (uint32_t)tv.tv_sec;
+	SCTP_BASE_STAT(sctps_discontinuitytime).tv_usec = (uint32_t)tv.tv_usec;
 #endif
 	/* init the empty list of (All) Endpoints */
 	LIST_INIT(&SCTP_BASE_INFO(listhead));

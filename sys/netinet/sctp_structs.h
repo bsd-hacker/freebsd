@@ -718,7 +718,7 @@ struct sctp_cc_functions {
 	    struct sctp_nets *net, int in_window, int num_pkt_lost);
 	void (*sctp_cwnd_update_after_packet_dropped) (struct sctp_tcb *stcb,
 	    struct sctp_nets *net, struct sctp_pktdrop_chunk *cp,
-	    uint32_t * bottle_bw, uint32_t * on_queue);
+	    uint32_t *bottle_bw, uint32_t *on_queue);
 	void (*sctp_cwnd_update_after_output) (struct sctp_tcb *stcb,
 	    struct sctp_nets *net, int burst_limit);
 	void (*sctp_cwnd_update_packet_transmitted) (struct sctp_tcb *stcb,
@@ -755,7 +755,7 @@ struct sctp_stream_out *(*sctp_ss_select_stream) (struct sctp_tcb *stcb,
 	void (*sctp_ss_packet_done) (struct sctp_tcb *stcb, struct sctp_nets *net,
 	    struct sctp_association *asoc);
 	int (*sctp_ss_get_value) (struct sctp_tcb *stcb, struct sctp_association *asoc,
-	    struct sctp_stream_out *strq, uint16_t * value);
+	    struct sctp_stream_out *strq, uint16_t *value);
 	int (*sctp_ss_set_value) (struct sctp_tcb *stcb, struct sctp_association *asoc,
 	    struct sctp_stream_out *strq, uint16_t value);
 	int (*sctp_ss_is_user_msgs_incomplete) (struct sctp_tcb *stcb, struct sctp_association *asoc);
