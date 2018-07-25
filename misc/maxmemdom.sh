@@ -43,7 +43,6 @@ d2=$diskimage.2
 rm -f $d1 $d2
 [ `df -k $(dirname $diskimage) | tail -1 | awk '{print int($4 / 1024)'}` -lt \
     $need ] && printf "Need %d MB on %s.\n" $need `dirname $diskimage` && exit
-dd if=/dev/zero of=$d1 bs=1m count=$size 2>&1 | \
-    egrep -v "records|transferred"
+timeout -k 1m 15m dd if=/dev/zero of=$d1 bs=1m count=$size status=none
 cp $d1 $d2
 rm -f $d1 $d2

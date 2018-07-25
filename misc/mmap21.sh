@@ -141,8 +141,10 @@ main(void)
 {
 
 	pid_t pids[PARALLEL];
+	time_t start;
 	int e, i, j, status;
 
+	start = time(NULL);
 	for (i = 0; i < LOOPS; i++) {
 		for (j = 0; j < PARALLEL; j++) {
 			if ((pids[j] = fork()) == 0)
@@ -154,6 +156,10 @@ main(void)
 			if (waitpid(pids[j], &status, 0) == -1)
 				err(1, "waitpid(%d)", pids[j]);
 			e += status == 0 ? 0 : 1;
+		}
+		if (time(NULL) - start > 1200) {
+			fprintf(stderr, "Timed out.");
+			break;
 		}
 	}
 
