@@ -1309,7 +1309,17 @@ parse_dsserver(const char *optionarg, struct nfsd_nfsd_args *nfsdargp)
 				memcpy(&sin6, res->ai_addr, sizeof(sin6));
 				ad = inet_ntop(AF_INET6, &sin6.sin6_addr, ip6,
 				    sizeof(ip6));
-				break;
+
+				/*
+				 * XXX
+				 * Since a link local address will only
+				 * work if the client and DS are in the
+				 * same scope zone, only use it if it is
+				 * the only address.
+				 */
+				if (ad != NULL &&
+				    !IN6_IS_ADDR_LINKLOCAL(&sin6.sin6_addr))
+					break;
 			}
 		}
 		if (ad == NULL)
