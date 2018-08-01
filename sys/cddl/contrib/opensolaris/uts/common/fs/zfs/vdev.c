@@ -51,6 +51,7 @@
 #include <sys/dsl_scan.h>
 #include <sys/abd.h>
 #include <sys/trim_map.h>
+#include <sys/vdev_initialize.h>
 
 SYSCTL_DECL(_vfs_zfs);
 SYSCTL_NODE(_vfs_zfs, OID_AUTO, vdev, CTLFLAG_RW, 0, "ZFS VDEV");
@@ -162,23 +163,29 @@ static vdev_ops_t *vdev_ops_table[] = {
 };
 
 
-/* maximum number of metaslabs per top-level vdev */
+/* target number of metaslabs per top-level vdev */
 int vdev_max_ms_count = 200;
 SYSCTL_INT(_vfs_zfs_vdev, OID_AUTO, max_ms_count, CTLFLAG_RDTUN,
     &vdev_max_ms_count, 0,
     "Maximum number of metaslabs per top-level vdev");
 
-/* minimum amount of metaslabs per top-level vdev */
+/* minimum number of metaslabs per top-level vdev */
 int vdev_min_ms_count = 16;
 SYSCTL_INT(_vfs_zfs_vdev, OID_AUTO, min_ms_count, CTLFLAG_RDTUN,
     &vdev_min_ms_count, 0,
     "Minimum number of metaslabs per top-level vdev");
 
-/* see comment in vdev_metaslab_set_size() */
+/* practical upper limit of total metaslabs per top-level vdev */
+int vdev_ms_count_limit = 1ULL << 17;
+
+/* lower limit for metaslab size (512M) */
 int vdev_default_ms_shift = 29;
 SYSCTL_INT(_vfs_zfs_vdev, OID_AUTO, default_ms_shift, CTLFLAG_RDTUN,
     &vdev_default_ms_shift, 0,
     "Shift between vdev size and number of metaslabs");
+
+/* upper limit for metaslab size (256G) */
+int vdev_max_ms_shift = 38;
 
 boolean_t vdev_validate_skip = B_FALSE;
 
@@ -287,6 +294,14 @@ vdev_getops(const char *type)
 			break;
 
 	return (ops);
+}
+
+/* ARGSUSED */
+void
+vdev_default_xlate(vdev_t *vd, const range_seg_t *in, range_seg_t *res)
+{
+	res->rs_start = in->rs_start;
+	res->rs_end = in->rs_end;
 }
 
 /*
@@ -560,7 +575,11 @@ vdev_alloc_common(spa_t *spa, uint_t id, uint64_t guid, vdev_ops_t *ops)
 	mutex_init(&vd->vdev_probe_lock, NULL, MUTEX_DEFAULT, NULL);
 	mutex_init(&vd->vdev_queue_lock, NULL, MUTEX_DEFAULT, NULL);
 	mutex_init(&vd->vdev_scan_io_queue_lock, NULL, MUTEX_DEFAULT, NULL);
- 
+	mutex_init(&vd->vdev_initialize_lock, NULL, MUTEX_DEFAULT, NULL);
+	mutex_init(&vd->vdev_initialize_io_lock, NULL, MUTEX_DEFAULT, NULL);
+	cv_init(&vd->vdev_initialize_cv, NULL, CV_DEFAULT, NULL);
+	cv_init(&vd->vdev_initialize_io_cv, NULL, CV_DEFAULT, NULL);
+
 	for (int t = 0; t < DTL_TYPES; t++) {
 		vd->vdev_dtl[t] = range_tree_create(NULL, NULL);
 	}
@@ -833,6 +852,7 @@ void
 vdev_free(vdev_t *vd)
 {
 	spa_t *spa = vd->vdev_spa;
+	ASSERT3P(vd->vdev_initialize_thread, ==, NULL);
 
 	/*
 	 * Scan queues are normally destroyed at the end of a scan. If the
@@ -863,6 +883,7 @@ vdev_free(vdev_t *vd)
 
 	ASSERT(vd->vdev_child == NULL);
 	ASSERT(vd->vdev_guid_sum == vd->vdev_guid);
+	ASSERT(vd->vdev_initialize_thread == NULL);
 
 	/*
 	 * Discard allocation state.
@@ -936,6 +957,10 @@ vdev_free(vdev_t *vd)
 	mutex_destroy(&vd->vdev_stat_lock);
 	mutex_destroy(&vd->vdev_probe_lock);
 	mutex_destroy(&vd->vdev_scan_io_queue_lock);
+	mutex_destroy(&vd->vdev_initialize_lock);
+	mutex_destroy(&vd->vdev_initialize_io_lock);
+	cv_destroy(&vd->vdev_initialize_io_cv);
+	cv_destroy(&vd->vdev_initialize_cv);
 
 	if (vd == spa->spa_root_vdev)
 		spa->spa_root_vdev = NULL;
@@ -2148,34 +2173,53 @@ void
 vdev_metaslab_set_size(vdev_t *vd)
 {
 	uint64_t asize = vd->vdev_asize;
-	uint64_t ms_shift = 0;
+	uint64_t ms_count = asize >> vdev_default_ms_shift;
+	uint64_t ms_shift;
 
 	/*
-	 * For vdevs that are bigger than 8G the metaslab size varies in
-	 * a way that the number of metaslabs increases in powers of two,
-	 * linearly in terms of vdev_asize, starting from 16 metaslabs.
-	 * So for vdev_asize of 8G we get 16 metaslabs, for 16G, we get 32,
-	 * and so on, until we hit the maximum metaslab count limit
-	 * [vdev_max_ms_count] from which point the metaslab count stays
-	 * the same.
+	 * There are two dimensions to the metaslab sizing calculation:
+	 * the size of the metaslab and the count of metaslabs per vdev.
+	 * In general, we aim for vdev_max_ms_count (200) metaslabs. The
+	 * range of the dimensions are as follows:
+	 *
+	 *	2^29 <= ms_size  <= 2^38
+	 *	  16 <= ms_count <= 131,072
+	 *
+	 * On the lower end of vdev sizes, we aim for metaslabs sizes of
+	 * at least 512MB (2^29) to minimize fragmentation effects when
+	 * testing with smaller devices.  However, the count constraint
+	 * of at least 16 metaslabs will override this minimum size goal.
+	 *
+	 * On the upper end of vdev sizes, we aim for a maximum metaslab
+	 * size of 256GB.  However, we will cap the total count to 2^17
+	 * metaslabs to keep our memory footprint in check.
+	 *
+	 * The net effect of applying above constrains is summarized below.
+	 *
+	 *	vdev size	metaslab count
+	 *	-------------|-----------------
+	 *	< 8GB		~16
+	 *	8GB - 100GB	one per 512MB
+	 *	100GB - 50TB	~200
+	 *	50TB - 32PB	one per 256GB
+	 *	> 32PB		~131,072
+	 *	-------------------------------
 	 */
-	ms_shift = vdev_default_ms_shift;
 
-	if ((asize >> ms_shift) < vdev_min_ms_count) {
-		/*
-		 * For devices that are less than 8G we want to have
-		 * exactly 16 metaslabs. We don't want less as integer
-		 * division rounds down, so less metaslabs mean more
-		 * wasted space. We don't want more as these vdevs are
-		 * small and in the likely event that we are running
-		 * out of space, the SPA will have a hard time finding
-		 * space due to fragmentation.
-		 */
+	if (ms_count < vdev_min_ms_count)
 		ms_shift = highbit64(asize / vdev_min_ms_count);
-		ms_shift = MAX(ms_shift, SPA_MAXBLOCKSHIFT);
-
-	} else if ((asize >> ms_shift) > vdev_max_ms_count) {
+	else if (ms_count > vdev_max_ms_count)
 		ms_shift = highbit64(asize / vdev_max_ms_count);
+	else
+		ms_shift = vdev_default_ms_shift;
+
+	if (ms_shift < SPA_MAXBLOCKSHIFT) {
+		ms_shift = SPA_MAXBLOCKSHIFT;
+	} else if (ms_shift > vdev_max_ms_shift) {
+		ms_shift = vdev_max_ms_shift;
+		/* cap the total count to constrain memory footprint */
+		if ((asize >> ms_shift) > vdev_ms_count_limit)
+			ms_shift = highbit64(asize / vdev_ms_count_limit);
 	}
 
 	vd->vdev_ms_shift = ms_shift;
@@ -3030,7 +3074,8 @@ vdev_sync_done(vdev_t *vd, uint64_t txg)
 
 	ASSERT(vdev_is_concrete(vd));
 
-	while (msp = txg_list_remove(&vd->vdev_ms_list, TXG_CLEAN(txg)))
+	while ((msp = txg_list_remove(&vd->vdev_ms_list, TXG_CLEAN(txg)))
+	    != NULL)
 		metaslab_sync_done(msp, txg);
 
 	if (reassess)
@@ -3255,6 +3300,15 @@ vdev_online(spa_t *spa, uint64_t guid, uint64_t flags, vdev_state_t *newstate)
 			return (spa_vdev_state_exit(spa, vd, ENOTSUP));
 		spa_async_request(spa, SPA_ASYNC_CONFIG_UPDATE);
 	}
+
+	/* Restart initializing if necessary */
+	mutex_enter(&vd->vdev_initialize_lock);
+	if (vdev_writeable(vd) &&
+	    vd->vdev_initialize_thread == NULL &&
+	    vd->vdev_initialize_state == VDEV_INITIALIZE_ACTIVE) {
+		(void) vdev_initialize(vd);
+	}
+	mutex_exit(&vd->vdev_initialize_lock);
 
 	if (wasoffline ||
 	    (oldstate < VDEV_STATE_DEGRADED &&
@@ -3558,8 +3612,18 @@ vdev_get_stats(vdev_t *vd, vdev_stat_t *vs)
 	vs->vs_timestamp = gethrtime() - vs->vs_timestamp;
 	vs->vs_state = vd->vdev_state;
 	vs->vs_rsize = vdev_get_min_asize(vd);
-	if (vd->vdev_ops->vdev_op_leaf)
+	if (vd->vdev_ops->vdev_op_leaf) {
 		vs->vs_rsize += VDEV_LABEL_START_SIZE + VDEV_LABEL_END_SIZE;
+		/*
+		 * Report intializing progress. Since we don't have the
+		 * initializing locks held, this is only an estimate (although a
+		 * fairly accurate one).
+		 */
+		vs->vs_initialize_bytes_done = vd->vdev_initialize_bytes_done;
+		vs->vs_initialize_bytes_est = vd->vdev_initialize_bytes_est;
+		vs->vs_initialize_state = vd->vdev_initialize_state;
+		vs->vs_initialize_action_time = vd->vdev_initialize_action_time;
+	}
 	/*
 	 * Report expandable space on top-level, non-auxillary devices only.
 	 * The expandable space is reported in terms of metaslab sized units

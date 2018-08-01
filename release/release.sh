@@ -416,7 +416,7 @@ chroot_arm_build_release() {
 	export WORLDDIR="$(eval chroot ${CHROOTDIR} make ${MAKE_FLAGS} -C /usr/src/release -V WORLDDIR)"
 	export OBJDIR="$(eval chroot ${CHROOTDIR} env WITH_UNIFIED_OBJDIR=1 make ${MAKE_FLAGS} -C /usr/src/release -V .OBJDIR)"
 	export DESTDIR="${OBJDIR}/${KERNEL}"
-	export IMGBASE="${CHROOTDIR}/${OBJDIR}/${KERNEL}.img"
+	export IMGBASE="${CHROOTDIR}/${OBJDIR}/${BOARDNAME}.img"
 	export OSRELEASE="$(eval chroot ${CHROOTDIR} make ${MAKE_FLAGS} -C /usr/src/release \
 		TARGET=${EMBEDDED_TARGET} TARGET_ARCH=${EMBEDDED_TARGET_ARCH} \
 		-V OSRELEASE)"
