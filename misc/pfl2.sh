@@ -34,15 +34,17 @@
 # "panic: softdep_write_inodeblock: indirect pointer #0 mismatch ..." seen.
 # http://people.freebsd.org/~pho/stress/log/kirk063.txt
 
+# https://people.freebsd.org/~pho/stress/log/kirk080.txt
+
 . ../default.cfg
 
 [ `swapinfo | wc -l` -eq 1 ] && exit 0
 
-mp1=$mntpoint
-mp2=${mntpoint}2
-[ -d $mp2 ] || mkdir -p $mp2
 md1=$mdstart
 md2=$((mdstart + 1))
+mp1=${mntpoint}$md1
+mp2=${mntpoint}$md2
+mkdir -p $mp1 $mp2
 
 usermem=`sysctl -n hw.usermem`
 size=$((2 * 1024 * 1024 * 1024))	# Ideal disk size is 2G
