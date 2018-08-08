@@ -30,6 +30,9 @@
 
 # Simple pmc test
 
+# "panic: [pmc,4950] pm=0x2ddfe880 runcount 0" seen.
+# https://people.freebsd.org/~pho/stress/log/pmc.txt
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
