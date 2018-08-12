@@ -31,7 +31,6 @@ BIN1=	crontab \
 	motd \
 	netconfig \
 	networks \
-	newsyslog.conf \
 	nsswitch.conf \
 	phones \
 	profile \
@@ -62,10 +61,6 @@ BIN1+= amd.map
 
 .if ${MK_FTP} != "no"
 BIN1+= ftpusers
-.endif
-
-.if ${MK_INETD} != "no"
-BIN1+= inetd.conf
 .endif
 
 .if ${MK_LOCATE} != "no"
@@ -170,7 +165,6 @@ distribution:
 	${_+_}cd ${.CURDIR}/devd; ${MAKE} install
 	${_+_}cd ${.CURDIR}/gss; ${MAKE} install
 	${_+_}cd ${.CURDIR}/mtree; ${MAKE} install
-	${_+_}cd ${.CURDIR}/newsyslog.conf.d; ${MAKE} install
 	${_+_}cd ${SRCTOP}/share/termcap; ${MAKE} etc-termcap
 	${_+_}cd ${.CURDIR}/syslog.d; ${MAKE} install
 	${_+_}cd ${SRCTOP}/usr.sbin/rmt; ${MAKE} etc-rmt
