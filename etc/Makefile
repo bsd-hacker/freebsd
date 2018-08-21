@@ -13,7 +13,6 @@ SUBDIR+=sendmail
 .endif
 
 BIN1=	crontab \
-	devd.conf \
 	devfs.conf \
 	dhclient.conf \
 	disktab \
@@ -39,7 +38,6 @@ BIN1=	crontab \
 	remote \
 	rpc \
 	services \
-	syslog.conf \
 	termcap.small
 
 .if exists(${.CURDIR}/etc.${MACHINE}/ttys)
@@ -152,11 +150,9 @@ distribution:
 	${_+_}cd ${.CURDIR}/bluetooth; ${MAKE} install
 .endif
 	${_+_}cd ${.CURDIR}/defaults; ${MAKE} install
-	${_+_}cd ${.CURDIR}/devd; ${MAKE} install
 	${_+_}cd ${.CURDIR}/gss; ${MAKE} install
 	${_+_}cd ${.CURDIR}/mtree; ${MAKE} install
 	${_+_}cd ${SRCTOP}/share/termcap; ${MAKE} etc-termcap
-	${_+_}cd ${.CURDIR}/syslog.d; ${MAKE} install
 	${_+_}cd ${SRCTOP}/usr.sbin/rmt; ${MAKE} etc-rmt
 	${_+_}cd ${.CURDIR}/pam.d; ${MAKE} install
 .if ${MK_UNBOUND} != "no"
