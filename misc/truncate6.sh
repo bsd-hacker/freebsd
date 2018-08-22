@@ -75,9 +75,10 @@ QUOTE
 )
 full=`echo "$full" | sed '/Last Mounted/,+6d'`
 r=`echo "$full" | tail -1`
-if [ "$r" != "0, 0, 0, 4704" ]; then
+expect="	lbn 3 blkno 4704"
+if [ "$r" != "$expect" ]; then
 	e=1
-	echo "FAIL Expected \"0, 0, 0, 4704\", got \"$r\"."
+	echo "FAIL Expected \"$expect\", got \"$r\"."
 	echo "$full"
 else
 	e=0
