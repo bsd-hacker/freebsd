@@ -43,5 +43,7 @@ while ! [ -f failed ] && ! [ -f adminlock ]; do
 done
 
 # Send a warning if builds stop running
-echo "Subject: `hostname` Portsnap builds no longer running!" |
-    sendmail ${BUILDMAIL_TO}
+for ADDR in ${BUILDMAIL_TO}; do
+	echo "Subject: `hostname` Portsnap builds no longer running!" |
+	    sendmail ${ADDR}
+done
