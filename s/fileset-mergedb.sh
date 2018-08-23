@@ -29,7 +29,7 @@ echo "`date`: Updating databases"
 sed -e "s/|/|${SNAPDATE}|/" ${INDEX} |
     sort -k 3,3 -t '|' > ${TMP}/new.dated
 sort -k 3,3 -t '|' ${FSETDIR}/filedb |
-    join -1 3 -2 3 -t '|' -v 1 - ${TMP}/new.dated |
+    join -1 3 -2 3 -t '|' -v 1 -o 1.1,1.2,1.3 - ${TMP}/new.dated |
     sort -k 1,1 -t '|' - ${TMP}/new.dated > ${FSETDIR}/filedb.tmp
 mv ${FSETDIR}/filedb.tmp ${FSETDIR}/filedb
 
@@ -37,7 +37,7 @@ mv ${FSETDIR}/filedb.tmp ${FSETDIR}/filedb
 sed -e "s/|/|${SNAPDATE}|/" ${tINDEX} |
     sort -k 3,3 -t '|' > ${TMP}/new.dated
 sort -k 3,3 -t '|' ${FSETDIR}/metadb |
-    join -1 3 -2 3 -t '|' -v 1 - ${TMP}/new.dated |
+    join -1 3 -2 3 -t '|' -v 1 -o 1.1,1.2,1.3 - ${TMP}/new.dated |
     sort -k 1,1 -t '|' - ${TMP}/new.dated > ${FSETDIR}/metadb.tmp
 mv ${FSETDIR}/metadb.tmp ${FSETDIR}/metadb
 
