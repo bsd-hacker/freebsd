@@ -36,14 +36,15 @@ sh -e s/treesnap-mktars-all.sh ${PORTSDIR} ${SNAP} ${SNAP}/INDEX ${TMP}
 
 # Unmount the ports tree
 while ! umount /dev/md${PORTSMD}; do
-	sleep 1
+	sleep 1;
 done
 
 # Perform index describes
 for N in ${DESCRIBES}; do
 	echo "`date`: Starting describe run for ${N}.x"
 	if ! sh -e s/describes-run.sh /dev/md${PORTSMD} $WORLDTAR $JAILDIR	\
-	    ${N}99999 ${SNAP}/DESCRIBE.${N} 2>${SNAP}/DESCRIBE.${N}.err; then
+	    ${N}99999 ${SNAP}/DESCRIBE.${N} ${N}.x-STABLE			\
+	    2>${SNAP}/DESCRIBE.${N}.err; then
 		echo "`date`: ${N}.x describes failed"
 		cat ${SNAP}/DESCRIBE.${N}.err
 		rm ${SNAP}/DESCRIBE.${N}

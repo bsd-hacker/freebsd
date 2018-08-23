@@ -6,12 +6,13 @@ if [ -z "$PORTSNAP_BUILD_CONF_READ" ]; then
 	exit 1
 fi
 
-# usage: sh -e describes-run.sh PORTSDISK WORLDTAR JAILDIR OSVERSION DESCFILE
+# usage: sh -e describes-run.sh PORTSDISK WORLDTAR JAILDIR OSVERSION DESCFILE UNAMER
 PORTSDISK="$1"
 WORLDTAR="$2"
 JAILDIR="$3"
 OSVERSION="$4"
 DESCFILE="$5"
+UNAMER="$6"
 
 # helper function
 findruleset () {
@@ -62,6 +63,7 @@ if env - PATH=${PATH} jail -c path=${JAILDIR} host.hostname=localhost	\
     > ${DESCFILE} <<- EOF
 	export __MAKE_CONF=/nonexistant
 	export OSVERSION=${OSVERSION}
+	export UNAME_r=${UNAMER}
 	export PORTOBJFORMAT=elf
 	export INDEX_TMPDIR=/tmp
 	export WRKDIRPREFIX=/tmp
@@ -82,16 +84,16 @@ fi
 
 # Clean up
 while ! umount ${JAILDIR}/dev; do
-	sleep 1
+	sleep 1;
 done
 while ! umount ${JAILDIR}/tmp; do
-	sleep 1
+	sleep 1;
 done
 while ! umount ${JAILDIR}/usr/ports; do
-	sleep 1
+	sleep 1;
 done
 while ! umount ${JAILDIR}; do
-	sleep 1
+	sleep 1;
 done
 mdconfig -d -u ${JAILMD}
 mdconfig -d -u ${TMPMD}
