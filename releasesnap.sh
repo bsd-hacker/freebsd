@@ -60,7 +60,7 @@ tar -czf ${TARBALL} -C ${WORKDIR} tag tINDEX INDEX.gz files
 
 # Unmount and delete the snapshot disk
 while ! umount /dev/md${SNAPMD}; do
-	sleep 1
+	sleep 1;
 done
 mdconfig -d -u ${SNAPMD}
 
