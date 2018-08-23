@@ -33,7 +33,7 @@ fi
 # Create a memory disk for holding the snapshot files.
 SNAPMD=`mdconfig -a -t swap -s ${SNAPMDSIZE} -n`
 newfs -O 1 -n /dev/md${SNAPMD} >/dev/null
-mount -onoatime,async /dev/md${SNAPMD} ${SNAPDIR}
+mount -o noatime,noexec,async /dev/md${SNAPMD} ${SNAPDIR}
 
 # Build a snapshot
 sh -e s/treesnap-build.sh head@${NEWREV} "${DESCRIBES_BUILD}"	\
@@ -86,7 +86,7 @@ rm ${SIGDIR}/*.ssl
 
 # Unmount and delete the snapshot disk
 while ! umount /dev/md${SNAPMD}; do
-	sleep 1
+	sleep 1;
 done
 mdconfig -d -u ${SNAPMD}
 
