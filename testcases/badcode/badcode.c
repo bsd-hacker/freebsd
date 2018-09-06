@@ -104,7 +104,6 @@ test(void)
 			rl.rlim_max = rl.rlim_cur = 0;
 			if (setrlimit(RLIMIT_CORE, &rl) == -1)
 				warn("setrlimit");
-			arc4random_stir();
 			st = (void *)trunc_page((unsigned long)tobemangled);
 			if (mprotect(st, PAGE_SIZE, PROT_WRITE | PROT_READ | PROT_EXEC) == -1)
 				err(1, "mprotect()");
