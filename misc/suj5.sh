@@ -172,7 +172,6 @@ main()
 	for (i = 0; i < 100; i++) {
 		for (j = 0; j < PARALLEL; j++) {
 			if (fork() == 0) {
-				arc4random_stir();
 				test(random_int(1, size) * 1024);
 			}
 		}

@@ -186,7 +186,6 @@ main(void)
 	alarm(180);
 	for (i = 0; i < 8000; i++) {
 		if (fork() == 0) {
-			arc4random_stir();
 			for (j = 0; j < N; j++)
 				r[j] = arc4random();
 			for (j = 0; j < 50; j++)

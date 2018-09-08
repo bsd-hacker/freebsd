@@ -193,7 +193,6 @@ main(void)
 	start = time(NULL);
 	while ((time(NULL) - start) < 120) {
 		if (fork() == 0) {
-			arc4random_stir();
 			for (j = 0; j < 1; j++)
 				if ((e = pthread_create(&cp[j], NULL, calls, NULL)) != 0)
 					errc(1, e,"pthread_create");

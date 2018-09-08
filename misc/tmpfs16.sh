@@ -192,7 +192,6 @@ main(int argc, char **argv)
 		err(1, "Can't drop privileges to \"nobody\"");
 	endpwent();
 
-	arc4random_stir();
 	if ((e = pthread_create(&rp, NULL, test, NULL)) != 0)
 		errc(1, e, "pthread_create");
 	usleep(1000);
