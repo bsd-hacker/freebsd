@@ -13,12 +13,10 @@ SUBDIR+=sendmail
 .endif
 
 BIN1=	\
-	dhclient.conf \
 	disktab \
 	group \
 	hosts.allow \
 	libalias.conf \
-	libmap.conf \
 	login.access \
 	mac.conf \
 	phones \
@@ -28,10 +26,6 @@ BIN1=	\
 	termcap.small
 
 # NB: keep these sorted by MK_* knobs
-
-.if ${MK_AMD} != "no"
-BIN1+= amd.map
-.endif
 
 .if ${MK_LOCATE} != "no"
 BIN1+=	${SRCTOP}/usr.bin/locate/locate/locate.rc
