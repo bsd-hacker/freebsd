@@ -22,10 +22,6 @@ BIN1=	\
 
 # NB: keep these sorted by MK_* knobs
 
-.if ${MK_LPR} != "no"
-BIN1+=	hosts.lpd printcap
-.endif
-
 .if ${MK_OPENSSL} != "no"
 SSL=	${SRCTOP}/crypto/openssl/apps/openssl.cnf
 .endif
@@ -74,7 +70,7 @@ distribution:
 	    ${INSTALL} -o ${BINOWN} -g ${BINGRP} -m 644 \
 		${BIN1} ${DESTDIR}/etc; \
 	    ${INSTALL} -o ${BINOWN} -g ${BINGRP} -m 600 \
-		master.passwd nsmb.conf opieaccess ${DESTDIR}/etc;
+		master.passwd ${DESTDIR}/etc;
 
 .if ${MK_TCSH} == "no"
 	sed -i "" -e 's;/bin/csh;/bin/sh;' ${DESTDIR}/etc/master.passwd
@@ -210,7 +206,7 @@ distrib-dirs: ${MTREES:N/*} distrib-cleanup .PHONY
 
 etc-examples: ${META_DEPS}
 	cd ${.CURDIR}; ${INSTALL} ${TAG_ARGS} -o ${BINOWN} -g ${BINGRP} -m 444 \
-	    ${BIN1} ${BIN2} nsmb.conf opieaccess \
+	    ${BIN1} ${BIN2} \
 	    ${DESTDIR}${SHAREDIR}/examples/etc
 
 .include <bsd.prog.mk>
