@@ -61,15 +61,19 @@ static int    nvme_probe(device_t);
 static int    nvme_attach(device_t);
 static int    nvme_detach(device_t);
 static int    nvme_shutdown(device_t);
+static int    nvme_suspend(device_t);
+static int    nvme_resume(device_t);
 
 static devclass_t nvme_devclass;
 
 static device_method_t nvme_pci_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe,     nvme_probe),
-	DEVMETHOD(device_attach,    nvme_attach),
-	DEVMETHOD(device_detach,    nvme_detach),
-	DEVMETHOD(device_shutdown,  nvme_shutdown),
+	DEVMETHOD(device_probe,		nvme_probe),
+	DEVMETHOD(device_attach,	nvme_attach),
+	DEVMETHOD(device_detach,	nvme_detach),
+	DEVMETHOD(device_shutdown,	nvme_shutdown),
+	DEVMETHOD(device_suspend,	nvme_suspend),
+	DEVMETHOD(device_resume,	nvme_resume),
 	{ 0, 0 }
 };
 
@@ -178,6 +182,22 @@ nvme_uninit(void)
 }
 
 SYSUNINIT(nvme_unregister, SI_SUB_DRIVERS, SI_ORDER_SECOND, nvme_uninit, NULL);
+
+static int
+nvme_suspend(device_t dev)
+{
+
+	nvme_detech(dev);
+	return (0);
+}
+
+static int
+nvme_resume(device_t dev)
+{
+
+	nvme_attach(dev);
+	return (0);
+}
 
 static int
 nvme_shutdown(device_t dev)
