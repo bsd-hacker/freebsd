@@ -51,10 +51,16 @@ f_include $BSDCFG_SHARE/dialog.subr
 #
 # Strings that should be moved to an i18n file and loaded with f_include_lang()
 #
-msg_set_hostname="Set Hostname"
-msg_please_choose_a_hostname="Please choose a hostname for this machine.\n\nIf you are running on a managed network, please ask\nyour network administrator for an appropriate name."
-msg_ok="OK"
 msg_freebsd_installer="FreeBSD Installer"
+msg_ok="OK"
+msg_please_choose_a_hostname="Please choose a hostname for this machine.\n\nIf you are running on a managed network, please ask\nyour network administrator for an appropriate name."
+msg_set_hostname="Set Hostname"
+
+#
+# Command strings for various tasks
+#
+ECHO_OVERWRITE='echo "%s" > "%s"'
+SET_HOSTNAME='hostname -s "%s"'
 
 ############################################################ FUNCTIONS
 
@@ -73,13 +79,13 @@ dialog_hostname()
 		"$DIALOG_TITLE" "$DIALOG_BACKTITLE" "$prompt" "$value" "$hline"
 
 	$DIALOG \
-		--title "$DIALOG_TITLE" \
+		--title "$DIALOG_TITLE"         \
 		--backtitle "$DIALOG_BACKTITLE" \
-		--hline "$hline" \
-		--ok-label "$msg_ok" \
-		--no-cancel \
-		--inputbox "$prompt" \
-		$height $width "$value" \
+		--hline "$hline"                \
+		--ok-label "$msg_ok"            \
+		--no-cancel                     \
+		--inputbox "$prompt"            \
+		$height $width "$value"         \
 		2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
 }
 
@@ -100,14 +106,15 @@ HOSTNAME=$( dialog_hostname "$HOSTNAME" )
 #
 # Store the user's choice
 #
-echo "hostname=\"$HOSTNAME\"" > "$HOSTNAMEFILE"
+f_eval_catch "$pgm" echo "$ECHO_OVERWRITE" \
+	'hostname=\"$HOSTNAME\"' "$HOSTNAMEFILE"
 retval=$?
 
 #
 # Activate entry if configured
 #
 if [ "$BSDINSTALL_CONFIGCURRENT" ]; then
-	hostname -s "$HOSTNAME"
+	f_eval_catch "$pgm" hostname "$SET_HOSTNAME" "$HOSTNAME"
 	retval=$?
 fi
 
