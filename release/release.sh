@@ -311,9 +311,9 @@ extra_chroot_setup() {
 			PBUILD_FLAGS="${PBUILD_FLAGS} OSREL=${REVISION}"
 			PBUILD_FLAGS="${PBUILD_FLAGS} WRKDIRPREFIX=/tmp/ports"
 			PBUILD_FLAGS="${PBUILD_FLAGS} DISTDIR=/tmp/distfiles"
-			chroot ${CHROOTDIR} env ${PBUILD_FLAGS} make -C \
+			chroot ${CHROOTDIR} env ${PBUILD_FLAGS} \
+				OPTIONS_UNSET="AVAHI FOP IGOR" make -C \
 				/usr/ports/textproc/docproj \
-				OPTIONS_UNSET="FOP IGOR" \
 				FORCE_PKG_REGISTER=1 \
 				deinstall install clean distclean
 		fi
