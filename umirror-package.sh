@@ -43,7 +43,7 @@ dd if=/dev/urandom bs=1k count=1 2>/dev/null |
 echo >> "${PRIVDIR}/key-${ID}"
 
 # Create an encrypted tarball
-openssl enc -aes-256-cbc -pass "file:${PRIVDIR}/key-${ID}"	\
+openssl enc -aes-256-cbc -pass "file:${PRIVDIR}/key-${ID}" -md md5	\
     < "${PRIVDIR}/dec-${ID}" > "${PRIVDIR}/tar-${ID}"
 
 # Add line to flist

@@ -131,7 +131,7 @@ while read ID FHASH FDECHASH; do
 	# Attempt to decrypt the file
 	if ! [ -r "${PRIVDIR}/dec-${ID}" ]; then
 		if ! openssl enc -aes-256-cbc -d		\
-		-pass "file:${PRIVDIR}/key-${ID}"		\
+		-pass "file:${PRIVDIR}/key-${ID}" -md md5	\
 		    < "${PRIVDIR}/tar-${ID}" > "${PRIVDIR}/dec-${ID}"; then
 			echo "Decrypting tar-${ID} failed"
 			exit 1
