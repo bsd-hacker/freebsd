@@ -37,7 +37,7 @@
 
 [ -f /usr/include/sys/syscall.h ] || exit 0
 
-list="fdatasync mount ktrace unmount"
+list="fdatasync mount ktrace"
 
 for i in $list; do
 	num=`grep SYS_$i /usr/include/sys/syscall.h | tail -1 | awk '{print $NF}'`
