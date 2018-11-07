@@ -45,7 +45,6 @@ mycc -o umountf3 -Wall umountf3.c
 rm -f umountf3.c
 cd $odir
 
-
 mount | grep "$mntpoint" | grep md$mdstart > /dev/null && umount $mntpoint
 mdconfig -l | grep md$mdstart > /dev/null &&  mdconfig -d -u $mdstart
 
