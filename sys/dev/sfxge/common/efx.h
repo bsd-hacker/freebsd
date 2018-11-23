@@ -2050,12 +2050,6 @@ efx_rx_qpush(
 
 #if EFSYS_OPT_RX_PACKED_STREAM
 
-/*
- * Fake length for RXQ descriptors in packed stream mode
- * to make hardware happy
- */
-#define	EFX_RXQ_PACKED_STREAM_FAKE_BUF_SIZE 32
-
 extern			void
 efx_rx_qpush_ps_credits(
 	__in		efx_rxq_t *erp);
@@ -2117,9 +2111,11 @@ efx_tx_fini(
 
 #define	EFX_TXQ_MAX_BUFS 8 /* Maximum independent of EFX_BUG35388_WORKAROUND. */
 
-#define	EFX_TXQ_CKSUM_IPV4	0x0001
-#define	EFX_TXQ_CKSUM_TCPUDP	0x0002
-#define	EFX_TXQ_FATSOV2		0x0004
+#define	EFX_TXQ_CKSUM_IPV4		0x0001
+#define	EFX_TXQ_CKSUM_TCPUDP		0x0002
+#define	EFX_TXQ_FATSOV2			0x0004
+#define	EFX_TXQ_CKSUM_INNER_IPV4	0x0008
+#define	EFX_TXQ_CKSUM_INNER_TCPUDP	0x0010
 
 extern	__checkReturn	efx_rc_t
 efx_tx_qcreate(
