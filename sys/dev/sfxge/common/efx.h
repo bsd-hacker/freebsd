@@ -920,13 +920,13 @@ efx_phy_media_type_get(
 	__in		efx_nic_t *enp,
 	__out		efx_phy_media_type_t *typep);
 
-extern					efx_rc_t
+extern	__checkReturn		efx_rc_t
 efx_phy_module_get_info(
-	__in				efx_nic_t *enp,
-	__in				uint8_t dev_addr,
-	__in				uint8_t offset,
-	__in				uint8_t len,
-	__out_bcount(len)		uint8_t *data);
+	__in			efx_nic_t *enp,
+	__in			uint8_t dev_addr,
+	__in			uint8_t offset,
+	__in			uint8_t len,
+	__out_bcount(len)	uint8_t *data);
 
 #if EFSYS_OPT_PHY_STATS
 
@@ -1388,6 +1388,7 @@ typedef enum efx_nvram_type_e {
 	EFX_NVRAM_DYNAMIC_CFG,
 	EFX_NVRAM_LICENSE,
 	EFX_NVRAM_UEFIROM,
+	EFX_NVRAM_MUM_FIRMWARE,
 	EFX_NVRAM_NTYPES,
 } efx_nvram_type_t;
 
