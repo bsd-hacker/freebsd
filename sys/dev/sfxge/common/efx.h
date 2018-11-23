@@ -566,6 +566,10 @@ efx_mac_stats_get_mask(
 
 #define	EFX_MAC_STATS_SIZE 0x400
 
+extern	__checkReturn			efx_rc_t
+efx_mac_stats_clear(
+	__in				efx_nic_t *enp);
+
 /*
  * Upload mac statistics supported by the hardware into the given buffer.
  *
@@ -1091,6 +1095,14 @@ efx_bist_stop(
 #define	EFX_FEATURE_FW_ASSISTED_TSO_V2	0x00002000
 #define	EFX_FEATURE_PACKED_STREAM	0x00004000
 
+typedef enum efx_tunnel_protocol_e {
+	EFX_TUNNEL_PROTOCOL_NONE = 0,
+	EFX_TUNNEL_PROTOCOL_VXLAN,
+	EFX_TUNNEL_PROTOCOL_GENEVE,
+	EFX_TUNNEL_PROTOCOL_NVGRE,
+	EFX_TUNNEL_NPROTOS
+} efx_tunnel_protocol_t;
+
 typedef struct efx_nic_cfg_s {
 	uint32_t		enc_board_type;
 	uint32_t		enc_phy_type;
@@ -1190,6 +1202,7 @@ typedef struct efx_nic_cfg_s {
 	boolean_t		enc_rx_var_packed_stream_supported;
 	boolean_t		enc_pm_and_rxdp_counters;
 	boolean_t		enc_mac_stats_40g_tx_size_bins;
+	uint32_t		enc_tunnel_encapsulations_supported;
 	/* External port identifier */
 	uint8_t			enc_external_port;
 	uint32_t		enc_mcdi_max_payload_length;
@@ -1213,6 +1226,24 @@ typedef struct efx_nic_cfg_s {
 extern			const efx_nic_cfg_t *
 efx_nic_cfg_get(
 	__in		efx_nic_t *enp);
+
+typedef struct efx_nic_fw_info_s {
+	/* Basic FW version information */
+	uint16_t	enfi_mc_fw_version[4];
+	/*
+	 * If datapath capabilities can be detected,
+	 * additional FW information is to be shown
+	 */
+	boolean_t	enfi_dpcpu_fw_ids_valid;
+	/* Rx and Tx datapath CPU FW IDs */
+	uint16_t	enfi_rx_dpcpu_fw_id;
+	uint16_t	enfi_tx_dpcpu_fw_id;
+} efx_nic_fw_info_t;
+
+extern	__checkReturn		efx_rc_t
+efx_nic_get_fw_version(
+	__in			efx_nic_t *enp,
+	__out			efx_nic_fw_info_t *enfip);
 
 /* Driver resource limits (minimum required/maximum usable). */
 typedef struct efx_drv_limits_s {
