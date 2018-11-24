@@ -44,13 +44,13 @@ extern "C" {
 #endif
 
 #define	EFX_STATIC_ASSERT(_cond)		\
-	((void)sizeof(char[(_cond) ? 1 : -1]))
+	((void)sizeof (char[(_cond) ? 1 : -1]))
 
 #define	EFX_ARRAY_SIZE(_array)			\
-	(sizeof(_array) / sizeof((_array)[0]))
+	(sizeof (_array) / sizeof ((_array)[0]))
 
 #define	EFX_FIELD_OFFSET(_type, _field)		\
-	((size_t) &(((_type *)0)->_field))
+	((size_t)&(((_type *)0)->_field))
 
 /* The macro expands divider twice */
 #define	EFX_DIV_ROUND_UP(_n, _d)		(((_n) + (_d) - 1) / (_d))
@@ -562,7 +562,7 @@ efx_mac_stats_get_mask(
 
 #define	EFX_MAC_STAT_SUPPORTED(_mask, _stat)	\
 	((_mask)[(_stat) / EFX_MAC_STATS_MASK_BITS_PER_PAGE] &	\
-	 (1ULL << ((_stat) & (EFX_MAC_STATS_MASK_BITS_PER_PAGE - 1))))
+	    (1ULL << ((_stat) & (EFX_MAC_STATS_MASK_BITS_PER_PAGE - 1))))
 
 #define	EFX_MAC_STATS_SIZE 0x400
 
@@ -631,7 +631,7 @@ efx_mon_init(
 #define	EFX_MON_STATS_PAGE_SIZE 0x100
 #define	EFX_MON_MASK_ELEMENT_SIZE 32
 
-/* START MKCONFIG GENERATED MonitorHeaderStatsBlock 5d4ee5185e419abe */
+/* START MKCONFIG GENERATED MonitorHeaderStatsBlock aa0233c80156308e */
 typedef enum efx_mon_stat_e {
 	EFX_MON_STAT_2_5V,
 	EFX_MON_STAT_VCCP1,
@@ -710,6 +710,8 @@ typedef enum efx_mon_stat_e {
 	EFX_MON_STAT_CONTROLLER_TDIODE_TEMP,
 	EFX_MON_STAT_BOARD_FRONT_TEMP,
 	EFX_MON_STAT_BOARD_BACK_TEMP,
+	EFX_MON_STAT_I1V8,
+	EFX_MON_STAT_I2V5,
 	EFX_MON_NSTATS
 } efx_mon_stat_t;
 
@@ -910,7 +912,8 @@ typedef enum efx_phy_media_type_e {
 	EFX_PHY_MEDIA_NTYPES
 } efx_phy_media_type_t;
 
-/* Get the type of medium currently used.  If the board has ports for
+/*
+ * Get the type of medium currently used.  If the board has ports for
  * modules, a module is present, and we recognise the media type of
  * the module, then this will be the media type of the module.
  * Otherwise it will be the media type of the port.
@@ -1011,7 +1014,7 @@ typedef enum efx_bist_type_e {
 	EFX_BIST_TYPE_PHY_CABLE_SHORT,
 	EFX_BIST_TYPE_PHY_CABLE_LONG,
 	EFX_BIST_TYPE_MC_MEM,	/* Test the MC DMEM and IMEM */
-	EFX_BIST_TYPE_SAT_MEM,	/* Test the DMEM and IMEM of satellite cpus*/
+	EFX_BIST_TYPE_SAT_MEM,	/* Test the DMEM and IMEM of satellite cpus */
 	EFX_BIST_TYPE_REG,	/* Test the register memories */
 	EFX_BIST_TYPE_NTYPES,
 } efx_bist_type_t;
@@ -1042,8 +1045,10 @@ typedef enum efx_bist_value_e {
 	EFX_BIST_PHY_CABLE_STATUS_C,
 	EFX_BIST_PHY_CABLE_STATUS_D,
 	EFX_BIST_FAULT_CODE,
-	/* Memory BIST specific values. These match to the MC_CMD_BIST_POLL
-	 * response. */
+	/*
+	 * Memory BIST specific values. These match to the MC_CMD_BIST_POLL
+	 * response.
+	 */
 	EFX_BIST_MEM_TEST,
 	EFX_BIST_MEM_ADDR,
 	EFX_BIST_MEM_BUS,
@@ -1638,7 +1643,7 @@ efx_ev_qcreate(
 	__in		efx_nic_t *enp,
 	__in		unsigned int index,
 	__in		efsys_mem_t *esmp,
-	__in		size_t n,
+	__in		size_t ndescs,
 	__in		uint32_t id,
 	__in		uint32_t us,
 	__in		uint32_t flags,
@@ -1795,8 +1800,7 @@ typedef __checkReturn	boolean_t
 typedef __checkReturn	boolean_t
 (*efx_mac_stats_ev_t)(
 	__in_opt	void *arg,
-	__in		uint32_t generation
-	);
+	__in		uint32_t generation);
 
 #endif	/* EFSYS_OPT_MAC_STATS */
 
@@ -2018,7 +2022,7 @@ efx_rx_qcreate(
 	__in		unsigned int label,
 	__in		efx_rxq_type_t type,
 	__in		efsys_mem_t *esmp,
-	__in		size_t n,
+	__in		size_t ndescs,
 	__in		uint32_t id,
 	__in		efx_evq_t *eep,
 	__deref_out	efx_rxq_t **erpp);
@@ -2033,14 +2037,14 @@ typedef struct efx_desc_s {
 	efx_qword_t ed_eq;
 } efx_desc_t;
 
-extern			void
+extern				void
 efx_rx_qpost(
-	__in		efx_rxq_t *erp,
-	__in_ecount(n)	efsys_dma_addr_t *addrp,
-	__in		size_t size,
-	__in		unsigned int n,
-	__in		unsigned int completed,
-	__in		unsigned int added);
+	__in			efx_rxq_t *erp,
+	__in_ecount(ndescs)	efsys_dma_addr_t *addrp,
+	__in			size_t size,
+	__in			unsigned int ndescs,
+	__in			unsigned int completed,
+	__in			unsigned int added);
 
 extern		void
 efx_rx_qpush(
@@ -2107,7 +2111,6 @@ efx_tx_fini(
 #define	EFX_TXQ_SIZE(_ndescs)		((_ndescs) * sizeof (efx_qword_t))
 #define	EFX_TXQ_NBUFS(_ndescs)		(EFX_TXQ_SIZE(_ndescs) / EFX_BUF_SIZE)
 #define	EFX_TXQ_LIMIT(_ndescs)		((_ndescs) - 16)
-#define	EFX_TXQ_DC_NDESCS(_dcsize)	(8 << _dcsize)
 
 #define	EFX_TXQ_MAX_BUFS 8 /* Maximum independent of EFX_BUG35388_WORKAROUND. */
 
@@ -2130,13 +2133,13 @@ efx_tx_qcreate(
 	__deref_out	efx_txq_t **etpp,
 	__out		unsigned int *addedp);
 
-extern	__checkReturn	efx_rc_t
+extern	__checkReturn		efx_rc_t
 efx_tx_qpost(
-	__in		efx_txq_t *etp,
-	__in_ecount(n)	efx_buffer_t *eb,
-	__in		unsigned int n,
-	__in		unsigned int completed,
-	__inout		unsigned int *addedp);
+	__in			efx_txq_t *etp,
+	__in_ecount(ndescs)	efx_buffer_t *eb,
+	__in			unsigned int ndescs,
+	__in			unsigned int completed,
+	__inout			unsigned int *addedp);
 
 extern	__checkReturn	efx_rc_t
 efx_tx_qpace(
@@ -2513,8 +2516,7 @@ efx_lic_find_start(
 	__in_bcount(buffer_size)
 				caddr_t bufferp,
 	__in			size_t buffer_size,
-	__out			uint32_t *startp
-	);
+	__out			uint32_t *startp);
 
 extern	__checkReturn		efx_rc_t
 efx_lic_find_end(
@@ -2523,8 +2525,7 @@ efx_lic_find_end(
 				caddr_t bufferp,
 	__in			size_t buffer_size,
 	__in			uint32_t offset,
-	__out			uint32_t *endp
-	);
+	__out			uint32_t *endp);
 
 extern	__checkReturn	__success(return != B_FALSE)	boolean_t
 efx_lic_find_key(
@@ -2534,15 +2535,13 @@ efx_lic_find_key(
 	__in			size_t buffer_size,
 	__in			uint32_t offset,
 	__out			uint32_t *startp,
-	__out			uint32_t *lengthp
-	);
+	__out			uint32_t *lengthp);
 
 extern	__checkReturn	__success(return != B_FALSE)	boolean_t
 efx_lic_validate_key(
 	__in			efx_nic_t *enp,
 	__in_bcount(length)	caddr_t keyp,
-	__in			uint32_t length
-	);
+	__in			uint32_t length);
 
 extern	__checkReturn		efx_rc_t
 efx_lic_read_key(
@@ -2555,8 +2554,7 @@ efx_lic_read_key(
 	__out_bcount_part(key_max_size, *lengthp)
 				caddr_t keyp,
 	__in			size_t key_max_size,
-	__out			uint32_t *lengthp
-	);
+	__out			uint32_t *lengthp);
 
 extern	__checkReturn		efx_rc_t
 efx_lic_write_key(
@@ -2567,8 +2565,7 @@ efx_lic_write_key(
 	__in			uint32_t offset,
 	__in_bcount(length)	caddr_t keyp,
 	__in			uint32_t length,
-	__out			uint32_t *lengthp
-	);
+	__out			uint32_t *lengthp);
 
 	__checkReturn		efx_rc_t
 efx_lic_delete_key(
@@ -2579,24 +2576,21 @@ efx_lic_delete_key(
 	__in			uint32_t offset,
 	__in			uint32_t length,
 	__in			uint32_t end,
-	__out			uint32_t *deltap
-	);
+	__out			uint32_t *deltap);
 
 extern	__checkReturn		efx_rc_t
 efx_lic_create_partition(
 	__in			efx_nic_t *enp,
 	__in_bcount(buffer_size)
 				caddr_t bufferp,
-	__in			size_t buffer_size
-	);
+	__in			size_t buffer_size);
 
 extern	__checkReturn		efx_rc_t
 efx_lic_finish_partition(
 	__in			efx_nic_t *enp,
 	__in_bcount(buffer_size)
 				caddr_t bufferp,
-	__in			size_t buffer_size
-	);
+	__in			size_t buffer_size);
 
 #endif	/* EFSYS_OPT_LICENSING */
 

@@ -362,12 +362,7 @@ typedef struct efx_nic_ops_s {
 #ifndef EFX_RXQ_LIMIT_TARGET
 #define	EFX_RXQ_LIMIT_TARGET 512
 #endif
-#ifndef EFX_TXQ_DC_SIZE
-#define	EFX_TXQ_DC_SIZE 1 /* 16 descriptors */
-#endif
-#ifndef EFX_RXQ_DC_SIZE
-#define	EFX_RXQ_DC_SIZE 3 /* 64 descriptors */
-#endif
+
 
 #if EFSYS_OPT_FILTER
 
@@ -1040,8 +1035,7 @@ struct efx_txq_s {
 	do {								\
 		EFX_CHECK_REG((_enp), (_reg));				\
 		EFSYS_PROBE7(efx_bar_tbl_doorbell_writeo,		\
-		    const char *,					\
-		    #_reg,						\
+		    const char *, #_reg,				\
 		    uint32_t, (_index),					\
 		    uint32_t, _reg ## _OFST,				\
 		    uint32_t, (_eop)->eo_u32[3],			\
