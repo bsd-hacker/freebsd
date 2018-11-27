@@ -37,7 +37,7 @@ __FBSDID("$FreeBSD$");
 #include "mcdi_mon.h"
 #endif
 
-#if EFSYS_OPT_HUNTINGTON || EFSYS_OPT_MEDFORD
+#if EFSYS_OPT_HUNTINGTON || EFSYS_OPT_MEDFORD || EFSYS_OPT_MEDFORD2
 
 #if EFSYS_OPT_QSTATS
 #define	EFX_EV_QSTAT_INCR(_eep, _stat)					\
@@ -576,7 +576,8 @@ ef10_ev_qdestroy(
 	efx_nic_t *enp = eep->ee_enp;
 
 	EFSYS_ASSERT(enp->en_family == EFX_FAMILY_HUNTINGTON ||
-	    enp->en_family == EFX_FAMILY_MEDFORD);
+	    enp->en_family == EFX_FAMILY_MEDFORD ||
+	    enp->en_family == EFX_FAMILY_MEDFORD2);
 
 	(void) efx_mcdi_fini_evq(enp, eep->ee_index);
 }
@@ -603,7 +604,7 @@ ef10_ev_qprime(
 		    EFE_DD_EVQ_IND_RPTR_FLAGS_HIGH,
 		    ERF_DD_EVQ_IND_RPTR,
 		    (rptr >> ERF_DD_EVQ_IND_RPTR_WIDTH));
-		EFX_BAR_TBL_WRITED(enp, ER_DD_EVQ_INDIRECT, eep->ee_index,
+		EFX_BAR_VI_WRITED(enp, ER_DD_EVQ_INDIRECT, eep->ee_index,
 		    &dword, B_FALSE);
 
 		EFX_POPULATE_DWORD_2(dword,
@@ -611,11 +612,11 @@ ef10_ev_qprime(
 		    EFE_DD_EVQ_IND_RPTR_FLAGS_LOW,
 		    ERF_DD_EVQ_IND_RPTR,
 		    rptr & ((1 << ERF_DD_EVQ_IND_RPTR_WIDTH) - 1));
-		EFX_BAR_TBL_WRITED(enp, ER_DD_EVQ_INDIRECT, eep->ee_index,
+		EFX_BAR_VI_WRITED(enp, ER_DD_EVQ_INDIRECT, eep->ee_index,
 		    &dword, B_FALSE);
 	} else {
 		EFX_POPULATE_DWORD_1(dword, ERF_DZ_EVQ_RPTR, rptr);
-		EFX_BAR_TBL_WRITED(enp, ER_DZ_EVQ_RPTR_REG, eep->ee_index,
+		EFX_BAR_VI_WRITED(enp, ER_DZ_EVQ_RPTR_REG, eep->ee_index,
 		    &dword, B_FALSE);
 	}
 
@@ -728,13 +729,13 @@ ef10_ev_qmoderate(
 			    EFE_DD_EVQ_IND_TIMER_FLAGS,
 			    ERF_DD_EVQ_IND_TIMER_MODE, mode,
 			    ERF_DD_EVQ_IND_TIMER_VAL, ticks);
-			EFX_BAR_TBL_WRITED(enp, ER_DD_EVQ_INDIRECT,
+			EFX_BAR_VI_WRITED(enp, ER_DD_EVQ_INDIRECT,
 			    eep->ee_index, &dword, 0);
 		} else {
 			EFX_POPULATE_DWORD_2(dword,
 			    ERF_DZ_TC_TIMER_MODE, mode,
 			    ERF_DZ_TC_TIMER_VAL, ticks);
-			EFX_BAR_TBL_WRITED(enp, ER_DZ_EVQ_TMR_REG,
+			EFX_BAR_VI_WRITED(enp, ER_DZ_EVQ_TMR_REG,
 			    eep->ee_index, &dword, 0);
 		}
 	}
@@ -1415,4 +1416,4 @@ ef10_ev_rxlabel_fini(
 #endif
 }
 
-#endif	/* EFSYS_OPT_HUNTINGTON || EFSYS_OPT_MEDFORD */
+#endif	/* EFSYS_OPT_HUNTINGTON || EFSYS_OPT_MEDFORD || EFSYS_OPT_MEDFORD2 */

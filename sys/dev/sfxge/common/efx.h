@@ -68,6 +68,7 @@ typedef enum efx_family_e {
 	EFX_FAMILY_SIENA,
 	EFX_FAMILY_HUNTINGTON,
 	EFX_FAMILY_MEDFORD,
+	EFX_FAMILY_MEDFORD2,
 	EFX_FAMILY_NTYPES
 } efx_family_t;
 
@@ -96,6 +97,10 @@ efx_family(
 #define	EFX_PCI_DEVID_MEDFORD_PF_UNINIT		0x0913
 #define	EFX_PCI_DEVID_MEDFORD			0x0A03	/* SFC9240 PF */
 #define	EFX_PCI_DEVID_MEDFORD_VF		0x1A03	/* SFC9240 VF */
+
+#define	EFX_PCI_DEVID_MEDFORD2_PF_UNINIT	0x0B13
+#define	EFX_PCI_DEVID_MEDFORD2			0x0B03	/* SFC9250 PF */
+#define	EFX_PCI_DEVID_MEDFORD2_VF		0x1B03	/* SFC9250 VF */
 
 #define	EFX_MEM_BAR	2
 
@@ -199,7 +204,7 @@ efx_nic_check_pcie_link_speed(
 
 #if EFSYS_OPT_MCDI
 
-#if EFSYS_OPT_HUNTINGTON || EFSYS_OPT_MEDFORD
+#if EFSYS_OPT_HUNTINGTON || EFSYS_OPT_MEDFORD || EFSYS_OPT_MEDFORD2
 /* Huntington and Medford require MCDIv2 commands */
 #define	WITH_MCDI_V2 1
 #endif
@@ -1110,6 +1115,13 @@ typedef enum efx_tunnel_protocol_e {
 	EFX_TUNNEL_NPROTOS
 } efx_tunnel_protocol_t;
 
+typedef enum efx_vi_window_shift_e {
+	EFX_VI_WINDOW_SHIFT_INVALID = 0,
+	EFX_VI_WINDOW_SHIFT_8K = 13,
+	EFX_VI_WINDOW_SHIFT_16K = 14,
+	EFX_VI_WINDOW_SHIFT_64K = 16,
+} efx_vi_window_shift_t;
+
 typedef struct efx_nic_cfg_s {
 	uint32_t		enc_board_type;
 	uint32_t		enc_phy_type;
@@ -1123,6 +1135,7 @@ typedef struct efx_nic_cfg_s {
 	uint32_t		enc_mon_stat_mask[(EFX_MON_NSTATS + 31) / 32];
 #endif
 	unsigned int		enc_features;
+	efx_vi_window_shift_t	enc_vi_window_shift;
 	uint8_t			enc_mac_addr[6];
 	uint8_t			enc_port;	/* PHY port number */
 	uint32_t		enc_intr_vec_base;
@@ -1167,11 +1180,11 @@ typedef struct efx_nic_cfg_s {
 #if EFSYS_OPT_BIST
 	uint32_t		enc_bist_mask;
 #endif	/* EFSYS_OPT_BIST */
-#if EFSYS_OPT_HUNTINGTON || EFSYS_OPT_MEDFORD
+#if EFSYS_OPT_HUNTINGTON || EFSYS_OPT_MEDFORD || EFSYS_OPT_MEDFORD2
 	uint32_t		enc_pf;
 	uint32_t		enc_vf;
 	uint32_t		enc_privilege_mask;
-#endif /* EFSYS_OPT_HUNTINGTON || EFSYS_OPT_MEDFORD */
+#endif /* EFSYS_OPT_HUNTINGTON || EFSYS_OPT_MEDFORD || EFSYS_OPT_MEDFORD2 */
 	boolean_t		enc_bug26807_workaround;
 	boolean_t		enc_bug35388_workaround;
 	boolean_t		enc_bug41750_workaround;
@@ -2265,6 +2278,12 @@ extern	void
 efx_tx_qdesc_vlantci_create(
 	__in	efx_txq_t *etp,
 	__in	uint16_t tci,
+	__out	efx_desc_t *edp);
+
+extern	void
+efx_tx_qdesc_checksum_create(
+	__in	efx_txq_t *etp,
+	__in	uint16_t flags,
 	__out	efx_desc_t *edp);
 
 #if EFSYS_OPT_QSTATS

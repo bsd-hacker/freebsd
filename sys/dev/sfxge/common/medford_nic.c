@@ -38,64 +38,6 @@ __FBSDID("$FreeBSD$");
 #if EFSYS_OPT_MEDFORD
 
 static	__checkReturn	efx_rc_t
-efx_mcdi_get_rxdp_config(
-	__in		efx_nic_t *enp,
-	__out		uint32_t *end_paddingp)
-{
-	efx_mcdi_req_t req;
-	uint8_t payload[MAX(MC_CMD_GET_RXDP_CONFIG_IN_LEN,
-			    MC_CMD_GET_RXDP_CONFIG_OUT_LEN)];
-	uint32_t end_padding;
-	efx_rc_t rc;
-
-	memset(payload, 0, sizeof (payload));
-	req.emr_cmd = MC_CMD_GET_RXDP_CONFIG;
-	req.emr_in_buf = payload;
-	req.emr_in_length = MC_CMD_GET_RXDP_CONFIG_IN_LEN;
-	req.emr_out_buf = payload;
-	req.emr_out_length = MC_CMD_GET_RXDP_CONFIG_OUT_LEN;
-
-	efx_mcdi_execute(enp, &req);
-	if (req.emr_rc != 0) {
-		rc = req.emr_rc;
-		goto fail1;
-	}
-
-	if (MCDI_OUT_DWORD_FIELD(req, GET_RXDP_CONFIG_OUT_DATA,
-				    GET_RXDP_CONFIG_OUT_PAD_HOST_DMA) == 0) {
-		/* RX DMA end padding is disabled */
-		end_padding = 0;
-	} else {
-		switch (MCDI_OUT_DWORD_FIELD(req, GET_RXDP_CONFIG_OUT_DATA,
-					    GET_RXDP_CONFIG_OUT_PAD_HOST_LEN)) {
-		case MC_CMD_SET_RXDP_CONFIG_IN_PAD_HOST_64:
-			end_padding = 64;
-			break;
-		case MC_CMD_SET_RXDP_CONFIG_IN_PAD_HOST_128:
-			end_padding = 128;
-			break;
-		case MC_CMD_SET_RXDP_CONFIG_IN_PAD_HOST_256:
-			end_padding = 256;
-			break;
-		default:
-			rc = ENOTSUP;
-			goto fail2;
-		}
-	}
-
-	*end_paddingp = end_padding;
-
-	return (0);
-
-fail2:
-	EFSYS_PROBE(fail2);
-fail1:
-	EFSYS_PROBE1(fail1, efx_rc_t, rc);
-
-	return (rc);
-}
-
-static	__checkReturn	efx_rc_t
 medford_nic_get_required_pcie_bandwidth(
 	__in		efx_nic_t *enp,
 	__out		uint32_t *bandwidth_mbpsp)
@@ -151,6 +93,17 @@ medford_board_cfg(
 	 * FIXME: Likely to be incomplete and incorrect.
 	 * Parts of this should be shared with Huntington.
 	 */
+
+	/* Medford has a fixed 8Kbyte VI window size */
+	EFX_STATIC_ASSERT(ER_DZ_EVQ_RPTR_REG_STEP	== 8192);
+	EFX_STATIC_ASSERT(ER_DZ_EVQ_TMR_REG_STEP	== 8192);
+	EFX_STATIC_ASSERT(ER_DZ_RX_DESC_UPD_REG_STEP	== 8192);
+	EFX_STATIC_ASSERT(ER_DZ_TX_DESC_UPD_REG_STEP	== 8192);
+	EFX_STATIC_ASSERT(ER_DZ_TX_PIOBUF_STEP		== 8192);
+
+	EFX_STATIC_ASSERT(1U << EFX_VI_WINDOW_SHIFT_8K	== 8192);
+	encp->enc_vi_window_shift = EFX_VI_WINDOW_SHIFT_8K;
+
 
 	if ((rc = efx_mcdi_get_port_assignment(enp, &port)) != 0)
 		goto fail1;
@@ -332,6 +285,7 @@ medford_board_cfg(
 
 	encp->enc_buftbl_limit = 0xFFFFFFFF;
 
+	EFX_STATIC_ASSERT(MEDFORD_PIOBUF_NBUFS <= EF10_MAX_PIOBUF_NBUFS);
 	encp->enc_piobuf_limit = MEDFORD_PIOBUF_NBUFS;
 	encp->enc_piobuf_size = MEDFORD_PIOBUF_SIZE;
 	encp->enc_piobuf_min_alloc_size = MEDFORD_MIN_PIO_ALLOC_SIZE;

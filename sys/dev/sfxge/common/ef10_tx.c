@@ -35,7 +35,7 @@ __FBSDID("$FreeBSD$");
 #include "efx_impl.h"
 
 
-#if EFSYS_OPT_HUNTINGTON || EFSYS_OPT_MEDFORD
+#if EFSYS_OPT_HUNTINGTON || EFSYS_OPT_MEDFORD || EFSYS_OPT_MEDFORD2
 
 #if EFSYS_OPT_QSTATS
 #define	EFX_TX_QSTAT_INCR(_etp, _stat)					\
@@ -203,7 +203,7 @@ ef10_tx_qcreate(
 {
 	efx_nic_cfg_t *encp = &enp->en_nic_cfg;
 	uint16_t inner_csum;
-	efx_qword_t desc;
+	efx_desc_t desc;
 	efx_rc_t rc;
 
 	_NOTE(ARGUNUSED(id))
@@ -228,19 +228,9 @@ ef10_tx_qcreate(
 	 * a no-op TX option descriptor. See bug29981 for details.
 	 */
 	*addedp = 1;
-	EFX_POPULATE_QWORD_6(desc,
-	    ESF_DZ_TX_DESC_IS_OPT, 1,
-	    ESF_DZ_TX_OPTION_TYPE, ESE_DZ_TX_OPTION_DESC_CRC_CSUM,
-	    ESF_DZ_TX_OPTION_UDP_TCP_CSUM,
-	    (flags & EFX_TXQ_CKSUM_TCPUDP) ? 1 : 0,
-	    ESF_DZ_TX_OPTION_IP_CSUM,
-	    (flags & EFX_TXQ_CKSUM_IPV4) ? 1 : 0,
-	    ESF_DZ_TX_OPTION_INNER_UDP_TCP_CSUM,
-	    (flags & EFX_TXQ_CKSUM_INNER_TCPUDP) ? 1 : 0,
-	    ESF_DZ_TX_OPTION_INNER_IP_CSUM,
-	    (flags & EFX_TXQ_CKSUM_INNER_IPV4) ? 1 : 0);
+	ef10_tx_qdesc_checksum_create(etp, flags, &desc);
 
-	EFSYS_MEM_WRITEQ(etp->et_esmp, 0, &desc);
+	EFSYS_MEM_WRITEQ(etp->et_esmp, 0, &desc.ed_eq);
 	ef10_tx_qpush(etp, *addedp, 0);
 
 	return (0);
@@ -538,8 +528,8 @@ ef10_tx_qpush(
 		EFX_DMA_SYNC_QUEUE_FOR_DEVICE(etp->et_esmp, etp->et_mask + 1,
 					    wptr, id);
 		EFSYS_PIO_WRITE_BARRIER();
-		EFX_BAR_TBL_DOORBELL_WRITEO(enp, ER_DZ_TX_DESC_UPD_REG,
-					    etp->et_index, &oword);
+		EFX_BAR_VI_DOORBELL_WRITEO(enp, ER_DZ_TX_DESC_UPD_REG,
+		    etp->et_index, &oword);
 	} else {
 		efx_dword_t dword;
 
@@ -554,8 +544,8 @@ ef10_tx_qpush(
 		EFX_DMA_SYNC_QUEUE_FOR_DEVICE(etp->et_esmp, etp->et_mask + 1,
 					    wptr, id);
 		EFSYS_PIO_WRITE_BARRIER();
-		EFX_BAR_TBL_WRITED2(enp, ER_DZ_TX_DESC_UPD_REG,
-				    etp->et_index, &dword, B_FALSE);
+		EFX_BAR_VI_WRITED2(enp, ER_DZ_TX_DESC_UPD_REG,
+		    etp->et_index, &dword, B_FALSE);
 	}
 }
 
@@ -702,6 +692,30 @@ ef10_tx_qdesc_vlantci_create(
 			    ESF_DZ_TX_VLAN_TAG1, tci);
 }
 
+	void
+ef10_tx_qdesc_checksum_create(
+	__in	efx_txq_t *etp,
+	__in	uint16_t flags,
+	__out	efx_desc_t *edp)
+{
+	_NOTE(ARGUNUSED(etp));
+
+	EFSYS_PROBE2(tx_desc_checksum_create, unsigned int, etp->et_index,
+		    uint32_t, flags);
+
+	EFX_POPULATE_QWORD_6(edp->ed_eq,
+	    ESF_DZ_TX_DESC_IS_OPT, 1,
+	    ESF_DZ_TX_OPTION_TYPE, ESE_DZ_TX_OPTION_DESC_CRC_CSUM,
+	    ESF_DZ_TX_OPTION_UDP_TCP_CSUM,
+	    (flags & EFX_TXQ_CKSUM_TCPUDP) ? 1 : 0,
+	    ESF_DZ_TX_OPTION_IP_CSUM,
+	    (flags & EFX_TXQ_CKSUM_IPV4) ? 1 : 0,
+	    ESF_DZ_TX_OPTION_INNER_UDP_TCP_CSUM,
+	    (flags & EFX_TXQ_CKSUM_INNER_TCPUDP) ? 1 : 0,
+	    ESF_DZ_TX_OPTION_INNER_IP_CSUM,
+	    (flags & EFX_TXQ_CKSUM_INNER_IPV4) ? 1 : 0);
+}
+
 
 	__checkReturn	efx_rc_t
 ef10_tx_qpace(
@@ -779,4 +793,4 @@ ef10_tx_qstats_update(
 
 #endif /* EFSYS_OPT_QSTATS */
 
-#endif /* EFSYS_OPT_HUNTINGTON || EFSYS_OPT_MEDFORD */
+#endif /* EFSYS_OPT_HUNTINGTON || EFSYS_OPT_MEDFORD || EFSYS_OPT_MEDFORD2 */

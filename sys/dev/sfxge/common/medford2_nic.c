@@ -1,5 +1,7 @@
 /*-
- * Copyright (c) 2012-2016 Solarflare Communications Inc.
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
+ * Copyright (c) 2015-2018 Solarflare Communications Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -33,66 +35,38 @@ __FBSDID("$FreeBSD$");
 
 #include "efx.h"
 #include "efx_impl.h"
-#if EFSYS_OPT_MON_MCDI
-#include "mcdi_mon.h"
-#endif
 
-#if EFSYS_OPT_HUNTINGTON
 
-#include "ef10_tlv_layout.h"
+#if EFSYS_OPT_MEDFORD2
 
 static	__checkReturn	efx_rc_t
-hunt_nic_get_required_pcie_bandwidth(
+medford2_nic_get_required_pcie_bandwidth(
 	__in		efx_nic_t *enp,
 	__out		uint32_t *bandwidth_mbpsp)
 {
 	uint32_t port_modes;
-	uint32_t max_port_mode;
+	uint32_t current_mode;
 	uint32_t bandwidth;
 	efx_rc_t rc;
 
-	/*
-	 * On Huntington, the firmware may not give us the current port mode, so
-	 * we need to go by the set of available port modes and assume the most
-	 * capable mode is in use.
-	 */
+	/* FIXME: support new Medford2 dynamic port modes */
 
-	if ((rc = efx_mcdi_get_port_modes(enp, &port_modes, NULL)) != 0) {
-		/* No port mode info available */
+	if ((rc = efx_mcdi_get_port_modes(enp, &port_modes,
+				    &current_mode)) != 0) {
+		/* No port mode info available. */
 		bandwidth = 0;
 		goto out;
 	}
 
-	if (port_modes & (1 << TLV_PORT_MODE_40G_40G)) {
-		/*
-		 * This needs the full PCIe bandwidth (and could use
-		 * more) - roughly 64 Gbit/s for 8 lanes of Gen3.
-		 */
-		if ((rc = efx_nic_calculate_pcie_link_bandwidth(8,
-			    EFX_PCIE_LINK_SPEED_GEN3, &bandwidth)) != 0)
-			goto fail1;
-	} else {
-		if (port_modes & (1 << TLV_PORT_MODE_40G)) {
-			max_port_mode = TLV_PORT_MODE_40G;
-		} else if (port_modes & (1 << TLV_PORT_MODE_10G_10G_10G_10G)) {
-			max_port_mode = TLV_PORT_MODE_10G_10G_10G_10G;
-		} else {
-			/* Assume two 10G ports */
-			max_port_mode = TLV_PORT_MODE_10G_10G;
-		}
-
-		if ((rc = ef10_nic_get_port_mode_bandwidth(max_port_mode,
-							    &bandwidth)) != 0)
-			goto fail2;
-	}
+	if ((rc = ef10_nic_get_port_mode_bandwidth(current_mode,
+						    &bandwidth)) != 0)
+		goto fail1;
 
 out:
 	*bandwidth_mbpsp = bandwidth;
 
 	return (0);
 
-fail2:
-	EFSYS_PROBE(fail2);
 fail1:
 	EFSYS_PROBE1(fail1, efx_rc_t, rc);
 
@@ -100,12 +74,12 @@ fail1:
 }
 
 	__checkReturn	efx_rc_t
-hunt_board_cfg(
+medford2_board_cfg(
 	__in		efx_nic_t *enp)
 {
 	efx_mcdi_iface_t *emip = &(enp->en_mcdi.em_emip);
 	efx_nic_cfg_t *encp = &(enp->en_nic_cfg);
-	uint8_t mac_addr[6];
+	uint8_t mac_addr[6] = { 0 };
 	uint32_t board_type = 0;
 	ef10_link_state_t els;
 	efx_port_t *epp = &(enp->en_port);
@@ -113,21 +87,24 @@ hunt_board_cfg(
 	uint32_t pf;
 	uint32_t vf;
 	uint32_t mask;
-	uint32_t flags;
 	uint32_t sysclk, dpcpu_clk;
 	uint32_t base, nvec;
+	uint32_t end_padding;
 	uint32_t bandwidth;
+	uint32_t vi_window_shift;
 	efx_rc_t rc;
 
-	/* Huntington has a fixed 8Kbyte VI window size */
-	EFX_STATIC_ASSERT(ER_DZ_EVQ_RPTR_REG_STEP	== 8192);
-	EFX_STATIC_ASSERT(ER_DZ_EVQ_TMR_REG_STEP	== 8192);
-	EFX_STATIC_ASSERT(ER_DZ_RX_DESC_UPD_REG_STEP	== 8192);
-	EFX_STATIC_ASSERT(ER_DZ_TX_DESC_UPD_REG_STEP	== 8192);
-	EFX_STATIC_ASSERT(ER_DZ_TX_PIOBUF_STEP		== 8192);
+	/*
+	 * FIXME: Likely to be incomplete and incorrect.
+	 * Parts of this should be shared with Huntington.
+	 */
 
-	EFX_STATIC_ASSERT(1U << EFX_VI_WINDOW_SHIFT_8K	== 8192);
-	encp->enc_vi_window_shift = EFX_VI_WINDOW_SHIFT_8K;
+	/* Medford2 has a variable VI window size (8K, 16K or 64K) */
+	if ((rc = ef10_get_vi_window_shift(enp, &vi_window_shift)) != 0)
+		goto fail1;
+
+	EFSYS_ASSERT3U(vi_window_shift, <=, EFX_VI_WINDOW_SHIFT_64K);
+	encp->enc_vi_window_shift = vi_window_shift;
 
 
 	if ((rc = efx_mcdi_get_port_assignment(enp, &port)) != 0)
@@ -158,6 +135,13 @@ hunt_board_cfg(
 	/* MAC address for this function */
 	if (EFX_PCI_FUNCTION_IS_PF(encp)) {
 		rc = efx_mcdi_get_mac_address_pf(enp, mac_addr);
+#if EFSYS_OPT_ALLOW_UNCONFIGURED_NIC
+		/*
+		 * Disable static config checking for Medford NICs, ONLY
+		 * for manufacturing test and setup at the factory, to
+		 * allow the static config to be installed.
+		 */
+#else /* EFSYS_OPT_ALLOW_UNCONFIGURED_NIC */
 		if ((rc == 0) && (mac_addr[0] & 0x02)) {
 			/*
 			 * If the static config does not include a global MAC
@@ -167,6 +151,7 @@ hunt_board_cfg(
 			 */
 			rc = EINVAL;
 		}
+#endif /* EFSYS_OPT_ALLOW_UNCONFIGURED_NIC */
 	} else {
 		rc = efx_mcdi_get_mac_address_vf(enp, mac_addr);
 	}
@@ -186,7 +171,7 @@ hunt_board_cfg(
 	}
 
 	encp->enc_board_type = board_type;
-	encp->enc_clk_mult = 1; /* not used for Huntington */
+	encp->enc_clk_mult = 1; /* not used for Medford2 */
 
 	/* Fill out fields in enp->en_port and enp->en_nic_cfg from MCDI */
 	if ((rc = efx_mcdi_get_phy_cfg(enp)) != 0)
@@ -214,103 +199,60 @@ hunt_board_cfg(
 	 * See efx_mcdi_request_errcode() for MCDI error translations.
 	 */
 
+
+	if (EFX_PCI_FUNCTION_IS_VF(encp)) {
+		/*
+		 * Interrupt testing does not work for VFs. See bug50084.
+		 * FIXME: Does this still apply to Medford2?
+		 */
+		encp->enc_bug41750_workaround = B_TRUE;
+	}
+
+	/* Chained multicast is always enabled on Medford2 */
+	encp->enc_bug26807_workaround = B_TRUE;
+
 	/*
-	 * If the bug35388 workaround is enabled, then use an indirect access
-	 * method to avoid unsafe EVQ writes.
+	 * If the bug61265 workaround is enabled, then interrupt holdoff timers
+	 * cannot be controlled by timer table writes, so MCDI must be used
+	 * (timer table writes can still be used for wakeup timers).
 	 */
-	rc = efx_mcdi_set_workaround(enp, MC_CMD_WORKAROUND_BUG35388, B_TRUE,
+	rc = efx_mcdi_set_workaround(enp, MC_CMD_WORKAROUND_BUG61265, B_TRUE,
 	    NULL);
 	if ((rc == 0) || (rc == EACCES))
-		encp->enc_bug35388_workaround = B_TRUE;
+		encp->enc_bug61265_workaround = B_TRUE;
 	else if ((rc == ENOTSUP) || (rc == ENOENT))
-		encp->enc_bug35388_workaround = B_FALSE;
+		encp->enc_bug61265_workaround = B_FALSE;
 	else
 		goto fail8;
 
-	/*
-	 * If the bug41750 workaround is enabled, then do not test interrupts,
-	 * as the test will fail (seen with Greenport controllers).
-	 */
-	rc = efx_mcdi_set_workaround(enp, MC_CMD_WORKAROUND_BUG41750, B_TRUE,
-	    NULL);
-	if (rc == 0) {
-		encp->enc_bug41750_workaround = B_TRUE;
-	} else if (rc == EACCES) {
-		/* Assume a controller with 40G ports needs the workaround. */
-		if (epp->ep_default_adv_cap_mask & EFX_PHY_CAP_40000FDX)
-			encp->enc_bug41750_workaround = B_TRUE;
-		else
-			encp->enc_bug41750_workaround = B_FALSE;
-	} else if ((rc == ENOTSUP) || (rc == ENOENT)) {
-		encp->enc_bug41750_workaround = B_FALSE;
-	} else {
-		goto fail9;
-	}
-	if (EFX_PCI_FUNCTION_IS_VF(encp)) {
-		/* Interrupt testing does not work for VFs. See bug50084. */
-		encp->enc_bug41750_workaround = B_TRUE;
-	}
-
-	/*
-	 * If the bug26807 workaround is enabled, then firmware has enabled
-	 * support for chained multicast filters. Firmware will reset (FLR)
-	 * functions which have filters in the hardware filter table when the
-	 * workaround is enabled/disabled.
-	 *
-	 * We must recheck if the workaround is enabled after inserting the
-	 * first hardware filter, in case it has been changed since this check.
-	 */
-	rc = efx_mcdi_set_workaround(enp, MC_CMD_WORKAROUND_BUG26807,
-	    B_TRUE, &flags);
-	if (rc == 0) {
-		encp->enc_bug26807_workaround = B_TRUE;
-		if (flags & (1 << MC_CMD_WORKAROUND_EXT_OUT_FLR_DONE_LBN)) {
-			/*
-			 * Other functions had installed filters before the
-			 * workaround was enabled, and they have been reset
-			 * by firmware.
-			 */
-			EFSYS_PROBE(bug26807_workaround_flr_done);
-			/* FIXME: bump MC warm boot count ? */
-		}
-	} else if (rc == EACCES) {
-		/*
-		 * Unprivileged functions cannot enable the workaround in older
-		 * firmware.
-		 */
-		encp->enc_bug26807_workaround = B_FALSE;
-	} else if ((rc == ENOTSUP) || (rc == ENOENT)) {
-		encp->enc_bug26807_workaround = B_FALSE;
-	} else {
-		goto fail10;
-	}
-
 	/* Get clock frequencies (in MHz). */
 	if ((rc = efx_mcdi_get_clock(enp, &sysclk, &dpcpu_clk)) != 0)
-		goto fail11;
+		goto fail9;
 
 	/*
-	 * The Huntington timer quantum is 1536 sysclk cycles, documented for
+	 * The Medford2 timer quantum is 1536 dpcpu_clk cycles, documented for
 	 * the EV_TMR_VAL field of EV_TIMER_TBL. Scale for MHz and ns units.
 	 */
-	encp->enc_evq_timer_quantum_ns = 1536000UL / sysclk; /* 1536 cycles */
-	if (encp->enc_bug35388_workaround) {
-		encp->enc_evq_timer_max_us = (encp->enc_evq_timer_quantum_ns <<
-		ERF_DD_EVQ_IND_TIMER_VAL_WIDTH) / 1000;
-	} else {
-		encp->enc_evq_timer_max_us = (encp->enc_evq_timer_quantum_ns <<
-		FRF_CZ_TC_TIMER_VAL_WIDTH) / 1000;
-	}
-
-	encp->enc_bug61265_workaround = B_FALSE; /* Medford only */
+	encp->enc_evq_timer_quantum_ns = 1536000UL / dpcpu_clk; /* 1536 cycles */
+	encp->enc_evq_timer_max_us = (encp->enc_evq_timer_quantum_ns <<
+		    FRF_CZ_TC_TIMER_VAL_WIDTH) / 1000;
 
 	/* Check capabilities of running datapath firmware */
 	if ((rc = ef10_get_datapath_caps(enp)) != 0)
-		goto fail12;
+		goto fail10;
 
 	/* Alignment for receive packet DMA buffers */
 	encp->enc_rx_buf_align_start = 1;
-	encp->enc_rx_buf_align_end = 64; /* RX DMA end padding */
+
+	/* Get the RX DMA end padding alignment configuration */
+	if ((rc = efx_mcdi_get_rxdp_config(enp, &end_padding)) != 0) {
+		if (rc != EACCES)
+			goto fail11;
+
+		/* Assume largest tail padding size supported by hardware */
+		end_padding = 256;
+	}
+	encp->enc_rx_buf_align_end = end_padding;
 
 	/* Alignment for WPTR updates */
 	encp->enc_rx_push_align = EF10_RX_WPTR_ALIGN;
@@ -337,17 +279,18 @@ hunt_board_cfg(
 	encp->enc_txq_limit = EFX_TXQ_LIMIT_TARGET;
 
 	/*
-	 * The workaround for bug35388 uses the top bit of transmit queue
-	 * descriptor writes, preventing the use of 4096 descriptor TXQs.
+	 * The maximum supported transmit queue size is 2048. TXQs with 4096
+	 * descriptors are not supported as the top bit is used for vfifo
+	 * stuffing.
 	 */
-	encp->enc_txq_max_ndescs = encp->enc_bug35388_workaround ? 2048 : 4096;
+	encp->enc_txq_max_ndescs = 2048;
 
 	encp->enc_buftbl_limit = 0xFFFFFFFF;
 
-	EFX_STATIC_ASSERT(HUNT_PIOBUF_NBUFS <= EF10_MAX_PIOBUF_NBUFS);
-	encp->enc_piobuf_limit = HUNT_PIOBUF_NBUFS;
-	encp->enc_piobuf_size = HUNT_PIOBUF_SIZE;
-	encp->enc_piobuf_min_alloc_size = HUNT_MIN_PIO_ALLOC_SIZE;
+	EFX_STATIC_ASSERT(MEDFORD2_PIOBUF_NBUFS <= EF10_MAX_PIOBUF_NBUFS);
+	encp->enc_piobuf_limit = MEDFORD2_PIOBUF_NBUFS;
+	encp->enc_piobuf_size = MEDFORD2_PIOBUF_SIZE;
+	encp->enc_piobuf_min_alloc_size = MEDFORD2_MIN_PIO_ALLOC_SIZE;
 
 	/*
 	 * Get the current privilege mask. Note that this may be modified
@@ -356,13 +299,13 @@ hunt_board_cfg(
 	 * can result in time-of-check/time-of-use bugs.
 	 */
 	if ((rc = ef10_get_privilege_mask(enp, &mask)) != 0)
-		goto fail13;
+		goto fail12;
 	encp->enc_privilege_mask = mask;
 
 	/* Get interrupt vector limits */
 	if ((rc = efx_mcdi_get_vector_cfg(enp, &base, &nvec, NULL)) != 0) {
 		if (EFX_PCI_FUNCTION_IS_PF(encp))
-			goto fail14;
+			goto fail13;
 
 		/* Ignore error (cannot query vector limits from a VF). */
 		base = 0;
@@ -377,17 +320,20 @@ hunt_board_cfg(
 	 */
 	encp->enc_tx_tso_tcp_header_offset_limit = EF10_TCP_HEADER_OFFSET_LIMIT;
 
-	if ((rc = hunt_nic_get_required_pcie_bandwidth(enp, &bandwidth)) != 0)
-		goto fail15;
-	encp->enc_required_pcie_bandwidth_mbps = bandwidth;
+	/*
+	 * Medford2 stores a single global copy of VPD, not per-PF as on
+	 * Huntington.
+	 */
+	encp->enc_vpd_is_global = B_TRUE;
 
-	/* All Huntington devices have a PCIe Gen3, 8 lane connector */
+	rc = medford2_nic_get_required_pcie_bandwidth(enp, &bandwidth);
+	if (rc != 0)
+		goto fail14;
+	encp->enc_required_pcie_bandwidth_mbps = bandwidth;
 	encp->enc_max_pcie_link_gen = EFX_PCIE_LINK_SPEED_GEN3;
 
 	return (0);
 
-fail15:
-	EFSYS_PROBE(fail15);
 fail14:
 	EFSYS_PROBE(fail14);
 fail13:
@@ -420,5 +366,4 @@ fail1:
 	return (rc);
 }
 
-
-#endif	/* EFSYS_OPT_HUNTINGTON */
+#endif	/* EFSYS_OPT_MEDFORD2 */
