@@ -351,7 +351,7 @@ efx_intr_fini(
 
 #if EFSYS_OPT_MAC_STATS
 
-/* START MKCONFIG GENERATED EfxHeaderMacBlock e323546097fd7c65 */
+/* START MKCONFIG GENERATED EfxHeaderMacBlock 7b5f45054a3b45bc */
 typedef enum efx_mac_stat_e {
 	EFX_MAC_RX_OCTETS,
 	EFX_MAC_RX_PKTS,
@@ -434,6 +434,12 @@ typedef enum efx_mac_stat_e {
 	EFX_MAC_VADAPTER_TX_BAD_PACKETS,
 	EFX_MAC_VADAPTER_TX_BAD_BYTES,
 	EFX_MAC_VADAPTER_TX_OVERFLOW,
+	EFX_MAC_FEC_UNCORRECTED_ERRORS,
+	EFX_MAC_FEC_CORRECTED_ERRORS,
+	EFX_MAC_FEC_CORRECTED_SYMBOLS_LANE0,
+	EFX_MAC_FEC_CORRECTED_SYMBOLS_LANE1,
+	EFX_MAC_FEC_CORRECTED_SYMBOLS_LANE2,
+	EFX_MAC_FEC_CORRECTED_SYMBOLS_LANE3,
 	EFX_MAC_NSTATS
 } efx_mac_stat_t;
 
@@ -583,7 +589,6 @@ efx_mac_stats_get_mask(
 	((_mask)[(_stat) / EFX_MAC_STATS_MASK_BITS_PER_PAGE] &	\
 	    (1ULL << ((_stat) & (EFX_MAC_STATS_MASK_BITS_PER_PAGE - 1))))
 
-#define	EFX_MAC_STATS_SIZE 0x400
 
 extern	__checkReturn			efx_rc_t
 efx_mac_stats_clear(
@@ -592,8 +597,8 @@ efx_mac_stats_clear(
 /*
  * Upload mac statistics supported by the hardware into the given buffer.
  *
- * The reference buffer must be at least %EFX_MAC_STATS_SIZE bytes,
- * and page aligned.
+ * The DMA buffer must be 4Kbyte aligned and sized to hold at least
+ * efx_nic_cfg_t::enc_mac_stats_nstats 64bit counters.
  *
  * The hardware will only DMA statistics that it understands (of course).
  * Drivers should not make any assumptions about which statistics are
@@ -1260,6 +1265,9 @@ typedef struct efx_nic_cfg_s {
 	uint32_t		enc_max_pcie_link_gen;
 	/* Firmware verifies integrity of NVRAM updates */
 	uint32_t		enc_nvram_update_verify_result_supported;
+	/* Firmware support for extended MAC_STATS buffer */
+	uint32_t		enc_mac_stats_nstats;
+	boolean_t		enc_fec_counters;
 } efx_nic_cfg_t;
 
 #define	EFX_PCI_FUNCTION_IS_PF(_encp)	((_encp)->enc_vf == 0xffff)

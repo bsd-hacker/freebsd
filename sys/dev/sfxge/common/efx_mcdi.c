@@ -1820,7 +1820,7 @@ efx_mcdi_mac_stats(
 {
 	efx_mcdi_req_t req;
 	uint8_t payload[MAX(MC_CMD_MAC_STATS_IN_LEN,
-			    MC_CMD_MAC_STATS_OUT_DMA_LEN)];
+			    MC_CMD_MAC_STATS_V2_OUT_DMA_LEN)];
 	int clear = (action == EFX_STATS_CLEAR);
 	int upload = (action == EFX_STATS_UPLOAD);
 	int enable = (action == EFX_STATS_ENABLE_NOEVENTS);
@@ -1833,7 +1833,7 @@ efx_mcdi_mac_stats(
 	req.emr_in_buf = payload;
 	req.emr_in_length = MC_CMD_MAC_STATS_IN_LEN;
 	req.emr_out_buf = payload;
-	req.emr_out_length = MC_CMD_MAC_STATS_OUT_DMA_LEN;
+	req.emr_out_length = MC_CMD_MAC_STATS_V2_OUT_DMA_LEN;
 
 	MCDI_IN_POPULATE_DWORD_6(req, MAC_STATS_IN_CMD,
 	    MAC_STATS_IN_DMA, upload,
@@ -1843,21 +1843,35 @@ efx_mcdi_mac_stats(
 	    MAC_STATS_IN_PERIODIC_NOEVENT, !events,
 	    MAC_STATS_IN_PERIOD_MS, (enable | events) ? period_ms : 0);
 
-	if (esmp != NULL) {
-		uint32_t bytes = MC_CMD_MAC_NSTATS * sizeof (uint64_t);
+	if (enable || events || upload) {
+		const efx_nic_cfg_t *encp = &enp->en_nic_cfg;
+		uint32_t bytes;
 
-		EFX_STATIC_ASSERT(MC_CMD_MAC_NSTATS * sizeof (uint64_t) <=
-		    EFX_MAC_STATS_SIZE);
+		/* Periodic stats or stats upload require a DMA buffer */
+		if (esmp == NULL) {
+			rc = EINVAL;
+			goto fail1;
+		}
 
-		EFSYS_ASSERT3U(bytes, <=, (uint32_t)EFSYS_MEM_SIZE(esmp));
+		if (encp->enc_mac_stats_nstats < MC_CMD_MAC_NSTATS) {
+			/* MAC stats count too small for legacy MAC stats */
+			rc = ENOSPC;
+			goto fail2;
+		}
+
+		bytes = encp->enc_mac_stats_nstats * sizeof (efx_qword_t);
+
+		if (EFSYS_MEM_SIZE(esmp) < bytes) {
+			/* DMA buffer too small */
+			rc = ENOSPC;
+			goto fail3;
+		}
 
 		MCDI_IN_SET_DWORD(req, MAC_STATS_IN_DMA_ADDR_LO,
 			    EFSYS_MEM_ADDR(esmp) & 0xffffffff);
 		MCDI_IN_SET_DWORD(req, MAC_STATS_IN_DMA_ADDR_HI,
 			    EFSYS_MEM_ADDR(esmp) >> 32);
 		MCDI_IN_SET_DWORD(req, MAC_STATS_IN_DMA_LEN, bytes);
-	} else {
-		EFSYS_ASSERT(!upload && !enable && !events);
 	}
 
 	/*
@@ -1875,12 +1889,18 @@ efx_mcdi_mac_stats(
 		if ((req.emr_rc != ENOENT) ||
 		    (enp->en_rx_qcount + enp->en_tx_qcount != 0)) {
 			rc = req.emr_rc;
-			goto fail1;
+			goto fail4;
 		}
 	}
 
 	return (0);
 
+fail4:
+	EFSYS_PROBE(fail4);
+fail3:
+	EFSYS_PROBE(fail3);
+fail2:
+	EFSYS_PROBE(fail2);
 fail1:
 	EFSYS_PROBE1(fail1, efx_rc_t, rc);
 
