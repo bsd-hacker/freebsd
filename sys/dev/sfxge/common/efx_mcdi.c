@@ -1461,6 +1461,11 @@ efx_mcdi_get_phy_cfg(
 	efx_mcdi_req_t req;
 	uint8_t payload[MAX(MC_CMD_GET_PHY_CFG_IN_LEN,
 			    MC_CMD_GET_PHY_CFG_OUT_LEN)];
+#if EFSYS_OPT_NAMES
+	const char *namep;
+	size_t namelen;
+#endif
+	uint32_t phy_media_type;
 	efx_rc_t rc;
 
 	(void) memset(payload, 0, sizeof (payload));
@@ -1484,10 +1489,12 @@ efx_mcdi_get_phy_cfg(
 
 	encp->enc_phy_type = MCDI_OUT_DWORD(req, GET_PHY_CFG_OUT_TYPE);
 #if EFSYS_OPT_NAMES
-	(void) strncpy(encp->enc_phy_name,
-		MCDI_OUT2(req, char, GET_PHY_CFG_OUT_NAME),
-		MIN(sizeof (encp->enc_phy_name) - 1,
-		    MC_CMD_GET_PHY_CFG_OUT_NAME_LEN));
+	namep = MCDI_OUT2(req, char, GET_PHY_CFG_OUT_NAME);
+	namelen = MIN(sizeof (encp->enc_phy_name) - 1,
+		    strnlen(namep, MC_CMD_GET_PHY_CFG_OUT_NAME_LEN));
+	(void) memset(encp->enc_phy_name, 0,
+	    sizeof (encp->enc_phy_name));
+	memcpy(encp->enc_phy_name, namep, namelen);
 #endif	/* EFSYS_OPT_NAMES */
 	(void) memset(encp->enc_phy_revision, 0,
 	    sizeof (encp->enc_phy_revision));
@@ -1509,8 +1516,8 @@ efx_mcdi_get_phy_cfg(
 	EFX_STATIC_ASSERT(MC_CMD_MEDIA_SFP_PLUS == EFX_PHY_MEDIA_SFP_PLUS);
 	EFX_STATIC_ASSERT(MC_CMD_MEDIA_BASE_T == EFX_PHY_MEDIA_BASE_T);
 	EFX_STATIC_ASSERT(MC_CMD_MEDIA_QSFP_PLUS == EFX_PHY_MEDIA_QSFP_PLUS);
-	epp->ep_fixed_port_type =
-		MCDI_OUT_DWORD(req, GET_PHY_CFG_OUT_MEDIA_TYPE);
+	phy_media_type = MCDI_OUT_DWORD(req, GET_PHY_CFG_OUT_MEDIA_TYPE);
+	epp->ep_fixed_port_type = (efx_phy_media_type_t) phy_media_type;
 	if (epp->ep_fixed_port_type >= EFX_PHY_MEDIA_NTYPES)
 		epp->ep_fixed_port_type = EFX_PHY_MEDIA_INVALID;
 
@@ -1837,10 +1844,12 @@ efx_mcdi_mac_stats(
 	    MAC_STATS_IN_PERIOD_MS, (enable | events) ? period_ms : 0);
 
 	if (esmp != NULL) {
-		int bytes = MC_CMD_MAC_NSTATS * sizeof (uint64_t);
+		uint32_t bytes = MC_CMD_MAC_NSTATS * sizeof (uint64_t);
 
 		EFX_STATIC_ASSERT(MC_CMD_MAC_NSTATS * sizeof (uint64_t) <=
 		    EFX_MAC_STATS_SIZE);
+
+		EFSYS_ASSERT3U(bytes, <=, (uint32_t)EFSYS_MEM_SIZE(esmp));
 
 		MCDI_IN_SET_DWORD(req, MAC_STATS_IN_DMA_ADDR_LO,
 			    EFSYS_MEM_ADDR(esmp) & 0xffffffff);

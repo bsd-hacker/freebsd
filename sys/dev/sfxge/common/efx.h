@@ -76,7 +76,8 @@ extern	__checkReturn	efx_rc_t
 efx_family(
 	__in		uint16_t venid,
 	__in		uint16_t devid,
-	__out		efx_family_t *efp);
+	__out		efx_family_t *efp,
+	__out		unsigned int *membarp);
 
 
 #define	EFX_PCI_VENID_SFC			0x1924
@@ -102,7 +103,17 @@ efx_family(
 #define	EFX_PCI_DEVID_MEDFORD2			0x0B03	/* SFC9250 PF */
 #define	EFX_PCI_DEVID_MEDFORD2_VF		0x1B03	/* SFC9250 VF */
 
-#define	EFX_MEM_BAR	2
+
+#define	EFX_MEM_BAR_SIENA			2
+
+#define	EFX_MEM_BAR_HUNTINGTON_PF		2
+#define	EFX_MEM_BAR_HUNTINGTON_VF		0
+
+#define	EFX_MEM_BAR_MEDFORD_PF			2
+#define	EFX_MEM_BAR_MEDFORD_VF			0
+
+#define	EFX_MEM_BAR_MEDFORD2			0
+
 
 /* Error codes */
 
@@ -441,6 +452,9 @@ typedef enum efx_link_mode_e {
 	EFX_LINK_1000FDX,
 	EFX_LINK_10000FDX,
 	EFX_LINK_40000FDX,
+	EFX_LINK_25000FDX,
+	EFX_LINK_50000FDX,
+	EFX_LINK_100000FDX,
 	EFX_LINK_NMODES
 } efx_link_mode_t;
 
@@ -823,6 +837,9 @@ typedef enum efx_loopback_type_e {
 	EFX_LOOPBACK_SD_FEP1_5_WS = 32,
 	EFX_LOOPBACK_SD_FEP_WS = 33,
 	EFX_LOOPBACK_SD_FES_WS = 34,
+	EFX_LOOPBACK_AOE_INT_NEAR = 35,
+	EFX_LOOPBACK_DATA_WS = 36,
+	EFX_LOOPBACK_FORCE_EXT_LINK = 37,
 	EFX_LOOPBACK_NTYPES
 } efx_loopback_type_t;
 
@@ -878,6 +895,10 @@ typedef enum efx_phy_cap_type_e {
 	EFX_PHY_CAP_ASYM,
 	EFX_PHY_CAP_AN,
 	EFX_PHY_CAP_40000FDX,
+	EFX_PHY_CAP_DDM,
+	EFX_PHY_CAP_100000FDX,
+	EFX_PHY_CAP_25000FDX,
+	EFX_PHY_CAP_50000FDX,
 	EFX_PHY_CAP_NTYPES
 } efx_phy_cap_type_t;
 
