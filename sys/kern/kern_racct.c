@@ -74,13 +74,13 @@ FEATURE(racct, "Resource Accounting");
  */
 static int pcpu_threshold = 1;
 #ifdef RACCT_DEFAULT_TO_DISABLED
-int racct_enable = 0;
+bool __read_frequently racct_enable = false;
 #else
-int racct_enable = 1;
+bool __read_frequently racct_enable = true;
 #endif
 
 SYSCTL_NODE(_kern, OID_AUTO, racct, CTLFLAG_RW, 0, "Resource Accounting");
-SYSCTL_UINT(_kern_racct, OID_AUTO, enable, CTLFLAG_RDTUN, &racct_enable,
+SYSCTL_BOOL(_kern_racct, OID_AUTO, enable, CTLFLAG_RDTUN, &racct_enable,
     0, "Enable RACCT/RCTL");
 SYSCTL_UINT(_kern_racct, OID_AUTO, pcpu_threshold, CTLFLAG_RW, &pcpu_threshold,
     0, "Processes with higher %cpu usage than this value can be throttled.");
@@ -1085,6 +1085,22 @@ racct_move(struct racct *dest, struct racct *src)
 	racct_add_racct(dest, src);
 	racct_sub_racct(src, src);
 	RACCT_UNLOCK();
+}
+
+void
+racct_proc_throttled(struct proc *p)
+{
+
+	ASSERT_RACCT_ENABLED();
+
+	PROC_LOCK(p);
+	while (p->p_throttled != 0) {
+		msleep(p->p_racct, &p->p_mtx, 0, "racct",
+		    p->p_throttled < 0 ? 0 : p->p_throttled);
+		if (p->p_throttled > 0)
+			p->p_throttled = 0;
+	}
+	PROC_UNLOCK(p);
 }
 
 /*
