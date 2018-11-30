@@ -61,12 +61,14 @@
 #define	__out_opt
 #define	__out_ecount(_n)
 #define	__out_ecount_opt(_n)
+#define	__out_ecount_part(_n, _l)
 #define	__out_bcount(_n)
 #define	__out_bcount_opt(_n)
 #define	__out_bcount_part(_n, _l)
 #define	__out_bcount_part_opt(_n, _l)
 
 #define	__deref_out
+#define	__deref_inout
 
 #define	__inout
 #define	__inout_opt

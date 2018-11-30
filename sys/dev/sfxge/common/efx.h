@@ -183,6 +183,14 @@ extern	__checkReturn	efx_rc_t
 efx_nic_reset(
 	__in		efx_nic_t *enp);
 
+extern	__checkReturn	boolean_t
+efx_nic_hw_unavailable(
+	__in		efx_nic_t *enp);
+
+extern			void
+efx_nic_set_hw_unavailable(
+	__in		efx_nic_t *enp);
+
 #if EFSYS_OPT_DIAG
 
 extern	__checkReturn	efx_rc_t
@@ -320,7 +328,7 @@ extern	__checkReturn	efx_rc_t
 efx_intr_init(
 	__in		efx_nic_t *enp,
 	__in		efx_intr_type_t type,
-	__in		efsys_mem_t *esmp);
+	__in_opt	efsys_mem_t *esmp);
 
 extern			void
 efx_intr_enable(
@@ -802,6 +810,13 @@ typedef struct efx_mon_stat_value_s {
 	efx_mon_stat_unit_t	emsv_unit;
 } efx_mon_stat_value_t;
 
+typedef struct efx_mon_limit_value_s {
+	uint16_t			emlv_warning_min;
+	uint16_t			emlv_warning_max;
+	uint16_t			emlv_fatal_min;
+	uint16_t			emlv_fatal_max;
+} efx_mon_stat_limits_t;
+
 typedef enum efx_mon_stat_portmask_e {
 	EFX_MON_STAT_PORTMAP_NONE = 0,
 	EFX_MON_STAT_PORTMAP_PORT0 = 1,
@@ -846,6 +861,11 @@ efx_mon_stats_update(
 	__in				efx_nic_t *enp,
 	__in				efsys_mem_t *esmp,
 	__inout_ecount(EFX_MON_NSTATS)	efx_mon_stat_value_t *values);
+
+extern	__checkReturn			efx_rc_t
+efx_mon_limits_update(
+	__in				efx_nic_t *enp,
+	__inout_ecount(EFX_MON_NSTATS)	efx_mon_stat_limits_t *values);
 
 #endif	/* EFSYS_OPT_MON_STATS */
 
@@ -1038,12 +1058,39 @@ efx_phy_media_type_get(
 	__in		efx_nic_t *enp,
 	__out		efx_phy_media_type_t *typep);
 
+/*
+ * 2-wire device address of the base information in accordance with SFF-8472
+ * Diagnostic Monitoring Interface for Optical Transceivers section
+ * 4 Memory Organization.
+ */
+#define	EFX_PHY_MEDIA_INFO_DEV_ADDR_SFP_BASE	0xA0
+
+/*
+ * 2-wire device address of the digital diagnostics monitoring interface
+ * in accordance with SFF-8472 Diagnostic Monitoring Interface for Optical
+ * Transceivers section 4 Memory Organization.
+ */
+#define	EFX_PHY_MEDIA_INFO_DEV_ADDR_SFP_DDM	0xA2
+
+/*
+ * Hard wired 2-wire device address for QSFP+ in accordance with SFF-8436
+ * QSFP+ 10 Gbs 4X PLUGGABLE TRANSCEIVER section 7.4 Device Addressing and
+ * Operation.
+ */
+#define	EFX_PHY_MEDIA_INFO_DEV_ADDR_QSFP	0xA0
+
+/*
+ * Maximum accessible data offset for PHY module information.
+ */
+#define	EFX_PHY_MEDIA_INFO_MAX_OFFSET		0x100
+
+
 extern	__checkReturn		efx_rc_t
 efx_phy_module_get_info(
 	__in			efx_nic_t *enp,
 	__in			uint8_t dev_addr,
-	__in			uint8_t offset,
-	__in			uint8_t len,
+	__in			size_t offset,
+	__in			size_t len,
 	__out_bcount(len)	uint8_t *data);
 
 #if EFSYS_OPT_PHY_STATS
@@ -1262,6 +1309,7 @@ typedef struct efx_nic_cfg_s {
 	uint32_t		enc_rx_prefix_size;
 	uint32_t		enc_rx_buf_align_start;
 	uint32_t		enc_rx_buf_align_end;
+#if EFSYS_OPT_RX_SCALE
 	uint32_t		enc_rx_scale_max_exclusive_contexts;
 	/*
 	 * Mask of supported hash algorithms.
@@ -1274,6 +1322,7 @@ typedef struct efx_nic_cfg_s {
 	 */
 	boolean_t		enc_rx_scale_l4_hash_supported;
 	boolean_t		enc_rx_scale_additional_modes_supported;
+#endif /* EFSYS_OPT_RX_SCALE */
 #if EFSYS_OPT_LOOPBACK
 	efx_qword_t		enc_loopback_types[EFX_LINK_NMODES];
 #endif	/* EFSYS_OPT_LOOPBACK */
@@ -1308,6 +1357,7 @@ typedef struct efx_nic_cfg_s {
 	boolean_t		enc_bug35388_workaround;
 	boolean_t		enc_bug41750_workaround;
 	boolean_t		enc_bug61265_workaround;
+	boolean_t		enc_bug61297_workaround;
 	boolean_t		enc_rx_batching_enabled;
 	/* Maximum number of descriptors completed in an rx event. */
 	uint32_t		enc_rx_batch_max;
@@ -1677,6 +1727,87 @@ efx_bootcfg_write(
 	__in			efx_nic_t *enp,
 	__in_bcount(size)	uint8_t *data,
 	__in			size_t size);
+
+
+/*
+ * Processing routines for buffers arranged in the DHCP/BOOTP option format
+ * (see https://tools.ietf.org/html/rfc1533)
+ *
+ * Summarising the format: the buffer is a sequence of options. All options
+ * begin with a tag octet, which uniquely identifies the option.  Fixed-
+ * length options without data consist of only a tag octet.  Only options PAD
+ * (0) and END (255) are fixed length.  All other options are variable-length
+ * with a length octet following the tag octet.  The value of the length
+ * octet does not include the two octets specifying the tag and length.  The
+ * length octet is followed by "length" octets of data.
+ *
+ * Option data may be a sequence of sub-options in the same format. The data
+ * content of the encapsulating option is one or more encapsulated sub-options,
+ * with no terminating END tag is required.
+ *
+ * To be valid, the top-level sequence of options should be terminated by an
+ * END tag. The buffer should be padded with the PAD byte.
+ *
+ * When stored to NVRAM, the DHCP option format buffer is preceded by a
+ * checksum octet. The full buffer (including after the END tag) contributes
+ * to the checksum, hence the need to fill the buffer to the end with PAD.
+ */
+
+#define	EFX_DHCP_END ((uint8_t)0xff)
+#define	EFX_DHCP_PAD ((uint8_t)0)
+
+#define	EFX_DHCP_ENCAP_OPT(encapsulator, encapsulated) \
+  (uint16_t)(((encapsulator) << 8) | (encapsulated))
+
+extern	__checkReturn		uint8_t
+efx_dhcp_csum(
+	__in_bcount(size)	uint8_t const *data,
+	__in			size_t size);
+
+extern	__checkReturn		efx_rc_t
+efx_dhcp_verify(
+	__in_bcount(size)	uint8_t const *data,
+	__in			size_t size,
+	__out_opt		size_t *usedp);
+
+extern	__checkReturn	efx_rc_t
+efx_dhcp_find_tag(
+	__in_bcount(buffer_length)	uint8_t *bufferp,
+	__in				size_t buffer_length,
+	__in				uint16_t opt,
+	__deref_out			uint8_t **valuepp,
+	__out				size_t *value_lengthp);
+
+extern	__checkReturn	efx_rc_t
+efx_dhcp_find_end(
+	__in_bcount(buffer_length)	uint8_t *bufferp,
+	__in				size_t buffer_length,
+	__deref_out			uint8_t **endpp);
+
+
+extern	__checkReturn	efx_rc_t
+efx_dhcp_delete_tag(
+	__inout_bcount(buffer_length)	uint8_t *bufferp,
+	__in				size_t buffer_length,
+	__in				uint16_t opt);
+
+extern	__checkReturn	efx_rc_t
+efx_dhcp_add_tag(
+	__inout_bcount(buffer_length)	uint8_t *bufferp,
+	__in				size_t buffer_length,
+	__in				uint16_t opt,
+	__in_bcount_opt(value_length)	uint8_t *valuep,
+	__in				size_t value_length);
+
+extern	__checkReturn	efx_rc_t
+efx_dhcp_update_tag(
+	__inout_bcount(buffer_length)	uint8_t *bufferp,
+	__in				size_t buffer_length,
+	__in				uint16_t opt,
+	__in				uint8_t *value_locationp,
+	__in_bcount_opt(value_length)	uint8_t *valuep,
+	__in				size_t value_length);
+
 
 #endif	/* EFSYS_OPT_BOOTCFG */
 
@@ -2193,7 +2324,7 @@ typedef enum efx_rx_hash_alg_e {
  *  - a combination of legacy flags
  *  - a combination of EFX_RX_HASH() flags
  */
-typedef unsigned int efx_rx_hash_type_t;
+typedef uint32_t efx_rx_hash_type_t;
 
 typedef enum efx_rx_hash_support_e {
 	EFX_RX_HASH_UNAVAILABLE = 0,	/* Hardware hash not inserted */
@@ -2294,7 +2425,8 @@ extern	__checkReturn				efx_rc_t
 efx_rx_scale_hash_flags_get(
 	__in					efx_nic_t *enp,
 	__in					efx_rx_hash_alg_t hash_alg,
-	__inout_ecount(EFX_RX_HASH_NFLAGS)	unsigned int *flagsp,
+	__out_ecount_part(max_nflags, *nflagsp)	unsigned int *flagsp,
+	__in					unsigned int max_nflags,
 	__out					unsigned int *nflagsp);
 
 extern	__checkReturn	efx_rc_t
@@ -2885,9 +3017,23 @@ efx_filter_spec_set_encap_type(
 	__in		efx_filter_inner_frame_match_t inner_frame_match);
 
 extern	__checkReturn	efx_rc_t
-efx_filter_spec_set_vxlan_full(
+efx_filter_spec_set_vxlan(
 	__inout		efx_filter_spec_t *spec,
-	__in		const uint8_t *vxlan_id,
+	__in		const uint8_t *vni,
+	__in		const uint8_t *inner_addr,
+	__in		const uint8_t *outer_addr);
+
+extern	__checkReturn	efx_rc_t
+efx_filter_spec_set_geneve(
+	__inout		efx_filter_spec_t *spec,
+	__in		const uint8_t *vni,
+	__in		const uint8_t *inner_addr,
+	__in		const uint8_t *outer_addr);
+
+extern	__checkReturn	efx_rc_t
+efx_filter_spec_set_nvgre(
+	__inout		efx_filter_spec_t *spec,
+	__in		const uint8_t *vsid,
 	__in		const uint8_t *inner_addr,
 	__in		const uint8_t *outer_addr);
 
@@ -3128,6 +3274,32 @@ efx_nic_set_fw_subvariant(
 	__in		efx_nic_fw_subvariant_t subvariant);
 
 #endif	/* EFSYS_OPT_FW_SUBVARIANT_AWARE */
+
+typedef enum efx_phy_fec_type_e {
+	EFX_PHY_FEC_NONE = 0,
+	EFX_PHY_FEC_BASER,
+	EFX_PHY_FEC_RS
+} efx_phy_fec_type_t;
+
+extern	__checkReturn	efx_rc_t
+efx_phy_fec_type_get(
+	__in		efx_nic_t *enp,
+	__out		efx_phy_fec_type_t *typep);
+
+typedef struct efx_phy_link_state_s {
+	uint32_t		epls_adv_cap_mask;
+	uint32_t		epls_lp_cap_mask;
+	uint32_t		epls_ld_cap_mask;
+	unsigned int		epls_fcntl;
+	efx_phy_fec_type_t	epls_fec;
+	efx_link_mode_t		epls_link_mode;
+} efx_phy_link_state_t;
+
+extern	__checkReturn	efx_rc_t
+efx_phy_link_state_get(
+	__in		efx_nic_t *enp,
+	__out		efx_phy_link_state_t  *eplsp);
+
 
 #ifdef	__cplusplus
 }
