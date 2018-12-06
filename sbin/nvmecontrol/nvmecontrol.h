@@ -96,8 +96,8 @@ struct set_concat {
 void set_concat_add(struct set_concat *m, void *begin, void *end);
 #define SET_CONCAT_DEF(set, t) 							\
 static struct set_concat set ## _concat;					\
-static inline const t * const *set ## _begin() { return ((const t * const *)set ## _concat.begin); }	\
-static inline const t * const *set ## _limit() { return ((const t * const *)set ## _concat.limit); }	\
+static inline const t * const *set ## _begin(void) { return ((const t * const *)set ## _concat.begin); }	\
+static inline const t * const *set ## _limit(void) { return ((const t * const *)set ## _concat.limit); }	\
 void add_to_ ## set(t **b, t **e)						\
 {										\
 	set_concat_add(&set ## _concat, b, e);					\
@@ -118,6 +118,7 @@ void print_hex(void *data, uint32_t length);
 void read_logpage(int fd, uint8_t log_page, uint32_t nsid, void *payload,
     uint32_t payload_size);
 void print_temp(uint16_t t);
+void print_intel_add_smart(const struct nvme_controller_data *cdata __unused, void *buf, uint32_t size __unused);
 
 void usage(const struct nvme_function *f);
 void dispatch_set(int argc, char *argv[], const struct nvme_function * const *tbl,
