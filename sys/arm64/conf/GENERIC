@@ -107,6 +107,7 @@ options 	SOC_ALLWINNER_H5
 options 	SOC_CAVM_THUNDERX
 options 	SOC_HISI_HI6220
 options 	SOC_BRCM_BCM2837
+options 	SOC_MARVELL_8K
 options 	SOC_ROCKCHIP_RK3328
 options 	SOC_ROCKCHIP_RK3399
 options 	SOC_XILINX_ZYNQ
@@ -198,11 +199,13 @@ device		muge
 device		smcphy
 device		smsc
 
-# GPIO
+# GPIO / PINCTRL
 device		aw_gpio		# Allwinner GPIO controller
 device		gpio
 device		gpioled
 device		fdt_pinctrl
+device		mv_gpio		# Marvell GPIO controller
+device		mvebu_pinctrl	# Marvell Pinmux Controller
 
 # I2C
 device		aw_rsb		# Allwinner Reduced Serial Bus
