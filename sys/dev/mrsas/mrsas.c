@@ -451,6 +451,12 @@ mrsas_setup_sysctl(struct mrsas_softc *sc)
 	    OID_AUTO, "stream detection", CTLFLAG_RW,
 		&sc->drv_stream_detection, 0,
 		"Disable/Enable Stream detection. <default: 1, Enable Stream Detection>");
+	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
+	    OID_AUTO, "prp_count", CTLFLAG_RD,
+	    &sc->prp_count.val_rdonly, 0, "Number of IOs for which PRPs are built");
+	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
+	    OID_AUTO, "SGE holes", CTLFLAG_RD,
+	    &sc->sge_holes.val_rdonly, 0, "Number of IOs with holes in SGEs");
 }
 
 /*
@@ -465,7 +471,8 @@ mrsas_get_tunables(struct mrsas_softc *sc)
 	char tmpstr[80];
 
 	/* XXX default to some debugging for now */
-	sc->mrsas_debug = MRSAS_FAULT;
+	sc->mrsas_debug =
+		(MRSAS_FAULT | MRSAS_OCR | MRSAS_INFO | MRSAS_TRACE | MRSAS_AEN);
 	sc->mrsas_io_timeout = MRSAS_IO_TIMEOUT;
 	sc->mrsas_fw_fault_check_delay = 1;
 	sc->reset_count = 0;
@@ -899,6 +906,8 @@ mrsas_attach(device_t dev)
 
 	mrsas_atomic_set(&sc->fw_outstanding, 0);
 	mrsas_atomic_set(&sc->target_reset_outstanding, 0);
+	mrsas_atomic_set(&sc->prp_count, 0);
+	mrsas_atomic_set(&sc->sge_holes, 0);
 
 	sc->io_cmds_highwater = 0;
 
@@ -2266,7 +2275,7 @@ mrsas_init_fw(struct mrsas_softc *sc)
 	u_int32_t max_sectors_1;
 	u_int32_t max_sectors_2;
 	u_int32_t tmp_sectors;
-	u_int32_t scratch_pad_2, scratch_pad_3;
+	u_int32_t scratch_pad_2, scratch_pad_3, scratch_pad_4;
 	int msix_enable = 0;
 	int fw_msix_count = 0;
 	int i, j;
@@ -2348,6 +2357,15 @@ mrsas_init_fw(struct mrsas_softc *sc)
 	if (mrsas_init_adapter(sc) != SUCCESS) {
 		device_printf(sc->mrsas_dev, "Adapter initialize Fail.\n");
 		return (1);
+	}
+
+	if (sc->is_ventura) {
+		scratch_pad_4 = mrsas_read_reg(sc, offsetof(mrsas_reg_set,
+		    outbound_scratch_pad_4));
+		if ((scratch_pad_4 & MR_NVME_PAGE_SIZE_MASK) >= MR_DEFAULT_NVME_PAGE_SHIFT)
+			sc->nvme_page_size = 1 << (scratch_pad_4 & MR_NVME_PAGE_SIZE_MASK);
+
+		device_printf(sc->mrsas_dev, "NVME page size\t: (%d)\n", sc->nvme_page_size);
 	}
 
 	/* Allocate internal commands for pass-thru */
@@ -2624,7 +2642,7 @@ mrsas_ioc_init(struct mrsas_softc *sc)
 	struct mrsas_init_frame *init_frame;
 	pMpi2IOCInitRequest_t IOCInitMsg;
 	MRSAS_REQUEST_DESCRIPTOR_UNION req_desc;
-	u_int8_t max_wait = MRSAS_IOC_INIT_WAIT_TIME;
+	u_int8_t max_wait = MRSAS_INTERNAL_CMD_WAIT_TIME;
 	bus_addr_t phys_addr;
 	int i, retcode = 0;
 	u_int32_t scratch_pad_2;
@@ -2652,6 +2670,7 @@ mrsas_ioc_init(struct mrsas_softc *sc)
 	IOCInitMsg->ReplyDescriptorPostQueueAddress = sc->reply_desc_phys_addr;
 	IOCInitMsg->SystemRequestFrameBaseAddress = sc->io_request_phys_addr;
 	IOCInitMsg->HostMSIxVectors = (sc->msix_vectors > 0 ? sc->msix_vectors : 0);
+	IOCInitMsg->HostPageSize = MR_DEFAULT_NVME_PAGE_SHIFT;
 
 	init_frame = (struct mrsas_init_frame *)sc->ioc_init_mem;
 	init_frame->cmd = MFI_CMD_INIT;
