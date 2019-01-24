@@ -670,20 +670,20 @@ fetchupgrade_check_params () {
 
 	# Disallow upgrade from a version that is not a release
 	case ${RELNUM} in
-		*-RELEASE | *-ALPHA*  | *-BETA* | *-RC*)
-			;;
-		*)
-			echo -n "`basename $0`: "
-			cat <<- EOF
-				Cannot upgrade from a version that is not a release
-				(including alpha, beta and release candidates)
-				using `basename $0`. Instead, FreeBSD can be directly
-				upgraded by source or upgraded to a RELEASE/RELENG version
-				prior to running `basename $0`.
-				Currently running: ${RELNUM}
-			EOF
-			exit 1
-			;;
+	*-RELEASE | *-ALPHA*  | *-BETA* | *-RC*)
+		;;
+	*)
+		echo -n "`basename $0`: "
+		cat <<- EOF
+			Cannot upgrade from a version that is not a release
+			(including alpha, beta and release candidates)
+			using `basename $0`. Instead, FreeBSD can be directly
+			upgraded by source or upgraded to a RELEASE/RELENG version
+			prior to running `basename $0`.
+			Currently running: ${RELNUM}
+		EOF
+		exit 1
+		;;
 	esac
 
 	# Figure out what directory contains the running kernel
@@ -1022,7 +1022,16 @@ fetch_pick_server () {
 
 # Have we run out of mirrors?
 	if [ `wc -l < serverlist` -eq 0 ]; then
-		echo "No mirrors remaining, giving up."
+		cat <<- EOF
+			No mirrors remaining, giving up.
+
+			This may be because upgrading from this platform (${ARCH})
+			or release (${RELNUM}) is unsupported by `basename $0`. Only
+			platforms with Tier 1 support can be upgraded by `basename $0`.
+			See https://www.freebsd.org/platforms/index.html for more info.
+
+			If unsupported, FreeBSD must be upgraded by source.
+		EOF
 		return 1
 	fi
 
@@ -2195,7 +2204,7 @@ upgrade_guess_components () {
 		    sort -k 2,2 -t ' ' > compfreq.present
 		join -t ' ' -1 2 -2 2 compfreq.present compfreq.total |
 		    while read S P T; do
-			if [ ${P} -gt `expr ${T} / 2` ]; then
+			if [ ${T} -ne 0 -a ${P} -gt `expr ${T} / 2` ]; then
 				echo ${S}
 			fi
 		    done > comp.present
