@@ -4301,7 +4301,10 @@ list_roam(int s)
 		rp = &roamparams.params[mode];
 		if (rp->rssi == 0 && rp->rate == 0)
 			continue;
-		if (mode == IEEE80211_MODE_11NA || mode == IEEE80211_MODE_11NG) {
+		if (mode == IEEE80211_MODE_11NA ||
+		    mode == IEEE80211_MODE_11NG ||
+		    mode == IEEE80211_MODE_VHT_2GHZ ||
+		    mode == IEEE80211_MODE_VHT_5GHZ) {
 			if (rp->rssi & 1)
 				LINE_CHECK("roam:%-7.7s rssi %2u.5dBm  MCS %2u    ",
 				    modename[mode], rp->rssi/2,
@@ -4321,6 +4324,13 @@ list_roam(int s)
 	}
 }
 
+/* XXX TODO: rate-to-string method... */
+static const char*
+get_mcs_mbs_rate_str(uint8_t rate)
+{
+	return (rate & IEEE80211_RATE_MCS) ? "MCS " : "Mb/s";
+}
+
 static void
 list_txparams(int s)
 {
@@ -4332,21 +4342,28 @@ list_txparams(int s)
 		tp = &txparams.params[mode];
 		if (tp->mgmtrate == 0 && tp->mcastrate == 0)
 			continue;
-		if (mode == IEEE80211_MODE_11NA || mode == IEEE80211_MODE_11NG) {
+		if (mode == IEEE80211_MODE_11NA ||
+		    mode == IEEE80211_MODE_11NG ||
+		    mode == IEEE80211_MODE_VHT_2GHZ ||
+		    mode == IEEE80211_MODE_VHT_5GHZ) {
 			if (tp->ucastrate == IEEE80211_FIXED_RATE_NONE)
-				LINE_CHECK("%-7.7s ucast NONE    mgmt %2u MCS  "
-				    "mcast %2u MCS  maxretry %u",
+				LINE_CHECK("%-7.7s ucast NONE    mgmt %2u %s "
+				    "mcast %2u %s maxretry %u",
 				    modename[mode],
 				    tp->mgmtrate &~ IEEE80211_RATE_MCS,
+				    get_mcs_mbs_rate_str(tp->mgmtrate),
 				    tp->mcastrate &~ IEEE80211_RATE_MCS,
+				    get_mcs_mbs_rate_str(tp->mcastrate),
 				    tp->maxretry);
 			else
-				LINE_CHECK("%-7.7s ucast %2u MCS  mgmt %2u MCS  "
-				    "mcast %2u MCS  maxretry %u",
+				LINE_CHECK("%-7.7s ucast %2u MCS  mgmt %2u %s "
+				    "mcast %2u %s maxretry %u",
 				    modename[mode],
 				    tp->ucastrate &~ IEEE80211_RATE_MCS,
 				    tp->mgmtrate &~ IEEE80211_RATE_MCS,
+				    get_mcs_mbs_rate_str(tp->mgmtrate),
 				    tp->mcastrate &~ IEEE80211_RATE_MCS,
+				    get_mcs_mbs_rate_str(tp->mcastrate),
 				    tp->maxretry);
 		} else {
 			if (tp->ucastrate == IEEE80211_FIXED_RATE_NONE)
