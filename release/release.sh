@@ -148,6 +148,9 @@ env_check() {
 		WITH_COMPRESSED_IMAGES=
 		NODOC=yes
 		case ${EMBEDDED_TARGET}:${EMBEDDED_TARGET_ARCH} in
+			arm64:aarch64)
+				chroot_build_release_cmd="chroot_arm64_build_release"
+				;;
 			arm:arm*|arm64:aarch64)
 				chroot_build_release_cmd="chroot_arm_build_release"
 				;;
@@ -298,7 +301,7 @@ extra_chroot_setup() {
 	if [ ! -z "${EMBEDDEDPORTS}" ]; then
 		_OSVERSION=$(chroot ${CHROOTDIR} /usr/bin/uname -U)
 		REVISION=$(chroot ${CHROOTDIR} make -C /usr/src/release -V REVISION)
-		BRANCH=$(chroot ${CHROOTDIR} make -C /usr/src/release -V BRANCH)
+		export BRANCH=$(chroot ${CHROOTDIR} make -C /usr/src/release -V BRANCH)
 		PBUILD_FLAGS="OSVERSION=${_OSVERSION} BATCH=yes"
 		PBUILD_FLAGS="${PBUILD_FLAGS} UNAME_r=${UNAME_r}"
 		PBUILD_FLAGS="${PBUILD_FLAGS} OSREL=${REVISION}"
@@ -409,15 +412,30 @@ chroot_arm_build_release() {
 	mv ${IMGBASE} ${CHROOTDIR}/${OBJDIR}/${OSRELEASE}-${BOARDNAME}.img
 	chroot ${CHROOTDIR} mkdir -p /R
 	chroot ${CHROOTDIR} cp -p ${OBJDIR}/${OSRELEASE}-${BOARDNAME}.img \
-		/R/${OSRELEASE}-${BOARDNAME}.img
-	chroot ${CHROOTDIR} xz -T ${XZ_THREADS} /R/${OSRELEASE}-${BOARDNAME}.img
+		/R/${OSRELEASE}-${BOARDNAME}${SNAPSHOT}.img
+	chroot ${CHROOTDIR} xz -T ${XZ_THREADS} /R/${OSRELEASE}-${BOARDNAME}${SNAPSHOT}.img
 	cd ${CHROOTDIR}/R && sha512 ${OSRELEASE}* \
-		> CHECKSUM.SHA512
+		> ${OSRELEASE}-${BOARDNAME}${SNAPSHOT}.CHECKSUM.SHA512
 	cd ${CHROOTDIR}/R && sha256 ${OSRELEASE}* \
-		> CHECKSUM.SHA256
+		> ${OSRELEASE}-${BOARDNAME}${SNAPSHOT}.CHECKSUM.SHA256
 
 	return 0
 } # chroot_arm_build_release()
+ 
+# chroot_arm64_build_release(): Create arm64 SD card image.
+chroot_arm64_build_release() {
+	if [ "X${BOARDNAMES}" == "X" ]; then
+		BOARDNAMES="${BOARDNAME}"
+	fi
+
+	for BOARDNAME in ${BOARDNAMES}
+	do
+		export BOARDNAME
+		chroot_arm_build_release
+	done
+
+	return 0
+} # chroot_arm64_build_release()
 
 # main(): Start here.
 main() {
