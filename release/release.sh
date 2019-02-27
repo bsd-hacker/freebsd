@@ -428,6 +428,18 @@ chroot_arm64_build_release() {
 		BOARDNAMES="${BOARDNAME}"
 	fi
 
+	if [ "X${BUILDDATE}" != "X" ]; then
+		SNAPSHOT="-${BUILDDATE}"
+
+		if [ -d ${CHROOTDIR}/usr/src/.svn ]; then
+			REVISION="svn-$(eval chroot ${CHROOTDIR} svnlite info /usr/src | grep '^Revision: ' | awk '{ print $2 }')"
+		fi
+
+		if [ "X${REVISION}" != "X" ]; then
+			SNAPSHOT="${SNAPSHOT}-${REVISION}"
+		fi
+	fi
+
 	for BOARDNAME in ${BOARDNAMES}
 	do
 		export BOARDNAME
