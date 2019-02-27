@@ -308,6 +308,7 @@ extra_chroot_setup() {
 		PBUILD_FLAGS="${PBUILD_FLAGS} WRKDIRPREFIX=/tmp/ports"
 		PBUILD_FLAGS="${PBUILD_FLAGS} DISTDIR=/tmp/distfiles"
 		for _PORT in ${EMBEDDEDPORTS}; do
+			eval chroot ${CHROOTDIR} pkg query %o ${_PORT} || \
 			eval chroot ${CHROOTDIR} env ${PBUILD_FLAGS} make -C \
 				/usr/ports/${_PORT} \
 				FORCE_PKG_REGISTER=1 deinstall install clean distclean
