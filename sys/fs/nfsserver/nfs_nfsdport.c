@@ -949,10 +949,11 @@ nfsvno_write(struct vnode *vp, off_t off, int retlen, int cnt, int *stable,
 int
 nfsvno_createsub(struct nfsrv_descript *nd, struct nameidata *ndp,
     struct vnode **vpp, struct nfsvattr *nvap, int *exclusive_flagp,
-    int32_t *cverf, NFSDEV_T rdev, struct thread *p, struct nfsexstuff *exp)
+    int32_t *cverf, NFSDEV_T rdev, struct nfsexstuff *exp)
 {
 	u_quad_t tempsize;
 	int error;
+	struct thread *p = curthread;
 
 	error = nd->nd_repstat;
 	if (!error && ndp->ni_vp == NULL) {
@@ -1631,12 +1632,13 @@ void
 nfsvno_open(struct nfsrv_descript *nd, struct nameidata *ndp,
     nfsquad_t clientid, nfsv4stateid_t *stateidp, struct nfsstate *stp,
     int *exclusive_flagp, struct nfsvattr *nvap, int32_t *cverf, int create,
-    NFSACL_T *aclp, nfsattrbit_t *attrbitp, struct ucred *cred, struct thread *p,
+    NFSACL_T *aclp, nfsattrbit_t *attrbitp, struct ucred *cred,
     struct nfsexstuff *exp, struct vnode **vpp)
 {
 	struct vnode *vp = NULL;
 	u_quad_t tempsize;
 	struct nfsexstuff nes;
+	struct thread *p = curthread;
 
 	if (ndp->ni_vp == NULL)
 		nd->nd_repstat = nfsrv_opencheck(clientid,

@@ -1185,7 +1185,7 @@ nfsrvd_create(struct nfsrv_descript *nd, __unused int isdgram,
 	 *   should I set the mode too ?
 	 */
 	nd->nd_repstat = nfsvno_createsub(nd, &named, &vp, &nva,
-	    &exclusive_flag, cverf, rdev, p, exp);
+	    &exclusive_flag, cverf, rdev, exp);
 
 	if (!nd->nd_repstat) {
 		nd->nd_repstat = nfsvno_getfh(vp, &fh, p);
@@ -2991,7 +2991,7 @@ nfsrvd_open(struct nfsrv_descript *nd, __unused int isdgram,
 		}
 		nfsvno_open(nd, &named, clientid, &stateid, stp,
 		    &exclusive_flag, &nva, cverf, create, aclp, &attrbits,
-		    nd->nd_cred, p, exp, &vp);
+		    nd->nd_cred, exp, &vp);
 	} else if (claim == NFSV4OPEN_CLAIMPREVIOUS || claim ==
 	    NFSV4OPEN_CLAIMFH) {
 		if (claim == NFSV4OPEN_CLAIMPREVIOUS) {
