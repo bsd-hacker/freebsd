@@ -1852,12 +1852,12 @@ nfsv4_loadattr(struct nfsrv_descript *nd, vnode_t vp,
 			}
 			if (compare) {
 			    if (!(*retcmpp)) {
-				if (nfsv4_strtogid(nd, cp, j, &gid, p) ||
+				if (nfsv4_strtogid(nd, cp, j, &gid) ||
 				    nap->na_gid != gid)
 				    *retcmpp = NFSERR_NOTSAME;
 			    }
 			} else if (nap != NULL) {
-				if (nfsv4_strtogid(nd, cp, j, &gid, p))
+				if (nfsv4_strtogid(nd, cp, j, &gid))
 					nap->na_gid = nfsrv_defaultgid;
 				else
 					nap->na_gid = gid;
@@ -2749,7 +2749,7 @@ nfsv4_fillattr(struct nfsrv_descript *nd, struct mount *mp, vnode_t vp,
 			break;
 		case NFSATTRBIT_OWNERGROUP:
 			cp = namestr;
-			nfsv4_gidtostr(vap->va_gid, &cp, &siz, p);
+			nfsv4_gidtostr(vap->va_gid, &cp, &siz);
 			retnum += nfsm_strtom(nd, cp, siz);
 			if (cp != namestr)
 				free(cp, M_NFSSTRING);
@@ -3267,7 +3267,7 @@ out:
  * retlenp - pointer to length to be returned
  */
 APPLESTATIC void
-nfsv4_gidtostr(gid_t gid, u_char **cpp, int *retlenp, NFSPROC_T *p)
+nfsv4_gidtostr(gid_t gid, u_char **cpp, int *retlenp)
 {
 	int i;
 	struct nfsusrgrp *usrp;
@@ -3379,8 +3379,7 @@ tryagain:
  * a number.
  */
 APPLESTATIC int
-nfsv4_strtogid(struct nfsrv_descript *nd, u_char *str, int len, gid_t *gidp,
-    NFSPROC_T *p)
+nfsv4_strtogid(struct nfsrv_descript *nd, u_char *str, int len, gid_t *gidp)
 {
 	int i;
 	char *cp, *endstr, *str0;
