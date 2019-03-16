@@ -1143,6 +1143,12 @@ WMAKE_TGTS+=	everything
 WMAKE_TGTS+=	build${libcompat}
 .endif
 
+# record buildworld time in seconds
+.if make(buildworld)
+_BUILDWORLD_START!= date '+%s'
+.export _BUILDWORLD_START
+.endif
+
 buildworld: buildworld_prologue ${WMAKE_TGTS} buildworld_epilogue .PHONY
 .ORDER: buildworld_prologue ${WMAKE_TGTS} buildworld_epilogue
 
@@ -1155,6 +1161,9 @@ buildworld_epilogue: .PHONY
 	@echo
 	@echo "--------------------------------------------------------------"
 	@echo ">>> World build completed on `LC_ALL=C date`"
+	@seconds=$$(($$(date '+%s') - ${_BUILDWORLD_START})); \
+	  echo -n ">>> World build in $$seconds seconds, "; \
+	  echo "ncpu: $$(sysctl -n hw.ncpu)${.MAKE.JOBS:S/^/, make -j/}"
 	@echo "--------------------------------------------------------------"
 
 #
@@ -1855,11 +1864,11 @@ create-world-package-${pkgname}: .PHONY
 	@if [ "${pkgname}" == "runtime" ]; then \
 		sed -i '' -e "s/%VCS_REVISION%/${VCS_REVISION}/" ${WSTAGEDIR}/${pkgname}.ucl ; \
 	fi
-	${PKG_CMD} -o ABI_FILE=${WSTAGEDIR}/bin/sh -o ALLOW_BASE_SHLIBS=yes \
+	${PKG_CMD} -o ABI_FILE=${WSTAGEDIR}/usr/bin/uname -o ALLOW_BASE_SHLIBS=yes \
 		create -M ${WSTAGEDIR}/${pkgname}.ucl \
 		-p ${WSTAGEDIR}/${pkgname}.plist \
 		-r ${WSTAGEDIR} \
-		-o ${REPODIR}/$$(${PKG_CMD} -o ABI_FILE=${WSTAGEDIR}/bin/sh config ABI)/${PKG_VERSION}
+		-o ${REPODIR}/$$(${PKG_CMD} -o ABI_FILE=${WSTAGEDIR}/usr/bin/uname config ABI)/${PKG_VERSION}
 .endfor
 
 _default_flavor=	-default
