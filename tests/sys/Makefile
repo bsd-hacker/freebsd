@@ -9,6 +9,7 @@ TESTS_SUBDIRS+=		aio
 TESTS_SUBDIRS+=		${_audit}
 TESTS_SUBDIRS+=		auditpipe
 TESTS_SUBDIRS+=		capsicum
+TESTS_SUBDIRS+=		${_capsicum_test}
 TESTS_SUBDIRS+=		${_cddl}
 TESTS_SUBDIRS+=		fifo
 TESTS_SUBDIRS+=		file
@@ -34,6 +35,10 @@ _audit=	audit
 
 .if ${MK_CDDL} != "no"
 _cddl=	cddl
+.endif
+
+.if ${MK_GOOGLETEST} != "no"
+_capsicum_test=	capsicum-test
 .endif
 
 # Items not integrated into kyua runs by default
