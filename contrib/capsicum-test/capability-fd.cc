@@ -982,14 +982,12 @@ FORK_TEST_ON(Capability, SocketTransfer, TmpFile("cap_fd_transfer")) {
     // Child: enter cap mode
     EXPECT_OK(cap_enter());
 
-    int cap_fd;
-
     // Child: wait to receive FD over socket
     int rc = recvmsg(sock_fds[0], &mh, 0);
     EXPECT_OK(rc);
     EXPECT_LE(CMSG_LEN(sizeof(int)), mh.msg_controllen);
     cmptr = CMSG_FIRSTHDR(&mh);
-    memcpy(&cap_fd, CMSG_DATA(cmptr), sizeof(int));
+    int cap_fd = *(int*)CMSG_DATA(cmptr);
     EXPECT_EQ(CMSG_LEN(sizeof(int)), cmptr->cmsg_len);
     cmptr = CMSG_NXTHDR(&mh, cmptr);
     EXPECT_TRUE(cmptr == NULL);
@@ -1024,7 +1022,7 @@ FORK_TEST_ON(Capability, SocketTransfer, TmpFile("cap_fd_transfer")) {
   cmptr->cmsg_level = SOL_SOCKET;
   cmptr->cmsg_type = SCM_RIGHTS;
   cmptr->cmsg_len = CMSG_LEN(sizeof(int));
-  memcpy(CMSG_DATA(cmptr), &cap_fd, sizeof(int));
+  *(int *)CMSG_DATA(cmptr) = cap_fd;
   buffer1[0] = 0;
   iov[0].iov_len = 1;
   sleep(3);
