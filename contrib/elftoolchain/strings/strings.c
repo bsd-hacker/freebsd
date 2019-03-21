@@ -295,8 +295,8 @@ long
 getcharacter(FILE *pfile)
 {
 	long rt;
-	int i;
-	char buf[4], c;
+	int i, c;
+	char buf[4];
 
 	for(i = 0; i < encoding_size; i++) {
 		c = getc(pfile);
@@ -402,13 +402,13 @@ find_strings(const char *name, FILE *pfile, off_t offset, off_t size)
 					break;
 				c = getcharacter(pfile);
 				cur_off += encoding_size;
+				if (!PRINTABLE(c) || c == EOF)
+					break;
 				if (encoding == ENCODING_8BIT &&
 				    (uint8_t)c > 127) {
 					putchar(c);
 					continue;
 				}
-				if (!PRINTABLE(c) || c == EOF)
-					break;
 				putchar(c);
 			}
 			putchar('\n');
