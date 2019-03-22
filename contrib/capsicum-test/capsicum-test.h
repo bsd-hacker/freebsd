@@ -134,7 +134,10 @@ const char *TmpFile(const char *pathname);
     void ICLASS_NAME(test_case_name, test_name)::InnerTestBody()
 
 // Emit errno information on failure
-#define EXPECT_OK(v) EXPECT_LE(0, v) << "   errno " << errno << " " << strerror(errno)
+#define EXPECT_OK(v) \
+    do { \
+      EXPECT_LE(0, v) << "   errno " << errno << " " << strerror(errno); \
+    } while (0)
 
 // Expect a syscall to fail with the given error.
 #define EXPECT_SYSCALL_FAIL(E, C) \
