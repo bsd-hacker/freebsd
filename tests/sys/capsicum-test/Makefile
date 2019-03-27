@@ -37,6 +37,8 @@ NO_SHARED.$p=
 SRCS.$p=	mini-me.c
 .endfor
 
+BINDIR=	${TESTSDIR}
+
 BINMODE.mini-me.noexec=	${NOBINMODE}
 BINMODE.mini-me.setuid=	01444
 
