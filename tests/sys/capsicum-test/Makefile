@@ -31,7 +31,7 @@ SRCS.smoketest+=	\
 LIBADD.capsicum-test+=	gtest pthread
 
 PROG_OVERRIDE_VARS+=	NO_SHARED
-.for p in mini-me mini-me.noexec mini-me-setuid
+.for p in mini-me mini-me.noexec mini-me.setuid
 PROGS+=		$p
 NO_SHARED.$p=
 SRCS.$p=	mini-me.c
