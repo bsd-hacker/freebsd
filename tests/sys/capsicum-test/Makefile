@@ -39,7 +39,7 @@ SRCS.$p=	mini-me.c
 BINDIR=	${TESTSDIR}
 
 BINMODE.mini-me.noexec=	${NOBINMODE}
-BINMODE.mini-me.setuid=	01444
+BINMODE.mini-me.setuid=	4444
 
 WARNS?=	3
 
