@@ -167,4 +167,9 @@ static inline void cap_rights_describe(const cap_rights_t *rights, char *buffer)
 
 #endif  /* new/old style rights manipulation */
 
+#ifdef __cplusplus
+#include <string>
+extern std::string capsicum_test_bindir;
+#endif
+
 #endif /*__CAPSICUM_H__*/
