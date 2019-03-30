@@ -25,9 +25,6 @@ SRCS.capsicum-test+=	\
 	overhead.cc \
 	rename.cc
 
-SRCS.smoketest+=	\
-	smoketest.c
-
 LIBADD.capsicum-test+=	gtest pthread
 
 .for p in mini-me mini-me.noexec mini-me.setuid
