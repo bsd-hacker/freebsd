@@ -462,8 +462,6 @@
         ..
         capsicum
         ..
-        capsicum-test
-        ..
         cddl
             zfs
                 bin
