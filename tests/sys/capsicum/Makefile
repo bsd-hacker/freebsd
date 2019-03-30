@@ -35,6 +35,7 @@ SRCS.capsicum-test+=	\
 	rename.cc
 
 LIBADD.capsicum-test+=	gtest pthread
+TEST_METADATA.capsicum-test=	required_user="unprivileged"
 
 .for p in mini-me mini-me.noexec mini-me.setuid
 PROGS+=		$p
@@ -45,7 +46,7 @@ SRCS.$p=	mini-me.c
 BINDIR=	${TESTSDIR}
 
 BINMODE.mini-me.noexec=	${NOBINMODE}
-BINMODE.mini-me.setuid=	4444
+BINMODE.mini-me.setuid=	4555
 
 WARNS.capsicum-test=	3
 
