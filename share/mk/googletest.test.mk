@@ -26,6 +26,16 @@
 # manpage.
 GTESTS?=
 
+# Default test interface for googletest
+#
+# This knob should be used if the version of kyua in use doesn't support the
+# `googletest` test interface.
+.ifdef GTESTS_USE_PLAIN_TEST_INTERFACE
+GTESTS_DEFAULT_TEST_INTERFACE=	plain
+.else
+GTESTS_DEFAULT_TEST_INTERFACE=	googletest
+.endif
+
 .if !empty(GTESTS)
 .include <googletest.test.inc.mk>
 
@@ -36,6 +46,6 @@ BINDIR.${_T}= ${TESTSDIR}
 CXXFLAGS.${_T}+= ${GTESTS_CXXFLAGS}
 MAN.${_T}?= # empty
 SRCS.${_T}?= ${_T}.cc
-TEST_INTERFACE.${_T}= plain
+TEST_INTERFACE.${_T}?= ${GTESTS_DEFAULT_TEST_INTERFACE}
 .endfor
 .endif
