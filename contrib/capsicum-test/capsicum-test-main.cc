@@ -1,9 +1,9 @@
 #include <sys/types.h>
-#ifdef __linux__
+#if defined(__FreeBSD__)
+#include <sys/sysctl.h>
+#elif defined(__linux__)
 #include <sys/vfs.h>
 #include <linux/magic.h>
-#elif defined(__FreeBSD__)
-#include <sys/sysctl.h>
 #endif
 #include <ctype.h>
 #include <errno.h>
@@ -47,10 +47,8 @@ public:
     trap_enotcap_enabled_len = sizeof(trap_enotcap_enabled);
 
     if (feature_present("security_capabilities") == 0) {
-      GTEST_SKIP() << "Tests require a CAPABILITIES enabled kernel";
-    } else {
-      std::cerr << "Running on a CAPABILITIES enabled kernel - OK!"
-                << std::endl;
+      GTEST_SKIP() << "Skipping tests because capsicum support is not "
+                   << "enabled in the kernel.";
     }
     const char *oid = "kern.trap_enotcap";
     rc = sysctlbyname(oid, &trap_enotcap_enabled, &trap_enotcap_enabled_len,
@@ -61,8 +59,6 @@ public:
     if (trap_enotcap_enabled) {
       GTEST_SKIP() << "Sysctl " << oid << " enabled. "
                    << "Skipping tests to avoid non-determinism with results";
-    } else {
-      std::cerr << "Sysctl " << oid << " not enabled - OK!" << std::endl;
     }
 #endif /* FreeBSD */
 
