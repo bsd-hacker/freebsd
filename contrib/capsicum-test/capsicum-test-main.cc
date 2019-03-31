@@ -47,10 +47,7 @@ public:
     trap_enotcap_enabled_len = sizeof(trap_enotcap_enabled);
 
     if (feature_present("security_capabilities") == 0) {
-      // XXX (ngie): using std::cerr because 1.8.1 (with GTEST_SKIP support)
-      //             isn't properly outputting skip diagnostic message here.
-      std::cerr << "Tests require a CAPABILITIES enabled kernel" << std::endl;
-      GTEST_SKIP();
+      GTEST_SKIP() << "Tests require a CAPABILITIES enabled kernel";
     } else {
       std::cerr << "Running on a CAPABILITIES enabled kernel - OK!"
                 << std::endl;
@@ -62,12 +59,8 @@ public:
       GTEST_FAIL() << "sysctlbyname failed: " << strerror(errno);
     }
     if (trap_enotcap_enabled) {
-      // XXX (ngie): using std::cerr because 1.8.1 (with GTEST_SKIP support)
-      //             isn't properly outputting skip diagnostic message here.
-      std::cerr << "Sysctl " << oid << " enabled. "
-                << "Skipping tests to avoid non-determinism with results"
-                << std::endl;
-      GTEST_SKIP();
+      GTEST_SKIP() << "Sysctl " << oid << " enabled. "
+                   << "Skipping tests to avoid non-determinism with results";
     } else {
       std::cerr << "Sysctl " << oid << " not enabled - OK!" << std::endl;
     }
