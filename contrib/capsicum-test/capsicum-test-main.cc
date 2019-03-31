@@ -33,6 +33,12 @@ public:
     std::cerr << tmpdir << std::endl;
   }
   void CheckCapsicumSupport() {
+    // For versions of googletest that lack GTEST_SKIP.
+#ifndef GTEST_SKIP
+#define GTEST_SKIP GTEST_FAIL
+#define GTEST_SKIP_defined
+#endif
+
 #ifdef __FreeBSD__
     size_t trap_enotcap_enabled_len;
     int rc;
@@ -41,9 +47,13 @@ public:
     trap_enotcap_enabled_len = sizeof(trap_enotcap_enabled);
 
     if (feature_present("security_capabilities") == 0) {
-      GTEST_SKIP() << "Tests require a CAPABILITIES enabled kernel";
+      // XXX (ngie): using std::cerr because 1.8.1 (with GTEST_SKIP support)
+      //             isn't properly outputting skip diagnostic message here.
+      std::cerr << "Tests require a CAPABILITIES enabled kernel" << std::endl;
+      GTEST_SKIP();
     } else {
-      std::cerr << "Running on a CAPABILITIES enabled kernel" << std::endl;
+      std::cerr << "Running on a CAPABILITIES enabled kernel - OK!"
+                << std::endl;
     }
     const char *oid = "kern.trap_enotcap";
     rc = sysctlbyname(oid, &trap_enotcap_enabled, &trap_enotcap_enabled_len,
@@ -52,11 +62,19 @@ public:
       GTEST_FAIL() << "sysctlbyname failed: " << strerror(errno);
     }
     if (trap_enotcap_enabled) {
-      GTEST_SKIP() << "Sysctl " << oid << " enabled. "
-                   << "Skipping tests to avoid non-determinism with results";
+      // XXX (ngie): using std::cerr because 1.8.1 (with GTEST_SKIP support)
+      //             isn't properly outputting skip diagnostic message here.
+      std::cerr << "Sysctl " << oid << " enabled. "
+                << "Skipping tests to avoid non-determinism with results"
+                << std::endl;
+      GTEST_SKIP();
     } else {
-      std::cerr << "Sysctl " << oid << " not enabled." << std::endl;
+      std::cerr << "Sysctl " << oid << " not enabled - OK!" << std::endl;
     }
+#endif /* FreeBSD */
+
+#ifdef GTEST_SKIP_defined
+#undef GTEST_SKIP
 #endif
   }
   void CreateTemporaryRoot() {
