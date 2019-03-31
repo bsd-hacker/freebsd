@@ -2,6 +2,8 @@
 #ifdef __linux__
 #include <sys/vfs.h>
 #include <linux/magic.h>
+#elif defined(__FreeBSD__)
+#include <sys/sysctl.h>
 #endif
 #include <ctype.h>
 #include <errno.h>
@@ -21,6 +23,7 @@ class SetupEnvironment : public ::testing::Environment
 public:
   SetupEnvironment() : teardown_tmpdir_(false) {}
   void SetUp() override {
+    CheckCapsicumSupport();
     if (tmpdir.empty()) {
       std::cerr << "Generating temporary directory root: ";
       CreateTemporaryRoot();
@@ -28,6 +31,33 @@ public:
       std::cerr << "User provided temporary directory root: ";
     }
     std::cerr << tmpdir << std::endl;
+  }
+  void CheckCapsicumSupport() {
+#ifdef __FreeBSD__
+    size_t trap_enotcap_enabled_len;
+    int rc;
+    bool trap_enotcap_enabled;
+
+    trap_enotcap_enabled_len = sizeof(trap_enotcap_enabled);
+
+    if (feature_present("security_capabilities") == 0) {
+      GTEST_SKIP() << "Tests require a CAPABILITIES enabled kernel";
+    } else {
+      std::cerr << "Running on a CAPABILITIES enabled kernel" << std::endl;
+    }
+    const char *oid = "kern.trap_enotcap";
+    rc = sysctlbyname(oid, &trap_enotcap_enabled, &trap_enotcap_enabled_len,
+      nullptr, 0);
+    if (rc != 0) {
+      GTEST_FAIL() << "sysctlbyname failed: " << strerror(errno);
+    }
+    if (trap_enotcap_enabled) {
+      GTEST_SKIP() << "Sysctl " << oid << " enabled. "
+                   << "Skipping tests to avoid non-determinism with results";
+    } else {
+      std::cerr << "Sysctl " << oid << " not enabled." << std::endl;
+    }
+#endif
   }
   void CreateTemporaryRoot() {
     char *tmpdir_name = tempnam(nullptr, "cptst");
