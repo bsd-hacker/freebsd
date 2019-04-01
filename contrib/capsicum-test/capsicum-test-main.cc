@@ -55,7 +55,7 @@ public:
     }
     if (trap_enotcap_enabled) {
       GTEST_SKIP() << "Sysctl " << oid << " enabled. "
-                   << "Skipping tests to avoid non-determinism with results";
+                   << "Skipping tests to avoid non-determinism with results.";
     }
 #endif /* FreeBSD */
   }
