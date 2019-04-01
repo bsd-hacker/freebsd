@@ -56,7 +56,7 @@ public:
       GTEST_FAIL() << "sysctlbyname failed: " << strerror(errno);
     }
     if (trap_enotcap_enabled) {
-      GTEST_SKIP() << "Debug sysctl " << oid << " enabled. "
+      GTEST_SKIP() << "Debug sysctl, " << oid << ", enabled. "
                    << "Skipping tests because it's enablement invalidates the "
                    << "test results.";
     }
