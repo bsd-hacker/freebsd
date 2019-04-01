@@ -47,6 +47,8 @@ public:
       GTEST_SKIP() << "Skipping tests because capsicum support is not "
                    << "enabled in the kernel.";
     }
+    // If this OID is enabled, it will send SIGTRAP to the process when
+    // `ENOTCAPABLE` is returned.
     const char *oid = "kern.trap_enotcap";
     rc = sysctlbyname(oid, &trap_enotcap_enabled, &trap_enotcap_enabled_len,
       nullptr, 0);
@@ -54,8 +56,9 @@ public:
       GTEST_FAIL() << "sysctlbyname failed: " << strerror(errno);
     }
     if (trap_enotcap_enabled) {
-      GTEST_SKIP() << "Sysctl " << oid << " enabled. "
-                   << "Skipping tests to avoid non-determinism with results.";
+      GTEST_SKIP() << "Debug sysctl " << oid << " enabled. "
+                   << "Skipping tests because it's enablement invalidates the "
+                   << "test results.";
     }
 #endif /* FreeBSD */
   }
