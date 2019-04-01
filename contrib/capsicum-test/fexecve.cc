@@ -167,7 +167,12 @@ FORK_TEST_F(FexecveWithScript, CapModeScriptFail) {
 }
 
 #ifdef HAVE_EXECVEAT
-TEST(Execveat, NoUpwardTraversal) {
+class Execveat : public Execve {
+ public:
+  Execveat() : Execve() {}
+};
+
+TEST_F(Execveat, NoUpwardTraversal) {
   char *abspath = realpath(exec_prog_, NULL);
   char cwd[1024];
   getcwd(cwd, sizeof(cwd));
