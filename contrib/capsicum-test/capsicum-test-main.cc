@@ -1,9 +1,9 @@
 #include <sys/types.h>
-#if defined(__FreeBSD__)
-#include <sys/sysctl.h>
-#elif defined(__linux__)
+#ifdef __linux__
 #include <sys/vfs.h>
 #include <linux/magic.h>
+#elif defined(__FreeBSD__)
+#include <sys/sysctl.h>
 #endif
 #include <ctype.h>
 #include <errno.h>
@@ -15,6 +15,11 @@
 #include <iostream>
 #include "gtest/gtest.h"
 #include "capsicum-test.h"
+
+// For versions of googletest that lack GTEST_SKIP.
+#ifndef GTEST_SKIP
+#define GTEST_SKIP GTEST_FAIL
+#endif
 
 std::string tmpdir;
 
@@ -33,18 +38,10 @@ public:
     std::cerr << tmpdir << std::endl;
   }
   void CheckCapsicumSupport() {
-    // For versions of googletest that lack GTEST_SKIP.
-#ifndef GTEST_SKIP
-#define GTEST_SKIP GTEST_FAIL
-#define GTEST_SKIP_defined
-#endif
-
 #ifdef __FreeBSD__
-    size_t trap_enotcap_enabled_len;
     int rc;
     bool trap_enotcap_enabled;
-
-    trap_enotcap_enabled_len = sizeof(trap_enotcap_enabled);
+    size_t trap_enotcap_enabled_len = sizeof(trap_enotcap_enabled);
 
     if (feature_present("security_capabilities") == 0) {
       GTEST_SKIP() << "Skipping tests because capsicum support is not "
@@ -61,10 +58,6 @@ public:
                    << "Skipping tests to avoid non-determinism with results";
     }
 #endif /* FreeBSD */
-
-#ifdef GTEST_SKIP_defined
-#undef GTEST_SKIP
-#endif
   }
   void CreateTemporaryRoot() {
     char *tmpdir_name = tempnam(nullptr, "cptst");
