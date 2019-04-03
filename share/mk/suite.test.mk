@@ -79,6 +79,39 @@ Kyuafile: Makefile
 
 KYUA= ${LOCALBASE}/bin/kyua
 
+MAKE_CHECK_SANDBOX_DIR=	checkdir
+CLEANDIRS+=	${MAKE_CHECK_SANDBOX_DIR}
+
+.if ${MK_MAKE_CHECK_USE_SANDBOX} != "no" && make(check)
+DESTDIR:=	${.OBJDIR}/${MAKE_CHECK_SANDBOX_DIR}
+
+.if ${MK_MAKE_CHECK_TEST_WITH_COVERAGE} != "no"
+GCOV?=		gcov
+GCOV_PREFIX?=	${DESTDIR}
+TESTS_ENV+=	GCOV=${GCOV} GCOV_PREFIX=${GCOV_PREFIX}
+.endif
+
+beforecheck:
+.for t in clean depend all
+.for dir in ${SRCTOP}/tests/tools ${.CURDIR}
+	@cd ${dir} && ${MAKE} $t
+.endfor
+.endfor
+	@cd ${SRCTOP} && ${MAKE} hierarchy DESTDIR=${DESTDIR}
+.for dir in ${SRCTOP}/tests/tools ${.CURDIR}
+	@cd ${dir} && ${MAKE} install DESTDIR=${DESTDIR}
+.endfor
+
+# NOTE: this is intentional to ensure that "make check" can be run multiple
+#       times. "aftercheck" won't be run if "make check" fails, is interrupted,
+#       etc.
+aftercheck:
+.if ${MK_MAKE_CHECK_TEST_WITH_COVERAGE} != "no"
+	@env ${TESTS_ENV:Q} ${DESTDIR}${TESTSBASE}/tools/gather_coverage
+.endif
+	@cd ${.CURDIR} && ${MAKE} clean
+.endif
+
 # Definition of the "make check" target and supporting variables.
 #
 # This target, by necessity, can only work for native builds (i.e. a FreeBSD

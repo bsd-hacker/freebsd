@@ -40,6 +40,7 @@
 #
 # LIBMODE	Library mode. [${NOBINMODE}]
 #
+# COVERAGEDIR	Base path for coverage files. [/usr/lib/cov]
 #
 # DEBUGDIR	Base path for standalone debug files. [/usr/lib/debug]
 #
@@ -184,6 +185,8 @@ SHLIBDIR?=	${LIBDIR}
 LIBOWN?=	${BINOWN}
 LIBGRP?=	${BINGRP}
 LIBMODE?=	${NOBINMODE}
+
+COVERAGEDIR?=	/usr/lib/cov
 
 DEBUGDIR?=	/usr/lib/debug
 DEBUGMODE?=	${NOBINMODE}

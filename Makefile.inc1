@@ -248,7 +248,7 @@ WANT_COMPILER_VERSION!= \
 	awk -F. '{print $$1 * 10000 + $$2 * 100 + $$3}' \
 	${SRCDIR}/${WANT_COMPILER_VERSION_FILE} || echo unknown
 .endif
-.export WANT_COMPILER_FREEBSD_VERSION WANT_COMPILER_VERSION
+.export WANT_COMPILER_FREEBSD_VERSION WANT_COMPILER_TYPE WANT_COMPILER_VERSION
 .endif	# !defined(WANT_COMPILER_FREEBSD_VERSION)
 
 # It needs to be the same revision as we would build for the bootstrap.
@@ -688,7 +688,7 @@ BSARGS= 	DESTDIR= \
 		BOOTSTRAPPING=${BOOTSTRAPPING_OSRELDATE} \
 		BWPHASE=${.TARGET:C,^_,,} \
 		SSP_CFLAGS= \
-		MK_HTML=no NO_LINT=yes MK_MAN=no \
+		MK_COVERAGE=no MK_HTML=no NO_LINT=yes MK_MAN=no \
 		-DNO_PIC MK_PROFILE=no -DNO_SHARED \
 		-DNO_CPU_CFLAGS MK_WARNS=no MK_CTF=no \
 		MK_CLANG_EXTRAS=no MK_CLANG_FULL=no \
@@ -734,7 +734,7 @@ KTMAKE=		\
 		MAKEOBJDIRPREFIX= \
 		BOOTSTRAPPING=${BOOTSTRAPPING_OSRELDATE} \
 		SSP_CFLAGS= \
-		MK_HTML=no -DNO_LINT MK_MAN=no \
+		MK_COVERAGE=no MK_HTML=no -DNO_LINT MK_MAN=no \
 		-DNO_PIC MK_PROFILE=no -DNO_SHARED \
 		-DNO_CPU_CFLAGS MK_RETPOLINE=no MK_WARNS=no MK_CTF=no
 
@@ -1361,6 +1361,10 @@ distributeworld installworld stageworld: _installcheck_world .PHONY
 	    -p ${DESTDIR}/${DISTDIR}/${dist}/usr >/dev/null
 	${DESTDIR_MTREE} -f ${.CURDIR}/etc/mtree/BSD.include.dist \
 	    -p ${DESTDIR}/${DISTDIR}/${dist}/usr/include >/dev/null
+.if ${MK_COVERAGE} != "no"
+	mtree -deU -f ${.CURDIR}/etc/mtree/BSD.cov.dist \
+	    -p ${DESTDIR}/${DISTDIR}/${dist}/usr/lib >/dev/null
+.endif
 .if ${MK_DEBUG_FILES} != "no"
 	${DESTDIR_MTREE} -f ${.CURDIR}/etc/mtree/BSD.debug.dist \
 	    -p ${DESTDIR}/${DISTDIR}/${dist}/usr/lib >/dev/null
@@ -2712,6 +2716,14 @@ _prereq_libs= lib/libcompiler_rt
 _prereq_libs+= gnu/lib/libssp/libssp_nonshared
 .endif
 
+#
+# The coverage libraries must be built for the target prior to ${_startup_libs}
+# for world to have runtime coverage instrumentation.
+#
+.if ${MK_COVERAGE} != "no"
+_prereq_libs+=	lib/libclang_rt/profile
+.endif
+
 # These dependencies are not automatically generated:
 #
 # gnu/lib/csu, gnu/lib/libgcc, lib/csu and lib/libc must be built before
@@ -2960,7 +2972,7 @@ ${_lib}__PL: .PHONY .MAKE
 		if [ -z "${NO_OBJWALK}" ]; then ${MAKE} MK_TESTS=no DIRPRFX=${_lib}/ obj; fi; \
 		${MAKE} MK_TESTS=no MK_PROFILE=no -DNO_PIC \
 		    DIRPRFX=${_lib}/ all; \
-		${MAKE} MK_TESTS=no MK_PROFILE=no -DNO_PIC \
+		${MAKE} MK_COVERAGE=no MK_TESTS=no MK_PROFILE=no -DNO_PIC \
 		    DIRPRFX=${_lib}/ install
 .endif
 .endfor
@@ -2972,7 +2984,7 @@ ${_lib}__L: .PHONY .MAKE
 		cd ${.CURDIR}/${_lib}; \
 		if [ -z "${NO_OBJWALK}" ]; then ${MAKE} MK_TESTS=no DIRPRFX=${_lib}/ obj; fi; \
 		${MAKE} MK_TESTS=no DIRPRFX=${_lib}/ all; \
-		${MAKE} MK_TESTS=no DIRPRFX=${_lib}/ install
+		${MAKE} MK_COVERAGE=no MK_TESTS=no DIRPRFX=${_lib}/ install
 .endif
 .endfor
 
@@ -3239,7 +3251,7 @@ XDEV_CPUTYPE?=${CPUTYPE}
 XDEV_CPUTYPE?=${TARGET_CPUTYPE}
 .endif
 
-NOFUN=-DNO_FSCHG MK_HTML=no -DNO_LINT \
+NOFUN=	MK_COVERAGE=no -DNO_FSCHG MK_HTML=no -DNO_LINT \
 	MK_MAN=no MK_NLS=no MK_PROFILE=no \
 	MK_KERBEROS=no MK_RESCUE=no MK_TESTS=no MK_WARNS=no \
 	TARGET=${TARGET} TARGET_ARCH=${TARGET_ARCH} \

@@ -22,11 +22,12 @@ __${_this}__: .NOTMAIN
 .-include <local.autodep.mk>
 
 PICO?= .pico
+PPICO?=	.ppico
 NOSSPPICO?= .nossppico
 
 .if defined(SRCS)
 # it would be nice to be able to query .SUFFIXES
-OBJ_EXTENSIONS+= .o .po .lo ${PICO} ${NOSSPPICO}
+OBJ_EXTENSIONS+= .o .po .lo ${PICO} ${PPICO} ${NOSSPPICO}
 
 # explicit dependencies help short-circuit .SUFFIX searches
 SRCS_DEP_FILTER+= N*.[hly]
@@ -182,7 +183,7 @@ DEPEND_SUFFIXES += .c .h .cpp .hpp .cxx .hxx .cc .hh
 	@case "${.MAKE.META.FILES:T:M*.po.*}" in \
 	*.po.*) mv $@.${.MAKE.PID} $@;; \
 	*) { cat $@.${.MAKE.PID}; \
-	sed 's,\${NOSSPPICO}:,.o:,;s,\${PICO}:,.o:,;s,\.o:,.po:,' $@.${.MAKE.PID}; } | sort -u > $@; \
+	sed 's,\${NOSSPPICO}:,.o:,;s,\${PICO}:,.o:,;s,\${PPICO}:,.o:,;s,\.o:,.po:,' $@.${.MAKE.PID}; } | sort -u > $@; \
 	rm -f $@.${.MAKE.PID};; \
 	esac
 .else

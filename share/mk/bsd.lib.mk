@@ -3,6 +3,7 @@
 #
 
 .include <bsd.init.mk>
+.include <bsd.compiler.mk>
 
 .if defined(LIB_CXX) || defined(SHLIB_CXX)
 _LD=	${CXX}
@@ -54,6 +55,7 @@ CFLAGS+= ${DEBUG_FLAGS}
 .if ${MK_CTF} != "no" && ${DEBUG_FLAGS:M-g} != ""
 CTFFLAGS+= -g
 .endif
+_WANTS_DEBUG=
 .else
 STRIP?=	-s
 .endif
@@ -111,6 +113,10 @@ PO_FLAG=-pg
 	${CTFCONVERT_CMD}
 
 .c.pico:
+	${CC} ${PICFLAG} -DPIC ${SHARED_CFLAGS} ${_COV_FLAG} ${CFLAGS} -c ${.IMPSRC} -o ${.TARGET}
+	${CTFCONVERT_CMD}
+
+.c.ppico:
 	${CC} ${PICFLAG} -DPIC ${SHARED_CFLAGS} ${CFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 	${CTFCONVERT_CMD}
 
@@ -126,6 +132,9 @@ PO_FLAG=-pg
 	${CXX} ${PO_FLAG} ${STATIC_CXXFLAGS} ${PO_CXXFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 
 .cc.pico .C.pico .cpp.pico .cxx.pico:
+	${CXX} ${PICFLAG} -DPIC ${SHARED_CXXFLAGS} ${_COV_FLAG} ${CXXFLAGS} -c ${.IMPSRC} -o ${.TARGET}
+
+.cc.ppico .C.ppico .cpp.ppico .cxx.ppico:
 	${CXX} ${PICFLAG} -DPIC ${SHARED_CXXFLAGS} ${CXXFLAGS} -c ${.IMPSRC} -o ${.TARGET}
 
 .cc.nossppico .C.nossppico .cpp.nossppico .cxx.nossppico:
@@ -196,6 +205,12 @@ _SHLIBDIR:=${SHLIBDIR}
 .if defined(SHLIB_NAME)
 .if ${MK_DEBUG_FILES} != "no"
 SHLIB_NAME_FULL=${SHLIB_NAME}.full
+.if ${MK_COVERAGE} != "no"
+COVERAGEFILEDIR=${COVERAGEDIR}${_SHLIBDIR}
+.if !exists(${DESTDIR}${COVERAGEFILEDIR})
+COVERAGEMKDIR=
+.endif
+.endif
 # Use ${DEBUGDIR} for base system debug files, else .debug subdirectory
 .if ${_SHLIBDIR} == "/boot" ||\
     ${SHLIBDIR:C%/lib(/.*)?$%/lib%} == "/lib" ||\
@@ -275,6 +290,9 @@ CLEANFILES+=	${SOBJS}
 .if defined(SHLIB_NAME)
 _LIBS+=		${SHLIB_NAME}
 
+.if defined(_COV_FLAG)
+SOLINKOPTS+=	${_COV_FLAG}
+.endif
 SOLINKOPTS+=	-shared -Wl,-x
 .if defined(LD_FATAL_WARNINGS) && ${LD_FATAL_WARNINGS} == "no"
 SOLINKOPTS+=	-Wl,--no-fatal-warnings
@@ -332,10 +350,18 @@ ${SHLIB_NAME}.debug: ${SHLIB_NAME_FULL}
 .if defined(INSTALL_PIC_ARCHIVE) && defined(LIB) && !empty(LIB) && ${MK_TOOLCHAIN} != "no"
 _LIBS+=		lib${LIB_PRIVATE}${LIB}_pic.a
 
-lib${LIB_PRIVATE}${LIB}_pic.a: ${SOBJS}
+.if ${MK_COVERAGE} != "no"
+PIC_OBJS:=	${SOBJS:.pico=.ppico}
+DEPENDOBJS+=	${PIC_OBJS}
+CLEANFILES+=	${PIC_OBJS}
+.else
+PIC_OBJS:=	${SOBJS}
+.endif
+
+lib${LIB_PRIVATE}${LIB}_pic.a: ${PIC_OBJS}
 	@${ECHO} building special pic ${LIB} library
 	@rm -f ${.TARGET}
-	${AR} ${ARFLAGS} ${.TARGET} ${SOBJS} ${ARADD}
+	${AR} ${ARFLAGS} ${.TARGET} ${PIC_OBJS} ${ARADD}
 	${RANLIB} ${RANLIBFLAGS} ${.TARGET}
 .endif
 
@@ -429,6 +455,14 @@ _libinstall:
 	    ${_INSTALLFLAGS} ${_SHLINSTALLFLAGS} \
 	    ${SHLIB_NAME} ${DESTDIR}${_SHLIBDIR}/
 .if ${MK_DEBUG_FILES} != "no"
+.if ${MK_COVERAGE} != "no"
+.if defined(COVERAGEMKDIR)
+	${INSTALL} ${TAG_ARGS:D${TAG_ARGS},coverage} -d ${DESTDIR}${COVERAGEFILEDIR}/
+.endif
+	${INSTALL} ${TAG_ARGS:D${TAG_ARGS},coverage} -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
+	    ${_INSTALLFLAGS} \
+	    ${SHLIB_NAME}.full ${DESTDIR}${COVERAGEFILEDIR}/${SHLIB_NAME}
+.endif
 .if defined(DEBUGMKDIR)
 	${INSTALL} ${TAG_ARGS:D${TAG_ARGS},debug} -d ${DESTDIR}${DEBUGFILEDIR}/
 .endif
@@ -509,6 +543,7 @@ OBJS_DEPEND_GUESS.${_S:${OBJS_SRCS_FILTER:ts:}}.po+=	${_S}
     defined(INSTALL_PIC_ARCHIVE) && defined(LIB) && !empty(LIB)
 .for _S in ${SRCS:N*.[hly]}
 OBJS_DEPEND_GUESS.${_S:${OBJS_SRCS_FILTER:ts:}}.pico+=	${_S}
+OBJS_DEPEND_GUESS.${_S:R}.ppico+=	${_S}
 .endfor
 .endif
 .if defined(BUILD_NOSSP_PIC_ARCHIVE) && defined(LIB) && !empty(LIB)

@@ -71,10 +71,12 @@ __DEFAULT_YES_OPTIONS = \
 __DEFAULT_NO_OPTIONS = \
     BIND_NOW \
     CCACHE_BUILD \
+    COVERAGE \
     CTF \
     INSTALL_AS_USER \
     PIE \
     RETPOLINE \
+    MAKE_CHECK_TEST_WITH_COVERAGE \
     STALE_STAGED
 
 __DEFAULT_DEPENDENT_OPTIONS = \
@@ -85,6 +87,10 @@ __DEFAULT_DEPENDENT_OPTIONS = \
 
 
 .include <bsd.mkopt.mk>
+
+.if ${MK_COVERAGE} == "no" || ${MK_MAKE_CHECK_USE_SANDBOX} == "no"
+MK_MAKE_CHECK_TEST_WITH_COVERAGE:=	no
+.endif
 
 #
 # Supported NO_* options (if defined, MK_* will be forced to "no",

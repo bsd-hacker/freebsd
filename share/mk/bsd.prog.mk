@@ -55,10 +55,13 @@ LDFLAGS+= -Wl,-zretpolineplt
 .if defined(CRUNCH_CFLAGS)
 CFLAGS+=${CRUNCH_CFLAGS}
 .else
-.if ${MK_DEBUG_FILES} != "no" && empty(DEBUG_FLAGS:M-g) && \
-    empty(DEBUG_FLAGS:M-gdwarf-*)
+.if ${MK_DEBUG_FILES} != "no"
+.if empty(DEBUG_FLAGS:M-g) && empty(DEBUG_FLAGS:M-gdwarf-*)
 CFLAGS+= ${DEBUG_FILES_CFLAGS}
+CXXFLAGS+= -g
 CTFFLAGS+= -g
+.endif
+_WANTS_DEBUG=
 .endif
 .endif
 
@@ -75,6 +78,12 @@ TAG_ARGS=	-T ${TAGS:[*]:S/ /,/g}
 
 .if defined(NO_SHARED) && ${NO_SHARED:tl} != "no"
 LDFLAGS+= -static
+.else
+.if defined(_WANTS_DEBUG) && ${MK_COVERAGE} != "no" && ${COMPILER_FEATURES:Mc++11}
+_COV_FLAG= --coverage -fprofile-dir=${COVERAGEDIR}
+CFLAGS+= ${_COV_FLAG}
+CXXFLAGS+= ${_COV_FLAG}
+.endif
 .endif
 
 .if ${MK_DEBUG_FILES} != "no"
@@ -90,6 +99,12 @@ PROG_FULL=${PROG}.full
 DEBUGFILEDIR=	${DEBUGDIR}${BINDIR}
 .else
 DEBUGFILEDIR?=	${BINDIR}/.debug
+.endif
+.if ${MK_COVERAGE} != "no"
+_COVERAGEDIR=	${COVERAGEDIR}${BINDIR}
+.if !exists(${DESTDIR}${_COVERAGEDIR})
+COVERAGEMKDIR=
+.endif
 .endif
 .if !exists(${DESTDIR}${DEBUGFILEDIR})
 DEBUGMKDIR=
@@ -255,6 +270,13 @@ _proginstall:
 	${INSTALL} ${TAG_ARGS} ${STRIP} -o ${BINOWN} -g ${BINGRP} -m ${BINMODE} \
 	    ${_INSTALLFLAGS} ${PROG} ${DESTDIR}${BINDIR}/${PROGNAME}
 .if ${MK_DEBUG_FILES} != "no"
+.if ${MK_COVERAGE} != "no"
+.if defined(COVERAGEMKDIR)
+	${INSTALL} ${TAG_ARGS:D${TAG_ARGS},coverage} -d ${DESTDIR}${_COVERAGEDIR}/
+.endif
+	${INSTALL} ${TAG_ARGS:D${TAG_ARGS},coverage} -o ${BINOWN} -g ${BINGRP} -m ${DEBUGMODE} \
+	    ${PROG_FULL} ${DESTDIR}${_COVERAGEDIR}/${PROGNAME}
+.endif
 .if defined(DEBUGMKDIR)
 	${INSTALL} ${TAG_ARGS:D${TAG_ARGS},debug} -d ${DESTDIR}${DEBUGFILEDIR}/
 .endif
@@ -301,6 +323,15 @@ NLSNAME?=	${PROG}
 .include <bsd.nls.mk>
 
 .include <bsd.confs.mk>
+.if defined(_COV_FLAG) && !empty(SRCS)
+_GCNO_SRCS=	${SRCS:M*.c} ${SRCS:M*.cc} ${SRCS:M*.cpp} ${SRCS:M*.cxx} ${SRCS:M*.C}
+GCNOS:=		${_GCNO_SRCS:R:S/$/.gcno/g}
+.undef _GCNO_SRCS
+.for _gcno in ${GCNOS}
+${_gcno}: ${_gcno:R}.o
+.endfor
+.include <bsd.cov.mk>
+.endif
 .include <bsd.files.mk>
 .include <bsd.incs.mk>
 

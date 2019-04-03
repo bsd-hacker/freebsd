@@ -7,6 +7,7 @@ __BOOT_DEFS_MK__=${MFILE}
 # because it includes bsd.own.mk which needs the right MK_ values,
 # espeically MK_CTF.
 
+MK_COVERAGE=	no
 MK_CTF=		no
 MK_SSP=		no
 MK_PROFILE=	no

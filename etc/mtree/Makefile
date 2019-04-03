@@ -5,6 +5,7 @@
 # NOTE: BSD.debug.dist is unconditionally installed for developer ease-of-use.
 FILES=	\
 	BSD.debug.dist \
+	${_BSD.coverage.dist} \
 	BSD.include.dist \
 	BSD.root.dist \
 	${_BSD.lib32.dist} \
@@ -14,6 +15,9 @@ FILES=	\
 	BSD.usr.dist \
 	BSD.var.dist
 
+.if ${MK_COVERAGE} != "no"
+_BSD.coverage.dist=	BSD.coverage.dist
+.endif
 .if ${MK_LIB32} != "no"
 _BSD.lib32.dist=	BSD.lib32.dist
 .endif
