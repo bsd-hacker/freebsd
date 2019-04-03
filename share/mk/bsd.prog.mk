@@ -78,12 +78,11 @@ TAG_ARGS=	-T ${TAGS:[*]:S/ /,/g}
 
 .if defined(NO_SHARED) && ${NO_SHARED:tl} != "no"
 LDFLAGS+= -static
-.else
+.endif
 .if defined(_WANTS_DEBUG) && ${MK_COVERAGE} != "no"
 _COV_FLAG= --coverage -fprofile-dir=${COVERAGEDIR}
 CFLAGS+= ${_COV_FLAG}
 CXXFLAGS+= ${_COV_FLAG}
-.endif
 .endif
 
 .if ${MK_DEBUG_FILES} != "no"
