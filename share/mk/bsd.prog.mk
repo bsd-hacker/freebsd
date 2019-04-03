@@ -79,7 +79,7 @@ TAG_ARGS=	-T ${TAGS:[*]:S/ /,/g}
 .if defined(NO_SHARED) && ${NO_SHARED:tl} != "no"
 LDFLAGS+= -static
 .else
-.if defined(_WANTS_DEBUG) && ${MK_COVERAGE} != "no" && ${COMPILER_FEATURES:Mc++11}
+.if defined(_WANTS_DEBUG) && ${MK_COVERAGE} != "no"
 _COV_FLAG= --coverage -fprofile-dir=${COVERAGEDIR}
 CFLAGS+= ${_COV_FLAG}
 CXXFLAGS+= ${_COV_FLAG}
@@ -324,7 +324,7 @@ NLSNAME?=	${PROG}
 
 .include <bsd.confs.mk>
 .if defined(_COV_FLAG) && !empty(SRCS)
-_GCNO_SRCS=	${SRCS:M*.c} ${SRCS:M*.cc} ${SRCS:M*.cpp} ${SRCS:M*.cxx} ${SRCS:M*.C}
+_GCNO_SRCS=	${SRCS:M*.c} ${SRCS:M*.cc} ${SRCS:M*.cpp} ${SRCS:M*.cxx} ${SRCS:M*.C} ${SRCS:M*.y}
 GCNOS:=		${_GCNO_SRCS:R:S/$/.gcno/g}
 .undef _GCNO_SRCS
 .for _gcno in ${GCNOS}
