@@ -36,6 +36,17 @@ SRCS.googletest-param-test-test=	\
 
 LIBADD+=	gtest
 
+# These tests confuse the kyua googletest engine, as they don't conform to the
+# googletest spec; they're functional unit tests for the library.
+TEST_INTERFACE.gtest_environment_test= plain
+TEST_INTERFACE.gtest_no_test_unittest= plain
+TEST_INTERFACE.gtest_repeat_test= plain
+TEST_INTERFACE.gtest_stress_test= plain
+TEST_INTERFACE.gtest_throw_on_failure_ex_test= plain
+# This test program cannot selectively run test suites/testcases:
+# https://github.com/google/googletest/issues/2205
+TEST_INTERFACE.gtest-unittest-api_test= plain
+
 # XXX: explicitly listing -lpthread is incorrect. src.libnames.mk should be
 #      handling this.
 LIBADD.gtest_stress_test+=	pthread

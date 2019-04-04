@@ -21,6 +21,11 @@ GTESTS+=	gtest-typed-test_test
 GTESTS+=	gtest_skip_test
 GTESTS+=	gtest_unittest
 
+# This test cannot selectively run a single test, as it verifies results when
+# `--gtest_list_tests` is run:
+# https://github.com/google/googletest/issues/2204
+TEST_INTERFACE.googletest-listener-test=	plain
+
 CXXFLAGS+=	-I${GOOGLETEST_SRCROOT}/include
 CXXFLAGS+=	-I${GOOGLETEST_SRCROOT}
 
