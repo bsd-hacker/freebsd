@@ -688,7 +688,8 @@ BSARGS= 	DESTDIR= \
 		BOOTSTRAPPING=${BOOTSTRAPPING_OSRELDATE} \
 		BWPHASE=${.TARGET:C,^_,,} \
 		SSP_CFLAGS= \
-		MK_COVERAGE=no MK_HTML=no NO_LINT=yes MK_MAN=no \
+		MK_COVERAGE=no MK_COVERAGE_SUPPORT=${MK_COVERAGE} \
+		MK_HTML=no NO_LINT=yes MK_MAN=no \
 		-DNO_PIC MK_PROFILE=no -DNO_SHARED \
 		-DNO_CPU_CFLAGS MK_WARNS=no MK_CTF=no \
 		MK_CLANG_EXTRAS=no MK_CLANG_FULL=no \
@@ -734,7 +735,8 @@ KTMAKE=		\
 		MAKEOBJDIRPREFIX= \
 		BOOTSTRAPPING=${BOOTSTRAPPING_OSRELDATE} \
 		SSP_CFLAGS= \
-		MK_COVERAGE=no MK_HTML=no -DNO_LINT MK_MAN=no \
+		MK_COVERAGE=no MK_COVERAGE_SUPPORT=${MK_COVERAGE} \
+		MK_HTML=no -DNO_LINT MK_MAN=no \
 		-DNO_PIC MK_PROFILE=no -DNO_SHARED \
 		-DNO_CPU_CFLAGS MK_RETPOLINE=no MK_WARNS=no MK_CTF=no
 
@@ -2463,6 +2465,9 @@ _elftctools=	lib/libelftc \
 
 .if ${MK_CLANG_BOOTSTRAP} != "no"
 _clang=		usr.bin/clang
+.if ${MK_COVERAGE_SUPPORT} != "no"
+_coverage_libs=	lib/libclang_rt/profile
+.endif
 .endif
 .if ${MK_LLD_BOOTSTRAP} != "no"
 _lld=		usr.bin/clang/lld
@@ -2487,6 +2492,7 @@ cross-tools: .MAKE .PHONY
     ${_ar} \
     ${_clang_libs} \
     ${_clang} \
+    ${_coverage_libs} \
     ${_lld} \
     ${_binutils} \
     ${_elftctools} \
@@ -2720,7 +2726,7 @@ _prereq_libs+= gnu/lib/libssp/libssp_nonshared
 # The coverage libraries must be built for the target prior to ${_startup_libs}
 # for world to have runtime coverage instrumentation.
 #
-.if ${MK_COVERAGE} != "no"
+.if ${MK_COVERAGE_SUPPORT} != "no"
 _prereq_libs+=	lib/libclang_rt/profile
 .endif
 
@@ -3339,6 +3345,7 @@ XDEVDIRS= \
     ${_elftctools} \
     usr.bin/ar \
     ${_clang} \
+    ${_coverage_libs} \
     ${_gcc}
 
 _xb-cross-tools: .PHONY

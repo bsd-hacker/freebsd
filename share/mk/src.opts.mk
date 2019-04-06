@@ -230,6 +230,7 @@ __DEFAULT_DEPENDENT_OPTIONS= \
 .for var in \
     BLACKLIST \
     BZIP2 \
+    COVERAGE \
     INET \
     INET6 \
     KERBEROS \
