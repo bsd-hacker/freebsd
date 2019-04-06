@@ -295,12 +295,6 @@ __DEFAULT_NO_OPTIONS+=LLVM_TARGET_BPF
 # This means that architectures that have GCC 4.2 as default can not
 # build Clang without using an external compiler.
 
-# Note about MK_COVERAGE:
-#
-# clang and gcc 4.8+ (c++11 supporting compilers) support -fprofile-dir and
-# can compile lib/libclang_rt/profile . libgcov, etc, in base is a dead end
-# that I do not wish to support.
-
 .if ${COMPILER_FEATURES:Mc++11} && (${__T} == "aarch64" || \
     ${__T} == "amd64" || ${__TT} == "arm" || ${__T} == "i386")
 # Clang is enabled, and will be installed as the default /usr/bin/cc.
@@ -574,6 +568,12 @@ MK_${vv:H}:=	${MK_${vv:T}}
 #
 
 .if !${COMPILER_FEATURES:Mc++11}
+# Note about MK_COVERAGE:
+#
+# clang and gcc 4.8+ (c++11 supporting compilers) support -fprofile-dir and
+# can compile lib/libclang_rt/profile . libgcov, etc, in base would require
+# backports from GPLv3 versions of the gcc toolchain in order to function.
+MK_COVERAGE:=	no
 MK_LLDB:=	no
 .endif
 
