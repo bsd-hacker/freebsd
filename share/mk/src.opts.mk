@@ -547,6 +547,7 @@ MK_LLD_BOOTSTRAP:= no
 MK_BINUTILS:=	no
 MK_CLANG:=	no
 MK_COVERAGE:=	no
+MK_COVERAGE_SUPPORT:=	no
 MK_GCC:=	no
 MK_GDB:=	no
 MK_INCLUDES:=	no
@@ -584,12 +585,13 @@ MK_${vv:H}:=	${MK_${vv:T}}
 #
 
 .if !${COMPILER_FEATURES:Mc++11}
-# Note about MK_COVERAGE:
+# Note about MK_COVERAGE and MK_COVERAGE_SUPPORT:
 #
 # clang and gcc 4.8+ (c++11 supporting compilers) support -fprofile-dir and
 # can compile lib/libclang_rt/profile . libgcov, etc, in base would require
 # backports from GPLv3 versions of the gcc toolchain in order to function.
 MK_COVERAGE:=	no
+MK_COVERAGE_SUPPORT:=	no
 MK_LLDB:=	no
 .endif
 
