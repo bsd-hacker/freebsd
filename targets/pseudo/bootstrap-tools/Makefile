@@ -32,7 +32,7 @@ OSRELDATE!= sed -n '/define.*__FreeBSD_version/{s,^[^0-9]*,,p;q;}' ${ord_h}
 OSRELDATE?= 0
 .endif
 
-# need to keep this in sync with src/Makefile.inc1 
+# need to keep this in sync with src/Makefile.inc1
 BSARGS= 	DESTDIR= \
 		OBJTOP='${WORLDTMP}/obj-tools' \
 		OBJROOT='$${OBJTOP}/' \
@@ -44,7 +44,8 @@ BSARGS= 	DESTDIR= \
 		-DNO_PIC MK_PROFILE=no -DNO_SHARED \
 		-DNO_CPU_CFLAGS MK_WARNS=no MK_CTF=no \
 		MK_CLANG_EXTRAS=no MK_CLANG_FULL=no \
-		MK_LLDB=no MK_TESTS=no \
+		MK_LLDB=no MK_RETPOLINE=no \
+		MK_TESTS=no MK_COVERAGE=no \
 		MK_INCLUDES=yes
 
 # We will handle building the toolchain and cross-compiler.
