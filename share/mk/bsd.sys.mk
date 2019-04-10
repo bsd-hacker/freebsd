@@ -25,16 +25,21 @@ CFLAGS+=	-std=iso9899:1999
 CFLAGS+=	-std=${CSTD}
 .endif # CSTD
 
-.if ${COMPILER_FEATURES:Mc++11}
-CXXSTD?=	c++11
-.elif ${COMPILER_TYPE} == "gcc"
+# Only pass -std= if not specified to facilitate compatibility with previous
+# FreeBSD versions. Third-party packages might specify -std=*.
+.if empty(CXXFLAGS:M-std=*)
+.if ${COMPILER_TYPE} == "clang" || ${COMPILER_TYPE} == "gcc"
+.if ${COMPILER_VERSION} >= 60000
+CXXSTD?=	gnu++14
+.else
 # Prior versions of g++ support C++98 with GNU extensions by default.
 CXXSTD?=	gnu++98
-.else
+.endif
+.endif
 # Assume that the compiler supports at least C++98.
 CXXSTD?=	c++98
-.endif
 CXXFLAGS+=	-std=${CXXSTD}
+.endif
 # CXXSTD
 
 # -pedantic is problematic because it also imposes namespace restrictions
