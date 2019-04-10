@@ -641,7 +641,7 @@ in_difaddr_ioctl(u_long cmd, caddr_t data, struct ifnet *ifp, struct thread *td)
 	}
 
 	IF_ADDR_WLOCK(ifp);
-	if (callout_stop(&ia->ia_garp_timer) == 1) {
+	if (callout_stop(&ia->ia_garp_timer).was_cancelled) {
 		ifa_free(&ia->ia_ifa);
 	}
 	IF_ADDR_WUNLOCK(ifp);

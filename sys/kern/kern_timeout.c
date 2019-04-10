@@ -1015,16 +1015,16 @@ callout_when(sbintime_t sbt, sbintime_t precision, int flags,
  * callout_pending() - returns truth if callout is still waiting for timeout
  * callout_deactivate() - marks the callout as having been serviced
  */
-int
+callout_ret_t
 callout_reset_sbt_on(struct callout *c, sbintime_t sbt, sbintime_t prec,
     void (*ftn)(void *), void *arg, int cpu, int flags)
 {
 	sbintime_t to_sbt, precision;
 	struct callout_cpu *cc;
-	int cancelled, direct;
+	callout_ret_t retval = {};
+	int direct;
 	int ignore_cpu=0;
 
-	cancelled = 0;
 	if (cpu == -1) {
 		ignore_cpu = 1;
 	} else if ((cpu >= MAXCPU) ||
@@ -1063,8 +1063,13 @@ callout_reset_sbt_on(struct callout *c, sbintime_t sbt, sbintime_t prec,
 		 * currently in progress.  If there is a lock then we
 		 * can cancel the callout if it has not really started.
 		 */
-		if (c->c_lock != NULL && !cc_exec_cancel(cc, direct))
-			cancelled = cc_exec_cancel(cc, direct) = true;
+		retval.is_executing = 1;
+
+		if (c->c_lock != NULL && !cc_exec_cancel(cc, direct)) {
+			cc_exec_cancel(cc, direct) = true;
+			retval.was_cancelled = 1;
+		}
+
 		if (cc_exec_waiting(cc, direct) || cc_exec_drain(cc, direct)) {
 			/*
 			 * Someone has called callout_drain to kill this
@@ -1073,8 +1078,7 @@ callout_reset_sbt_on(struct callout *c, sbintime_t sbt, sbintime_t prec,
 			CTR4(KTR_CALLOUT, "%s %p func %p arg %p",
 			    cancelled ? "cancelled" : "failed to cancel",
 			    c, c->c_func, c->c_arg);
-			CC_UNLOCK(cc);
-			return (cancelled);
+			goto done;
 		}
 #ifdef SMP
 		if (callout_migrating(c)) {
@@ -1090,9 +1094,8 @@ callout_reset_sbt_on(struct callout *c, sbintime_t sbt, sbintime_t prec,
 			cc_migration_prec(cc, direct) = precision;
 			cc_migration_func(cc, direct) = ftn;
 			cc_migration_arg(cc, direct) = arg;
-			cancelled = 1;
-			CC_UNLOCK(cc);
-			return (cancelled);
+			retval.was_cancelled = 1;
+			goto done;
 		}
 #endif
 	}
@@ -1104,7 +1107,7 @@ callout_reset_sbt_on(struct callout *c, sbintime_t sbt, sbintime_t prec,
 		} else {
 			TAILQ_REMOVE(&cc->cc_expireq, c, c_links.tqe);
 		}
-		cancelled = 1;
+		retval.was_cancelled = 1;
 		c->c_iflags &= ~ CALLOUT_PENDING;
 		c->c_flags &= ~ CALLOUT_ACTIVE;
 	}
@@ -1144,8 +1147,7 @@ callout_reset_sbt_on(struct callout *c, sbintime_t sbt, sbintime_t prec,
 		    "migration of %p func %p arg %p in %d.%08x to %u deferred",
 			    c, c->c_func, c->c_arg, (int)(to_sbt >> 32),
 			    (u_int)(to_sbt & 0xffffffff), cpu);
-			CC_UNLOCK(cc);
-			return (cancelled);
+			goto done;
 		}
 		cc = callout_cpu_switch(c, cc, cpu);
 	}
@@ -1155,37 +1157,41 @@ callout_reset_sbt_on(struct callout *c, sbintime_t sbt, sbintime_t prec,
 	CTR6(KTR_CALLOUT, "%sscheduled %p func %p arg %p in %d.%08x",
 	    cancelled ? "re" : "", c, c->c_func, c->c_arg, (int)(to_sbt >> 32),
 	    (u_int)(to_sbt & 0xffffffff));
+done:
 	CC_UNLOCK(cc);
-
-	return (cancelled);
+	return (retval);
 }
 
 /*
  * Common idioms that can be optimized in the future.
  */
-int
+callout_ret_t
 callout_schedule_on(struct callout *c, int to_ticks, int cpu)
 {
 	return callout_reset_on(c, to_ticks, c->c_func, c->c_arg, cpu);
 }
 
-int
+callout_ret_t
 callout_schedule(struct callout *c, int to_ticks)
 {
 	return callout_reset_on(c, to_ticks, c->c_func, c->c_arg, c->c_cpu);
 }
 
-int
+callout_ret_t
 _callout_stop_safe(struct callout *c, int flags, void (*drain)(void *))
 {
 	struct callout_cpu *cc, *old_cc;
 	struct lock_class *class;
+	callout_ret_t retval = {};
 	int direct, sq_locked, use_lock;
-	int cancelled, not_on_a_list;
+	int not_on_a_list;
 
 	if ((flags & CS_DRAIN) != 0)
 		WITNESS_WARN(WARN_GIANTOK | WARN_SLEEPOK, c->c_lock,
 		    "calling %s", __func__);
+
+	KASSERT((flags & CS_DRAIN) == 0 || drain == NULL,
+	    ("Cannot set drain callback when CS_DRAIN flag is set"));
 
 	/*
 	 * Some old subsystems don't hold Giant while running a callout_stop(),
@@ -1348,17 +1354,17 @@ again:
 				cc_migration_arg(cc, direct) = NULL;
 #endif
 			}
-			CC_UNLOCK(cc);
 			KASSERT(!sq_locked, ("sleepqueue chain locked"));
-			return (1);
+			retval.was_cancelled = 1;
+			retval.is_executing = 1;
+			goto done;
 		} else if (callout_migrating(c)) {
 			/*
 			 * The callout is currently being serviced
 			 * and the "next" callout is scheduled at
 			 * its completion with a migration. We remove
 			 * the migration flag so it *won't* get rescheduled,
-			 * but we can't stop the one thats running so
-			 * we return 0.
+			 * but we can't stop the one that's running.
 			 */
 			c->c_iflags &= ~CALLOUT_DFRMIGRATION;
 #ifdef SMP
@@ -1380,18 +1386,18 @@ again:
  			if (drain) {
 				cc_exec_drain(cc, direct) = drain;
 			}
-			CC_UNLOCK(cc);
-			return ((flags & CS_EXECUTING) != 0);
-		}
-		CTR3(KTR_CALLOUT, "failed to stop %p func %p arg %p",
-		    c, c->c_func, c->c_arg);
-		if (drain) {
-			cc_exec_drain(cc, direct) = drain;
+			retval.is_executing = 1;
+			goto done;
+		} else {
+			CTR3(KTR_CALLOUT, "postponing stop %p func %p arg %p",
+			    c, c->c_func, c->c_arg);
+			if (drain) {
+				cc_exec_drain(cc, direct) = drain;
+			}
+			retval.is_executing = 1;
 		}
 		KASSERT(!sq_locked, ("sleepqueue chain still locked"));
-		cancelled = ((flags & CS_EXECUTING) != 0);
-	} else
-		cancelled = 1;
+	}
 
 	if (sq_locked)
 		sleepq_release(&cc_exec_waiting(cc, direct));
@@ -1399,15 +1405,10 @@ again:
 	if ((c->c_iflags & CALLOUT_PENDING) == 0) {
 		CTR3(KTR_CALLOUT, "failed to stop %p func %p arg %p",
 		    c, c->c_func, c->c_arg);
-		/*
-		 * For not scheduled and not executing callout return
-		 * negative value.
-		 */
-		if (cc_exec_curr(cc, direct) != c)
-			cancelled = -1;
-		CC_UNLOCK(cc);
-		return (cancelled);
+		goto done;
 	}
+
+	retval.was_cancelled = 1;
 
 	c->c_iflags &= ~CALLOUT_PENDING;
 	c->c_flags &= ~CALLOUT_ACTIVE;
@@ -1424,8 +1425,9 @@ again:
 		}
 	}
 	callout_cc_del(c, cc);
+done:
 	CC_UNLOCK(cc);
-	return (cancelled);
+	return (retval);
 }
 
 void

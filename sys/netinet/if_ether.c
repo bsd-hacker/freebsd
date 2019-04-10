@@ -582,7 +582,7 @@ arpresolve_full(struct ifnet *ifp, int is_gw, int flags, struct mbuf *m,
 		LLE_ADDREF(la);
 		la->la_expire = time_uptime;
 		canceled = callout_reset(&la->lle_timer, hz * V_arpt_down,
-		    arptimer, la);
+		    arptimer, la).was_cancelled;
 		if (canceled)
 			LLE_REMREF(la);
 		la->la_asked++;
@@ -1272,7 +1272,7 @@ arp_mark_lle_reachable(struct llentry *la)
 		if (wtime < 0)
 			wtime = V_arpt_keep;
 		canceled = callout_reset(&la->lle_timer,
-		    hz * wtime, arptimer, la);
+		    hz * wtime, arptimer, la).was_cancelled;
 		if (canceled)
 			LLE_REMREF(la);
 	}
@@ -1384,7 +1384,7 @@ garp_rexmit(void *arg)
 		IF_ADDR_WLOCK(ia->ia_ifa.ifa_ifp);
 		rescheduled = callout_reset(&ia->ia_garp_timer,
 		    (1 << ia->ia_garp_count) * hz,
-		    garp_rexmit, ia);
+		    garp_rexmit, ia).was_cancelled;
 		IF_ADDR_WUNLOCK(ia->ia_ifa.ifa_ifp);
 		if (rescheduled) {
 			ifa_free(&ia->ia_ifa);
@@ -1420,7 +1420,7 @@ garp_timer_start(struct ifaddr *ifa)
 	IF_ADDR_WLOCK(ia->ia_ifa.ifa_ifp);
 	ia->ia_garp_count = 0;
 	if (callout_reset(&ia->ia_garp_timer, (1 << ia->ia_garp_count) * hz,
-	    garp_rexmit, ia) == 0) {
+	    garp_rexmit, ia).was_cancelled == 0) {
 		ifa_ref(ifa);
 	}
 	IF_ADDR_WUNLOCK(ia->ia_ifa.ifa_ifp);

@@ -3795,7 +3795,7 @@ ng_callout(struct callout *c, node_p node, hook_p hook, int ticks,
 	NGI_ARG1(item) = arg1;
 	NGI_ARG2(item) = arg2;
 	oitem = c->c_arg;
-	if (callout_reset(c, ticks, &ng_callout_trampoline, item) == 1 &&
+	if (callout_reset(c, ticks, &ng_callout_trampoline, item).was_cancelled &&
 	    oitem != NULL)
 		NG_FREE_ITEM(oitem);
 	return (0);
@@ -3811,10 +3811,10 @@ ng_uncallout(struct callout *c, node_p node)
 	KASSERT(c != NULL, ("ng_uncallout: NULL callout"));
 	KASSERT(node != NULL, ("ng_uncallout: NULL node"));
 
-	rval = callout_stop(c);
+	rval = callout_stop(c).was_cancelled;
 	item = c->c_arg;
 	/* Do an extra check */
-	if ((rval > 0) && (c->c_func == &ng_callout_trampoline) &&
+	if ((rval != 0) && (c->c_func == &ng_callout_trampoline) &&
 	    (item != NULL) && (NGI_NODE(item) == node)) {
 		/*
 		 * We successfully removed it from the queue before it ran
@@ -3829,7 +3829,7 @@ ng_uncallout(struct callout *c, node_p node)
 	 * Callers only want to know if the callout was cancelled and
 	 * not draining or stopped.
 	 */
-	return (rval > 0);
+	return (rval);
 }
 
 /*

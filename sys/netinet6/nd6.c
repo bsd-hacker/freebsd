@@ -521,21 +521,21 @@ nd6_llinfo_settimer_locked(struct llentry *ln, long tick)
 	if (tick < 0) {
 		ln->la_expire = 0;
 		ln->ln_ntick = 0;
-		canceled = callout_stop(&ln->lle_timer);
+		canceled = callout_stop(&ln->lle_timer).was_cancelled;
 	} else {
 		ln->la_expire = time_uptime + tick / hz;
 		LLE_ADDREF(ln);
 		if (tick > INT_MAX) {
 			ln->ln_ntick = tick - INT_MAX;
 			canceled = callout_reset(&ln->lle_timer, INT_MAX,
-			    nd6_llinfo_timer, ln);
+			    nd6_llinfo_timer, ln).was_cancelled;
 		} else {
 			ln->ln_ntick = 0;
 			canceled = callout_reset(&ln->lle_timer, tick,
-			    nd6_llinfo_timer, ln);
+			    nd6_llinfo_timer, ln).was_cancelled;
 		}
 	}
-	if (canceled > 0)
+	if (canceled)
 		LLE_REMREF(ln);
 }
 

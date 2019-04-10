@@ -158,7 +158,7 @@ execute_the_co_test(struct callout_run *rn)
 	}
 	/* OK everyone is waiting and we have the lock */
 	for (i = 0; i < rn->co_number_callouts; i++) {
-		ret = callout_async_drain(&rn->co_array[i], drainit);
+		ret = callout_async_drain(&rn->co_array[i], drainit).is_executing;
 		if (ret) {
 			rn->cnt_one++;
 		} else {

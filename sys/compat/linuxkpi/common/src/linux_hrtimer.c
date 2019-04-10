@@ -73,7 +73,7 @@ int
 linux_hrtimer_cancel(struct hrtimer *hrtimer)
 {
 
-	return (callout_drain(&hrtimer->callout) > 0);
+	return (callout_drain(&hrtimer->callout).was_cancelled);
 }
 
 void

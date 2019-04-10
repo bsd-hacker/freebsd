@@ -550,7 +550,7 @@ taskqueue_cancel_timeout(struct taskqueue *queue,
 	int error;
 
 	TQ_LOCK(queue);
-	pending = !!(callout_stop(&timeout_task->c) > 0);
+	pending = callout_stop(&timeout_task->c).was_cancelled;
 	error = taskqueue_cancel_locked(queue, &timeout_task->t, &pending1);
 	if ((timeout_task->f & DT_CALLOUT_ARMED) != 0) {
 		timeout_task->f &= ~DT_CALLOUT_ARMED;

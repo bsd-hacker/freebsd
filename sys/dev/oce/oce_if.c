@@ -370,7 +370,7 @@ oce_attach(device_t dev)
 	oce_add_sysctls(sc);
 
 	callout_init(&sc->timer, CALLOUT_MPSAFE);
-	rc = callout_reset(&sc->timer, 2 * hz, oce_local_timer, sc);
+	rc = callout_reset(&sc->timer, 2 * hz, oce_local_timer, sc).was_cancelled;
 	if (rc)
 		goto stats_free;
 

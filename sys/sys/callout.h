@@ -62,14 +62,20 @@
 #define	C_PRECALC		0x0400 /* event time is pre-calculated. */
 #define	C_CATCH			0x0800 /* catch signals, used by pause_sbt(9) */
 
+/* return value for all callout_xxx() functions */
+typedef struct callout_ret {
+	unsigned raw_value[0];
+	unsigned was_cancelled : 1;
+	unsigned is_executing : 1;
+	unsigned reserved : 30;
+} callout_ret_t;
+
 struct callout_handle {
 	struct callout *callout;
 };
 
 /* Flags for callout_stop_safe() */
 #define	CS_DRAIN		0x0001 /* callout_drain(), wait allowed */
-#define	CS_EXECUTING		0x0002 /* Positive return value indicates that
-					  the callout was executing */
 
 #ifdef _KERNEL
 /* 
@@ -103,7 +109,7 @@ void	_callout_init_lock(struct callout *, struct lock_object *, int);
 	_callout_init_lock((c), ((rw) != NULL) ? &(rw)->lock_object :	\
 	   NULL, (flags))
 #define	callout_pending(c)	((c)->c_iflags & CALLOUT_PENDING)
-int	callout_reset_sbt_on(struct callout *, sbintime_t, sbintime_t,
+callout_ret_t callout_reset_sbt_on(struct callout *, sbintime_t, sbintime_t,
 	    void (*)(void *), void *, int, int);
 #define	callout_reset_sbt(c, sbt, pr, fn, arg, flags)			\
     callout_reset_sbt_on((c), (sbt), (pr), (fn), (arg), -1, (flags))
@@ -124,12 +130,12 @@ int	callout_reset_sbt_on(struct callout *, sbintime_t, sbintime_t,
     callout_schedule_sbt_on((c), (sbt), (pr), -1, (flags))
 #define	callout_schedule_sbt_curcpu(c, sbt, pr, flags)			\
     callout_schedule_sbt_on((c), (sbt), (pr), PCPU_GET(cpuid), (flags))
-int	callout_schedule(struct callout *, int);
-int	callout_schedule_on(struct callout *, int, int);
+callout_ret_t callout_schedule(struct callout *, int);
+callout_ret_t callout_schedule_on(struct callout *, int, int);
 #define	callout_schedule_curcpu(c, on_tick)				\
     callout_schedule_on((c), (on_tick), PCPU_GET(cpuid))
 #define	callout_stop(c)		_callout_stop_safe(c, 0, NULL)
-int	_callout_stop_safe(struct callout *, int, void (*)(void *));
+callout_ret_t _callout_stop_safe(struct callout *, int, void (*)(void *));
 void	callout_process(sbintime_t now);
 #define callout_async_drain(c, d)					\
     _callout_stop_safe(c, 0, d)

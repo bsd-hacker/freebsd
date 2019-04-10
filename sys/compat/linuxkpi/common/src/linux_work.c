@@ -356,7 +356,7 @@ linux_cancel_timer(struct delayed_work *dwork, bool drain)
 	bool cancelled;
 
 	mtx_lock(&dwork->timer.mtx);
-	cancelled = (callout_stop(&dwork->timer.callout) == 1);
+	cancelled = callout_stop(&dwork->timer.callout).was_cancelled;
 	mtx_unlock(&dwork->timer.mtx);
 
 	/* check if we should drain */

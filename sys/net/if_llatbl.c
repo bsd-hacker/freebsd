@@ -438,7 +438,7 @@ llentry_free(struct llentry *lle)
 	pkts_dropped = lltable_drop_entry_queue(lle);
 
 	/* cancel timer */
-	if (callout_stop(&lle->lle_timer) > 0)
+	if (callout_stop(&lle->lle_timer).was_cancelled)
 		LLE_REMREF(lle);
 	LLE_FREE_LOCKED(lle);
 

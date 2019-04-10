@@ -405,15 +405,21 @@ pfsync_clone_destroy(struct ifnet *ifp)
 
 			TAILQ_REMOVE(&b->b_deferrals, pd, pd_entry);
 			b->b_deferred--;
-			if (callout_stop(&pd->pd_tmo) > 0) {
+			if (callout_stop(&pd->pd_tmo).was_cancelled) {
 				pf_release_state(pd->pd_st);
 				m_freem(pd->pd_m);
-				free(pd, M_PFSYNC);
 			} else {
 				pd->pd_refs++;
-				callout_drain(&pd->pd_tmo);
-				free(pd, M_PFSYNC);
 			}
+
+			/*
+			 * Must drain in either case.
+			 * The callout associated with the mutex
+			 * may still be in use.
+			 */
+			callout_drain(&pd->pd_tmo);
+
+			free(pd, M_PFSYNC);
 		}
 
 		callout_drain(&b->b_tmo);
@@ -1846,7 +1852,7 @@ pfsync_undefer_state(struct pf_state *st, int drop)
 
 	TAILQ_FOREACH(pd, &b->b_deferrals, pd_entry) {
 		 if (pd->pd_st == st) {
-			if (callout_stop(&pd->pd_tmo) > 0)
+			if (callout_stop(&pd->pd_tmo).was_cancelled)
 				pfsync_undefer(pd, drop);
 
 			PFSYNC_BUCKET_UNLOCK(b);

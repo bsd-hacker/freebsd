@@ -208,6 +208,7 @@ exit1(struct thread *td, int rval, int signo)
 	struct proc *p, *nq, *q, *t;
 	struct thread *tdt;
 	ksiginfo_t *ksi, *ksi1;
+	int drain_callout;
 	int signal_parent;
 
 	mtx_assert(&Giant, MA_NOTOWNED);
@@ -363,15 +364,23 @@ exit1(struct thread *td, int rval, int signo)
 	 * Stop the real interval timer.  If the handler is currently
 	 * executing, prevent it from rearming itself and let it finish.
 	 */
-	if (timevalisset(&p->p_realtimer.it_value) &&
-	    _callout_stop_safe(&p->p_itcallout, CS_EXECUTING, NULL) == 0) {
-		timevalclear(&p->p_realtimer.it_interval);
-		msleep(&p->p_itcallout, &p->p_mtx, PWAIT, "ritwait", 0);
-		KASSERT(!timevalisset(&p->p_realtimer.it_value),
-		    ("realtime timer is still armed"));
+	if (timevalisset(&p->p_realtimer.it_value)) {
+		/*
+		 * The p_itcallout is associated with a mutex and
+		 * stopping the callout should be atomic.
+		 */
+		drain_callout = callout_stop(&p->p_itcallout).is_executing;
+	} else {
+		drain_callout = 0;
 	}
-
 	PROC_UNLOCK(p);
+
+	/*
+	 * The mutex may still be in use after the callout_stop()
+	 * returns, which is handled by callout_drain()
+	 */
+	if (drain_callout)
+		callout_drain(&p->p_itcallout);
 
 	umtx_thread_exit(td);
 

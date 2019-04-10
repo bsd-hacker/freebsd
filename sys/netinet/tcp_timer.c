@@ -924,7 +924,7 @@ tcp_timer_active(struct tcpcb *tp, uint32_t timer_type)
  * the timer to possibly restart itself (keep and persist
  * especially do this). 
  */
-int
+void
 tcp_timer_suspend(struct tcpcb *tp, uint32_t timer_type)
 {
 	struct callout *t_callout;
@@ -955,7 +955,7 @@ tcp_timer_suspend(struct tcpcb *tp, uint32_t timer_type)
 			panic("tp:%p bad timer_type 0x%x", tp, timer_type);
 	}
 	tp->t_timers->tt_flags |= t_flags;
-	return (callout_stop(t_callout));
+	callout_stop(t_callout);
 }
 
 void
@@ -1055,7 +1055,7 @@ tcp_timer_stop(struct tcpcb *tp, uint32_t timer_type)
 			panic("tp %p bad timer_type %#x", tp, timer_type);
 		}
 
-	if (callout_async_drain(t_callout, tcp_timer_discard) == 0) {
+	if (callout_async_drain(t_callout, tcp_timer_discard).is_executing) {
 		/*
 		 * Can't stop the callout, defer tcpcb actual deletion
 		 * to the last one. We do this using the async drain
