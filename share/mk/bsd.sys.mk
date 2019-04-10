@@ -31,10 +31,9 @@ CFLAGS+=	-std=${CSTD}
 .if ${COMPILER_TYPE} == "clang" || ${COMPILER_TYPE} == "gcc"
 .if ${COMPILER_VERSION} >= 60000
 CXXSTD?=	gnu++14
-.else
-# Prior versions of g++ support C++98 with GNU extensions by default.
-CXXSTD?=	gnu++98
 .endif
+# Prior versions of clang++/g++ support C++98 with GNU extensions by default.
+CXXSTD?=	gnu++98
 .endif
 # Assume that the compiler supports at least C++98.
 CXXSTD?=	c++98
