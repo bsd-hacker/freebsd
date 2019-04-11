@@ -64,7 +64,6 @@
 
 /* return value for all callout_xxx() functions */
 typedef struct callout_ret {
-	unsigned raw_value[0];
 	unsigned was_cancelled : 1;
 	unsigned is_executing : 1;
 	unsigned reserved : 30;
