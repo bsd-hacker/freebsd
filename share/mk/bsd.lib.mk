@@ -206,8 +206,9 @@ _SHLIBDIR:=${SHLIBDIR}
 .if ${MK_DEBUG_FILES} != "no"
 SHLIB_NAME_FULL=${SHLIB_NAME}.full
 .if ${MK_COVERAGE} != "no"
-COVERAGEFILEDIR=${COVERAGEDIR}${_SHLIBDIR}
-.if !exists(${DESTDIR}${COVERAGEFILEDIR})
+_COV_FLAG= --coverage -fprofile-dir=${COVERAGEDIR}
+_COVERAGEDIR=${COVERAGEDIR}${_SHLIBDIR}
+.if !exists(${DESTDIR}${_COVERAGEDIR})
 COVERAGEMKDIR=
 .endif
 .endif
@@ -457,11 +458,11 @@ _libinstall:
 .if ${MK_DEBUG_FILES} != "no"
 .if ${MK_COVERAGE} != "no"
 .if defined(COVERAGEMKDIR)
-	${INSTALL} ${TAG_ARGS:D${TAG_ARGS},coverage} -d ${DESTDIR}${COVERAGEFILEDIR}/
+	${INSTALL} ${TAG_ARGS:D${TAG_ARGS},coverage} -d ${DESTDIR}${_COVERAGEDIR}/
 .endif
 	${INSTALL} ${TAG_ARGS:D${TAG_ARGS},coverage} -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
 	    ${_INSTALLFLAGS} \
-	    ${SHLIB_NAME}.full ${DESTDIR}${COVERAGEFILEDIR}/${SHLIB_NAME}
+	    ${SHLIB_NAME}.full ${DESTDIR}${_COVERAGEDIR}/${SHLIB_NAME}
 .endif
 .if defined(DEBUGMKDIR)
 	${INSTALL} ${TAG_ARGS:D${TAG_ARGS},debug} -d ${DESTDIR}${DEBUGFILEDIR}/
