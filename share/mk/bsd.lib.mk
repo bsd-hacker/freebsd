@@ -509,9 +509,19 @@ _libinstall:
 .endif
 .endif # !defined(INTERNALLIB)
 
+.if defined(_COV_FLAG) && !empty(SRCS)
+_GCNO_SRCS=	${SRCS:M*.c} ${SRCS:M*.cc} ${SRCS:M*.cpp} ${SRCS:M*.cxx} ${SRCS:M*.C} ${SRCS:M*.y}
+GCNOS:=		${_GCNO_SRCS:R:S/$/.gcno/g}
+.undef _GCNO_SRCS
+.for _gcno in ${GCNOS}
+${_gcno}: ${_gcno:R}.o
+.endfor
+.endif
+
 .if !defined(LIBRARIES_ONLY)
 .include <bsd.nls.mk>
 .include <bsd.confs.mk>
+.include <bsd.cov.mk>
 .include <bsd.files.mk>
 .include <bsd.incs.mk>
 .endif
