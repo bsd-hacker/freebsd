@@ -29,10 +29,15 @@
 # $FreeBSD$
 #
 
-set -ex
+: ${PYTHON=python}
 
 if [ ! -d /usr/local/share/nist-kat ]; then
-	echo 'Skipping, nist-kat package not installed for test vectors.'
+	echo "1..0 # SKIP: nist-kat package not installed for test vectors"
+	exit 0
+fi
+
+if ! $PYTHON -c "from dpkt import dpkt"; then
+	echo "1..0 # SKIP: py-dpkt package not installed"
 	exit 0
 fi
 
@@ -52,7 +57,11 @@ trap cleanup_tests EXIT INT TERM
 
 for required_module in nexus/aesni cryptodev; do
 	if ! kldstat -q -m $required_module; then
-		kldload ${required_module#nexus/}
+		module_to_load=${required_module#nexus/}
+		if ! kldload ${module_to_load}; then
+			echo "1..0 # SKIP: could not load ${module_to_load}"
+			exit 0
+		fi
 		loaded_modules="$loaded_modules $required_module"
 	fi
 done
@@ -61,6 +70,11 @@ done
 oldcdas=$(sysctl -e kern.cryptodevallowsoft)
 sysctl kern.cryptodevallowsoft=1
 
-python2 $(dirname $0)/cryptotest.py
+echo "1..1"
+if "$PYTHON" $(dirname $0)/cryptotest.py; then
+	echo "ok 1"
+else
+	echo "not ok 1"
+fi
 
 sysctl "$oldcdas"
