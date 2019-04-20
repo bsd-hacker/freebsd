@@ -48,6 +48,10 @@ cleanup_tests()
 
 	set +e
 
+	if [ -n "$oldcdas" ]; then
+		sysctl "$oldcdas" 2>/dev/null
+	fi
+
 	# Unload modules in reverse order
 	for loaded_module in $(echo $loaded_modules | tr ' ' '\n' | sort -r); do
 		kldunload $loaded_module
@@ -66,9 +70,15 @@ for required_module in nexus/aesni cryptodev; do
 	fi
 done
 
-# Run software crypto test
-oldcdas=$(sysctl -e kern.cryptodevallowsoft)
-sysctl kern.cryptodevallowsoft=1
+cdas_sysctl=kern.cryptodevallowsoft
+if ! oldcdas=$(sysctl -e $cdas_sysctl); then
+	echo "1..0 # SKIP: could not resolve sysctl: $cdas_sysctl"
+	exit 0
+fi
+if ! sysctl $cdas_sysctl=1; then
+	echo "1..0 # SKIP: could not enable /dev/crypto access via $cdas_sysctl sysctl."
+	exit 0
+fi
 
 echo "1..1"
 if "$PYTHON" $(dirname $0)/cryptotest.py; then
@@ -76,5 +86,3 @@ if "$PYTHON" $(dirname $0)/cryptotest.py; then
 else
 	echo "not ok 1"
 fi
-
-sysctl "$oldcdas"
