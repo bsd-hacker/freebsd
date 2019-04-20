@@ -1830,7 +1830,7 @@ psm_register_synaptics(device_t dev)
 	if (sc->synhw.capClickPad && sc->synhw.topButtonPad)
 		evdev_support_prop(evdev_a, INPUT_PROP_TOPBUTTONPAD);
 	evdev_support_key(evdev_a, BTN_TOUCH);
-	evdev_support_nfingers(evdev_a, 3);
+	evdev_support_nfingers(evdev_a, sc->synhw.capReportsV ? 5 : 3);
 	psm_support_abs_bulk(evdev_a, synaptics_absinfo_st);
 	if (sc->synhw.capAdvancedGestures || sc->synhw.capReportsV)
 		psm_support_abs_bulk(evdev_a, synaptics_absinfo_mt);
@@ -3212,8 +3212,9 @@ proc_synaptics(struct psm_softc *sc, packetbuf_t *pb, mousestatus_t *ms,
 {
 	static int touchpad_buttons;
 	static int guest_buttons;
+	static int ew_finger_count;
 	static finger_t f[PSM_FINGERS];
-	int w, id, nfingers, ewcode, extended_buttons, clickpad_pressed;
+	int w, id, nfingers, palm, ewcode, extended_buttons, clickpad_pressed;
 
 	extended_buttons = 0;
 
@@ -3372,6 +3373,9 @@ proc_synaptics(struct psm_softc *sc, packetbuf_t *pb, mousestatus_t *ms,
 					    (pb->ipacket[1] & 0x01)) + 8,
 					.flags = PSM_FINGER_FUZZY,
 				};
+			break;
+		case 2:
+			ew_finger_count = pb->ipacket[1] & 0x0f;
 		default:
 			break;
 		}
@@ -3379,6 +3383,11 @@ proc_synaptics(struct psm_softc *sc, packetbuf_t *pb, mousestatus_t *ms,
 		goto SYNAPTICS_END;
 
 	case 1:
+		if (sc->synhw.capReportsV && ew_finger_count > 3) {
+			nfingers = ew_finger_count;
+			break;
+		}
+		/* FALLTHROUGH */
 	case 0:
 		nfingers = w + 2;
 		break;
@@ -3568,12 +3577,16 @@ proc_synaptics(struct psm_softc *sc, packetbuf_t *pb, mousestatus_t *ms,
 
 	ms->button = touchpad_buttons;
 
-	psmgestures(sc, &f[0], nfingers, ms);
+	palm = psmpalmdetect(sc, &f[0], nfingers);
+
+	/* Palm detection doesn't terminate the current action. */
+	if (!palm)
+		psmgestures(sc, &f[0], nfingers, ms);
+
 	for (id = 0; id < PSM_FINGERS; id++)
 		psmsmoother(sc, &f[id], id, ms, x, y);
 
-	/* Palm detection doesn't terminate the current action. */
-	if (psmpalmdetect(sc, &f[0], nfingers)) {
+	if (palm) {
 		*x = *y = *z = 0;
 		ms->button = ms->obutton;
 		return (0);
@@ -4315,7 +4328,7 @@ proc_elantech(struct psm_softc *sc, packetbuf_t *pb, mousestatus_t *ms,
 {
 	static int touchpad_button, trackpoint_button;
 	finger_t fn, f[ELANTECH_MAX_FINGERS];
-	int pkt, id, scale, i, nfingers, mask;
+	int pkt, id, scale, i, nfingers, mask, palm;
 
 	if (!elantech_support)
 		return (0);
@@ -4704,10 +4717,14 @@ proc_elantech(struct psm_softc *sc, packetbuf_t *pb, mousestatus_t *ms,
 
 	ms->button = touchpad_button | trackpoint_button;
 
+	/* Palm detection doesn't terminate the current action. */
+	palm = psmpalmdetect(sc, &f[0], nfingers);
+
 	/* Send finger 1 position to gesture processor */
-	if (PSM_FINGER_IS_SET(f[0]) || PSM_FINGER_IS_SET(f[1]) ||
-	    nfingers == 0)
+	if ((PSM_FINGER_IS_SET(f[0]) || PSM_FINGER_IS_SET(f[1]) ||
+	    nfingers == 0) && !palm)
 		psmgestures(sc, &f[0], imin(nfingers, 3), ms);
+
 	/* Send fingers positions to movement smoothers */
 	for (id = 0; id < PSM_FINGERS; id++)
 		if (PSM_FINGER_IS_SET(f[id]) || !(mask & (1 << id)))
@@ -4722,8 +4739,7 @@ proc_elantech(struct psm_softc *sc, packetbuf_t *pb, mousestatus_t *ms,
 	}
 	sc->elanaction.mask = mask;
 
-	/* Palm detection doesn't terminate the current action. */
-	if (psmpalmdetect(sc, &f[0], nfingers)) {
+	if (palm) {
 		*x = *y = *z = 0;
 		ms->button = ms->obutton;
 		return (0);
