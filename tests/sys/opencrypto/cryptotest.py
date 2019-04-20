@@ -113,7 +113,7 @@ def GenTestCase(cname):
                             cipherkey,
                             mac=self._gmacsizes[len(cipherkey)],
                             mackey=cipherkey, crid=crid)
-                    except EnvironmentError, e:
+                    except EnvironmentError as e:
                         # Can't test algorithms the driver does not support.
                         if e.errno != errno.EOPNOTSUPP:
                             raise
@@ -122,7 +122,7 @@ def GenTestCase(cname):
                     if mode == 'ENCRYPT':
                         try:
                             rct, rtag = c.encrypt(pt, iv, aad)
-                        except EnvironmentError, e:
+                        except EnvironmentError as e:
                             # Can't test inputs the driver does not support.
                             if e.errno != errno.EINVAL:
                                 raise
@@ -142,7 +142,7 @@ def GenTestCase(cname):
                         else:
                             try:
                                 rpt, rtag = c.decrypt(*args)
-                            except EnvironmentError, e:
+                            except EnvironmentError as e:
                                 # Can't test inputs the driver does not support.
                                 if e.errno != errno.EINVAL:
                                     raise
@@ -210,7 +210,7 @@ def GenTestCase(cname):
                     try:
                         c = Crypto(meth, cipherkey, crid=crid)
                         r = curfun(c, pt, iv)
-                    except EnvironmentError, e:
+                    except EnvironmentError as e:
                         # Can't test hashes the driver does not support.
                         if e.errno != errno.EOPNOTSUPP:
                             raise
@@ -309,7 +309,7 @@ def GenTestCase(cname):
                     try:
                         c = Crypto(mac=alg, mackey=key,
                             crid=crid)
-                    except EnvironmentError, e:
+                    except EnvironmentError as e:
                         # Can't test hashes the driver does not support.
                         if e.errno != errno.EOPNOTSUPP:
                             raise
