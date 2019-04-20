@@ -1,8 +1,9 @@
-#!/usr/local/bin/python2
+#!/usr/bin/env python
 #
 # Copyright (c) 2014 The FreeBSD Foundation
 # Copyright 2014 John-Mark Gurney
 # All rights reserved.
+# Copyright 2019 Enji Cooper
 #
 # This software was developed by John-Mark Gurney under
 # the sponsorship from the FreeBSD Foundation.
@@ -32,11 +33,14 @@
 
 from __future__ import print_function
 import array
-import dpkt
 from fcntl import ioctl
 import os
+import random
 import signal
 from struct import pack as _pack
+import time
+
+import dpkt
 
 from cryptodevh import *
 
@@ -116,10 +120,12 @@ CIOCFINDDEV = 3223610220
 CIOCCRYPTAEAD = 3225445229
 
 def _getdev():
-    fd = os.open('/dev/crypto', os.O_RDWR)
     buf = array.array('I', [0])
-    ioctl(fd, CRIOGET, buf, 1)
-    os.close(fd)
+    fd = os.open('/dev/crypto', os.O_RDWR)
+    try:
+        ioctl(fd, CRIOGET, buf, 1)
+    finally:
+        os.close(fd)
 
     return buf[0]
 
@@ -128,13 +134,13 @@ _cryptodev = _getdev()
 def _findop(crid, name):
     fop = FindOp()
     fop.crid = crid
-    fop.name = name
+    fop.name = name.encode("ascii")
     s = array.array('B', fop.pack_hdr())
     ioctl(_cryptodev, CIOCFINDDEV, s, 1)
     fop.unpack(s)
 
     try:
-        idx = fop.name.index('\x00')
+        idx = fop.name.index(b'\x00')
         name = fop.name[:idx]
     except ValueError:
         name = fop.name
@@ -223,10 +229,10 @@ class Crypto:
         caead.flags = CRD_F_IV_EXPLICIT
         caead.flags = 0
         caead.len = len(src)
-        s = array.array('B', src)
+        s = array.array('B', src.encode("ascii"))
         caead.src = caead.dst = s.buffer_info()[0]
         caead.aadlen = len(aad)
-        saad = array.array('B', aad)
+        saad = array.array('B', aad.encode("ascii"))
         caead.aad = saad.buffer_info()[0]
 
         if self._maclen is None:
@@ -237,7 +243,7 @@ class Crypto:
         else:
             assert len(tag) == self._maclen, \
                 '%d != %d' % (len(tag), self._maclen)
-            tag = array.array('B', tag)
+            tag = array.array('B', tag.encode("ascii"))
 
         caead.tag = tag.buffer_info()[0]
 
@@ -252,11 +258,9 @@ class Crypto:
         return s, tag.tostring()
 
     def perftest(self, op, size, timeo=3):
-        import random
-        import time
 
         inp = array.array('B', (random.randint(0, 255) for x in xrange(size)))
-        out = array.array('B', inp)
+        out = array.array('B', inp.encode("ascii"))
 
         # prep ioctl
         cop = CryptOp()
@@ -264,7 +268,7 @@ class Crypto:
         cop.op = op
         cop.flags = 0
         cop.len = len(inp)
-        s = array.array('B', inp)
+        s = array.array('B', inp.encode("ascii"))
         cop.src = s.buffer_info()[0]
         cop.dst = out.buffer_info()[0]
         if self._maclen is not None:
