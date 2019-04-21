@@ -658,6 +658,8 @@ __elfN(load_sections)(struct image_params *imgp, const Elf_Ehdr *hdr,
 	bool first;
 	int error, i;
 
+	ASSERT_VOP_LOCKED(imgp->vp, __func__);
+
 	base_addr = 0;
 	first = true;
 
@@ -714,7 +716,7 @@ __elfN(load_file)(struct proc *p, const char *file, u_long *addr,
 	struct nameidata *nd;
 	struct vattr *attr;
 	struct image_params *imgp;
-	u_long rbase;
+	u_long flags, rbase;
 	u_long base_addr = 0;
 	int error;
 
@@ -742,7 +744,10 @@ __elfN(load_file)(struct proc *p, const char *file, u_long *addr,
 	imgp->object = NULL;
 	imgp->execlabel = NULL;
 
-	NDINIT(nd, LOOKUP, LOCKLEAF | FOLLOW, UIO_SYSSPACE, file, curthread);
+	flags = FOLLOW | LOCKSHARED | LOCKLEAF;
+
+again:
+	NDINIT(nd, LOOKUP, flags, UIO_SYSSPACE, file, curthread);
 	if ((error = namei(nd)) != 0) {
 		nd->ni_vp = NULL;
 		goto fail;
@@ -757,15 +762,30 @@ __elfN(load_file)(struct proc *p, const char *file, u_long *addr,
 	if (error)
 		goto fail;
 
+	/*
+	 * Also make certain that the interpreter stays the same,
+	 * so set its VV_TEXT flag, too.  Since this function is only
+	 * used to load the interpreter, the VV_TEXT is almost always
+	 * already set.
+	 */
+	if (VOP_IS_TEXT(nd->ni_vp) == 0) {
+		if (VOP_ISLOCKED(nd->ni_vp) != LK_EXCLUSIVE) {
+			/*
+			 * LK_UPGRADE could have resulted in dropping
+			 * the lock.  Just try again from the start,
+			 * this time with exclusive vnode lock.
+			 */
+			vput(nd->ni_vp);
+			flags &= ~LOCKSHARED;
+			goto again;
+		}
+
+		VOP_SET_TEXT(nd->ni_vp);
+	}
+
 	error = exec_map_first_page(imgp);
 	if (error)
 		goto fail;
-
-	/*
-	 * Also make certain that the interpreter stays the same, so set
-	 * its VV_TEXT flag, too.
-	 */
-	VOP_SET_TEXT(nd->ni_vp);
 
 	imgp->object = nd->ni_vp->v_object;
 
@@ -924,8 +944,7 @@ __elfN(get_interp)(struct image_params *imgp, const Elf_Phdr *phdr,
 
 	KASSERT(phdr->p_type == PT_INTERP,
 	    ("%s: p_type %u != PT_INTERP", __func__, phdr->p_type));
-	KASSERT(VOP_ISLOCKED(imgp->vp),
-	    ("%s: vp %p is not locked", __func__, imgp->vp));
+	ASSERT_VOP_LOCKED(imgp->vp, __func__);
 
 	td = curthread;
 
