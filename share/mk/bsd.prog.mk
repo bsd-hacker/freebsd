@@ -4,7 +4,8 @@
 .include <bsd.init.mk>
 .include <bsd.compiler.mk>
 
-# TODO: this shouldn't be here.
+# This forces coverage off if the compiler isn't capable, as src.opts.mk is too
+# late sometimes.
 .if !${COMPILER_FEATURES:Mcoverage}
 MK_COVERAGE:=	no
 .endif
