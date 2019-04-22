@@ -10,7 +10,6 @@ SUBDIR+=	asan_dynamic
 SUBDIR+=	msan
 SUBDIR+=	msan_cxx
 .endif
-SUBDIR+=	profile
 SUBDIR+=	safestack
 SUBDIR+=	stats
 SUBDIR+=	stats_client
@@ -22,5 +21,7 @@ SUBDIR+=	ubsan_minimal
 SUBDIR+=	ubsan_standalone
 SUBDIR+=	ubsan_standalone_cxx
 .endif
+
+SUBDIR+=	profile
 
 .include <bsd.subdir.mk>
