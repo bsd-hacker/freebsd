@@ -200,11 +200,15 @@ ${X_}COMPILER_FREEBSD_VERSION=	unknown
 .endif
 
 ${X_}COMPILER_FEATURES=
-.if ${${X_}COMPILER_TYPE} == "clang" || \
-	(${${X_}COMPILER_TYPE} == "gcc" && ${${X_}COMPILER_VERSION} >= 40800)
+.if ${${X_}COMPILER_TYPE} == "clang"
 ${X_}COMPILER_FEATURES+=	c++11
 .endif
+.if ${${X_}COMPILER_TYPE} == "gcc" && ${${X_}COMPILER_VERSION} >= 40800)
+${X_}COMPILER_FEATURES+=	c++11
+${X_}COMPILER_FEATURES+=	coverage
+.endif
 .if ${${X_}COMPILER_TYPE} == "clang" && ${${X_}COMPILER_VERSION} >= 60000
+${X_}COMPILER_FEATURES+=	coverage
 ${X_}COMPILER_FEATURES+=	retpoline
 .endif
 

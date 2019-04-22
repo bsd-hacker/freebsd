@@ -5,6 +5,11 @@
 .include <bsd.init.mk>
 .include <bsd.compiler.mk>
 
+# TODO: this shouldn't be here.
+.if !${COMPILER_FEATURES:Mcoverage}
+MK_COVERAGE:=	no
+.endif
+
 .if defined(LIB_CXX) || defined(SHLIB_CXX)
 _LD=	${CXX}
 .else

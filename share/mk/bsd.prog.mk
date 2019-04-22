@@ -4,6 +4,11 @@
 .include <bsd.init.mk>
 .include <bsd.compiler.mk>
 
+# TODO: this shouldn't be here.
+.if !${COMPILER_FEATURES:Mcoverage}
+MK_COVERAGE:=	no
+.endif
+
 .SUFFIXES: .out .o .bc .c .cc .cpp .cxx .C .m .y .l .ll .ln .s .S .asm
 
 # XXX The use of COPTS in modern makefiles is discouraged.
