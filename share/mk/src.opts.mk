@@ -407,11 +407,7 @@ __DEFAULT_YES_OPTIONS+=OPENMP
 __DEFAULT_NO_OPTIONS+=OPENMP
 .endif
 
-# cross toolchains with "make universe" aren't properly building
-# libclang_rt.profile*.a yet for the target platform and installing it to the
-# expected location, so disable coverage support for now with clang when
-# cross-building.
-.if ${COMPILER_TYPE} == "clang" && ${__T} != ${__TT}
+.if ${COMPILER_TYPE} != "clang"
 BROKEN_OPTIONS+=COVERAGE
 BROKEN_OPTIONS+=COVERAGE_SUPPORT
 .endif
