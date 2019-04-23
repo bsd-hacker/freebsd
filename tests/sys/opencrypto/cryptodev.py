@@ -316,11 +316,23 @@ class MismatchError(Exception):
 
 class KATParser:
     def __init__(self, fname, fields):
-        self.fp = open(fname)
         self.fields = set(fields)
         self._pending = None
+        self.fname = fname
+        self.fp = None
+
+    def __enter__(self):
+        self.fp = open(self.fname)
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        if self.fp is not None:
+            self.fp.close()
 
     def __iter__(self):
+        return self
+
+    def __next__(self):
         while True:
             didread = False
             if self._pending is not None:
@@ -331,14 +343,15 @@ class KATParser:
                 didread = True
 
             if didread and not i:
-                return
+                raise StopIteration
 
-            if (i and i[0] == '#') or not i.strip():
-                continue
-            if i[0] == '[':
-                yield i[1:].split(']', 1)[0], self.fielditer()
-            else:
-                raise ValueError('unknown line: %r' % repr(i))
+            if not i.startswith('#') and i.strip():
+                break
+
+        if i[0] == '[':
+            yield i[1:].split(']', 1)[0], self.fielditer()
+        else:
+            raise ValueError('unknown line: %r' % repr(i))
 
     def eatblanks(self):
         while True:
