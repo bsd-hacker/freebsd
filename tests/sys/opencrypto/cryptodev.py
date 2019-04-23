@@ -199,6 +199,13 @@ class Crypto:
             pass
         self._ses = None
 
+    @staticmethod
+    def _to_bytes(val):
+        if sys.version_info[0] >= 3:
+            if isinstance(val, str):
+                return val.encode("ascii")
+        return val
+
     def _doop(self, op, src, iv):
         cop = CryptOp()
         cop.ses = self._ses
@@ -210,7 +217,7 @@ class Crypto:
         if self._maclen is not None:
             m = array.array('B', [0] * self._maclen)
             cop.mac = m.buffer_info()[0]
-        ivbuf = array.array('B', iv)
+        ivbuf = array.array('B', self._to_bytes(iv))
         cop.iv = ivbuf.buffer_info()[0]
 
         #print('cop:', cop)
@@ -229,10 +236,12 @@ class Crypto:
         caead.flags = CRD_F_IV_EXPLICIT
         caead.flags = 0
         caead.len = len(src)
-        s = array.array('B', src.encode("ascii"))
+        src = self._to_bytes(src)
+        s = array.array("B", src)
         caead.src = caead.dst = s.buffer_info()[0]
         caead.aadlen = len(aad)
-        saad = array.array('B', aad.encode("ascii"))
+        aad = self._to_bytes(aad)
+        saad = array.array('B', aad)
         caead.aad = saad.buffer_info()[0]
 
         if self._maclen is None:
@@ -243,7 +252,8 @@ class Crypto:
         else:
             assert len(tag) == self._maclen, \
                 '%d != %d' % (len(tag), self._maclen)
-            tag = array.array('B', tag.encode("ascii"))
+            tag = self._to_bytes(tag)
+            tag = array.array('B', tag)
 
         caead.tag = tag.buffer_info()[0]
 
@@ -251,7 +261,7 @@ class Crypto:
         caead.ivlen = len(iv)
         caead.iv = ivbuf.buffer_info()[0]
 
-        ioctl(_cryptodev, CIOCCRYPTAEAD, str(caead))
+        ioctl(_cryptodev, CIOCCRYPTAEAD, self._to_bytes(str(caead)))
 
         s = s.tostring()
 
@@ -260,7 +270,7 @@ class Crypto:
     def perftest(self, op, size, timeo=3):
 
         inp = array.array('B', (random.randint(0, 255) for x in xrange(size)))
-        out = array.array('B', inp.encode("ascii"))
+        out = array.array('B', self._to_bytes(inp))
 
         # prep ioctl
         cop = CryptOp()
@@ -268,7 +278,7 @@ class Crypto:
         cop.op = op
         cop.flags = 0
         cop.len = len(inp)
-        s = array.array('B', inp.encode("ascii"))
+        s = array.array('B', self._to_bytes(inp))
         cop.src = s.buffer_info()[0]
         cop.dst = out.buffer_info()[0]
         if self._maclen is not None:
@@ -287,7 +297,7 @@ class Crypto:
         start = time.time()
         reps = 0
         while not exit[0]:
-            ioctl(_cryptodev, CIOCCRYPT, str(cop))
+            ioctl(_cryptodev, CIOCCRYPT, self._to_bytes(str(cop)))
             reps += 1
 
         end = time.time()
