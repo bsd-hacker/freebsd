@@ -38,6 +38,7 @@ import os
 import random
 import signal
 from struct import pack as _pack
+import sys
 import time
 
 import dpkt
