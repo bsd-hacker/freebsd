@@ -266,7 +266,7 @@ def GenTestCase(cname):
                         mackey=key, maclen=16)
                     r, tag = Crypto.encrypt(c, payload,
                         nonce, aad)
-                except EnvironmentError, e:
+                except EnvironmentError as e:
                     if e.errno != errno.EOPNOTSUPP:
                         raise
                     continue
@@ -308,7 +308,7 @@ def GenTestCase(cname):
                         key=key,
                         mac=cryptodev.CRYPTO_AES_CCM_CBC_MAC,
                         mackey=key, maclen=16)
-                except EnvironmentError, e:
+                except EnvironmentError as e:
                     if e.errno != errno.EOPNOTSUPP:
                         raise
                     continue
@@ -412,7 +412,7 @@ def GenTestCase(cname):
                     try:
                         c = Crypto(mac=alg, crid=crid,
                             maclen=hashlen)
-                    except EnvironmentError, e:
+                    except EnvironmentError as e:
                         # Can't test hashes the driver does not support.
                         if e.errno != errno.EOPNOTSUPP:
                             raise
