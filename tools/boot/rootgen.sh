@@ -110,6 +110,7 @@ mk_nogeli_gpt_zfs_legacy() {
 zfs_load=YES
 opensolaris_load=YES
 EOF
+    cp /boot/kernel/acl_nfs4.ko ${mntpt}/boot/kernel/acl_nfs4.ko
     cp /boot/kernel/zfs.ko ${mntpt}/boot/kernel/zfs.ko
     cp /boot/kernel/opensolaris.ko ${mntpt}/boot/kernel/opensolaris.ko
     # end tweaks
@@ -148,6 +149,7 @@ mk_nogeli_gpt_zfs_uefi() {
 zfs_load=YES
 opensolaris_load=YES
 EOF
+    cp /boot/kernel/acl_nfs4.ko ${mntpt}/boot/kernel/acl_nfs4.ko
     cp /boot/kernel/zfs.ko ${mntpt}/boot/kernel/zfs.ko
     cp /boot/kernel/opensolaris.ko ${mntpt}/boot/kernel/opensolaris.ko
     # end tweaks
@@ -187,6 +189,7 @@ mk_nogeli_gpt_zfs_both() {
 zfs_load=YES
 opensolaris_load=YES
 EOF
+    cp /boot/kernel/acl_nfs4.ko ${mntpt}/boot/kernel/acl_nfs4.ko
     cp /boot/kernel/zfs.ko ${mntpt}/boot/kernel/zfs.ko
     cp /boot/kernel/opensolaris.ko ${mntpt}/boot/kernel/opensolaris.ko
     # end tweaks
@@ -268,6 +271,7 @@ mk_nogeli_mbr_zfs_legacy() {
 zfs_load=YES
 opensolaris_load=YES
 EOF
+    cp /boot/kernel/acl_nfs4.ko ${mntpt}/boot/kernel/acl_nfs4.ko
     cp /boot/kernel/zfs.ko ${mntpt}/boot/kernel/zfs.ko
     cp /boot/kernel/opensolaris.ko ${mntpt}/boot/kernel/opensolaris.ko
     # end tweaks
@@ -309,6 +313,7 @@ mk_nogeli_mbr_zfs_uefi() {
 zfs_load=YES
 opensolaris_load=YES
 EOF
+    cp /boot/kernel/acl_nfs4.ko ${mntpt}/boot/kernel/acl_nfs4.ko
     cp /boot/kernel/zfs.ko ${mntpt}/boot/kernel/zfs.ko
     cp /boot/kernel/opensolaris.ko ${mntpt}/boot/kernel/opensolaris.ko
     # end tweaks
@@ -350,6 +355,7 @@ mk_nogeli_mbr_zfs_both() {
 zfs_load=YES
 opensolaris_load=YES
 EOF
+    cp /boot/kernel/acl_nfs4.ko ${mntpt}/boot/kernel/acl_nfs4.ko
     cp /boot/kernel/zfs.ko ${mntpt}/boot/kernel/zfs.ko
     cp /boot/kernel/opensolaris.ko ${mntpt}/boot/kernel/opensolaris.ko
     # end tweaks
@@ -500,6 +506,7 @@ zfs_load=YES
 opensolaris_load=YES
 geom_eli_load=YES
 EOF
+    cp /boot/kernel/acl_nfs4.ko ${mntpt}/boot/kernel/acl_nfs4.ko
     cp /boot/kernel/zfs.ko ${mntpt}/boot/kernel/zfs.ko
     cp /boot/kernel/opensolaris.ko ${mntpt}/boot/kernel/opensolaris.ko
     cp /boot/kernel/geom_eli.ko ${mntpt}/boot/kernel/geom_eli.ko
@@ -543,6 +550,7 @@ zfs_load=YES
 opensolaris_load=YES
 geom_eli_load=YES
 EOF
+    cp /boot/kernel/acl_nfs4.ko ${mntpt}/boot/kernel/acl_nfs4.ko
     cp /boot/kernel/zfs.ko ${mntpt}/boot/kernel/zfs.ko
     cp /boot/kernel/opensolaris.ko ${mntpt}/boot/kernel/opensolaris.ko
     cp /boot/kernel/geom_eli.ko ${mntpt}/boot/kernel/geom_eli.ko
@@ -587,6 +595,7 @@ zfs_load=YES
 opensolaris_load=YES
 geom_eli_load=YES
 EOF
+    cp /boot/kernel/acl_nfs4.ko ${mntpt}/boot/kernel/acl_nfs4.ko
     cp /boot/kernel/zfs.ko ${mntpt}/boot/kernel/zfs.ko
     cp /boot/kernel/opensolaris.ko ${mntpt}/boot/kernel/opensolaris.ko
     cp /boot/kernel/geom_eli.ko ${mntpt}/boot/kernel/geom_eli.ko
@@ -783,7 +792,11 @@ EOF
 # XXX
 cp /boot/device.hints ${DESTDIR}/boot/device.hints
 # Assume we're already built
-make install DESTDIR=${DESTDIR} MK_MAN=no MK_INSTALL_AS_USER=yes
+make install DESTDIR=${DESTDIR} MK_MAN=no MK_INSTALL_AS_USER=yes WITHOUT_DEBUG_FILES=yes
+if [ $? -ne 0 ]; then
+        echo "make install failed"
+        exit 1
+fi
 # Copy init, /bin/sh, minimal libraries and testing /etc/rc
 mkdir -p ${DESTDIR}/sbin ${DESTDIR}/bin \
       ${DESTDIR}/lib ${DESTDIR}/libexec \
