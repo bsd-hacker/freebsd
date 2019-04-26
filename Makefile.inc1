@@ -722,7 +722,7 @@ TMAKE=		\
 XMAKE=		${BMAKE} \
 		TARGET=${TARGET} TARGET_ARCH=${TARGET_ARCH} \
 		MK_GDB=no \
-		MK_TESTS=no MK_COVERAGE=no MK_COVERAGE_SUPPORT=${MK_COVERAGE}
+		MK_TESTS=no MK_COVERAGE=no
 
 # kernel-tools stage
 KTMAKEENV=	INSTALL="sh ${.CURDIR}/tools/install.sh" \
@@ -2466,9 +2466,6 @@ _elftctools=	lib/libelftc \
 .endif
 
 .if ${MK_CLANG_BOOTSTRAP} != "no"
-.if ${MK_COVERAGE_SUPPORT} != "no"
-_coverage_libs+= lib/libclang_rt/profile
-.endif
 _clang=		usr.bin/clang
 .endif
 .if ${MK_LLD_BOOTSTRAP} != "no"
@@ -2506,16 +2503,6 @@ cross-tools: .MAKE .PHONY
 		if [ -z "${NO_OBJWALK}" ]; then ${MAKE} DIRPRFX=${_tool}/ obj; fi; \
 		${MAKE} DIRPRFX=${_tool}/ all; \
 		${MAKE} DIRPRFX=${_tool}/ DESTDIR=${WORLDTMP} install
-.endfor
-	# Build coverage libraries for the target. This must be done here in
-	# order for the cross-toolchain to be able to find them with
-	# `make libraries` and the rest of buildworld.
-.for _tool in ${_coverage_libs}
-	${_+_}@${ECHODIR} "===> ${_tool} (obj,all,install)"; \
-		cd ${.CURDIR}/${_tool}; \
-		if [ -z "${NO_OBJWALK}" ]; then ${MAKE} DIRPRFX=${_tool}/ obj; fi; \
-		${CROSSENV} ${MAKE} DIRPRFX=${_tool}/ all; \
-		${CROSSENV} ${MAKE} DIRPRFX=${_tool}/ DESTDIR=${WORLDTMP} install
 .endfor
 
 #
@@ -2720,10 +2707,31 @@ hierarchy hier: .MAKE .PHONY
 #
 libraries: .MAKE .PHONY
 	${_+_}cd ${.CURDIR}; \
+	    ${MAKE} -f Makefile.inc1 _target_toolchain_libs MK_COVERAGE=no \
+	        MK_COVERAGE_SUPPORT=${MK_COVERAGE}; \
 	    ${MAKE} -f Makefile.inc1 _prereq_libs; \
 	    ${MAKE} -f Makefile.inc1 _startup_libs; \
 	    ${MAKE} -f Makefile.inc1 _prebuild_libs; \
 	    ${MAKE} -f Makefile.inc1 _generic_libs
+
+# Build coverage libraries for the target. This must be done here in
+# order for the cross-toolchain to be able to find them with
+# `make libraries` and the rest of buildworld.
+.if ${MK_CLANG_BOOTSTRAP} != "no"
+.if ${MK_COVERAGE_SUPPORT} != "no"
+_coverage_libs+= lib/libclang_rt/profile
+.endif
+.endif
+
+_target_toolchain_libs: .PHONY .MAKE
+.for _tool in \
+    ${_coverage_libs}
+	${_+_}@${ECHODIR} "===> ${_tool} (obj,all,install)"; \
+		cd ${.CURDIR}/${_tool}; \
+		if [ -z "${NO_OBJWALK}" ]; then ${MAKE} DIRPRFX=${_tool}/ obj; fi; \
+		${MAKE} DIRPRFX=${_tool}/ all; \
+		${MAKE} DIRPRFX=${_tool}/ DESTDIR=${WORLDTMP} install
+.endfor
 
 #
 # static libgcc.a prerequisite for shared libc
