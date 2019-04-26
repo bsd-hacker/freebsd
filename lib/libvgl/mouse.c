@@ -39,7 +39,11 @@ __FBSDID("$FreeBSD$");
 #include <sys/fbio.h>
 #include "vgl.h"
 
-#define X 0xff
+#define BORDER	0xff	/* default border -- light white in rgb 3:3:2 */
+#define INTERIOR 0xa0	/* default interior -- red in rgb 3:3:2 */
+#define X	0xff	/* any nonzero in And mask means part of cursor */
+#define B	BORDER
+#define I	INTERIOR
 static byte StdAndMask[MOUSE_IMG_SIZE*MOUSE_IMG_SIZE] = {
 	X,X,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 	X,X,X,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -49,41 +53,43 @@ static byte StdAndMask[MOUSE_IMG_SIZE*MOUSE_IMG_SIZE] = {
 	X,X,X,X,X,X,X,0,0,0,0,0,0,0,0,0,
 	X,X,X,X,X,X,X,X,0,0,0,0,0,0,0,0,
 	X,X,X,X,X,X,X,X,X,0,0,0,0,0,0,0,
+	X,X,X,X,X,X,X,X,X,X,0,0,0,0,0,0,
+	X,X,X,X,X,X,X,X,X,X,0,0,0,0,0,0,
 	X,X,X,X,X,X,X,0,0,0,0,0,0,0,0,0,
-	0,0,0,X,X,X,X,0,0,0,0,0,0,0,0,0,
-	0,0,0,X,X,X,X,X,0,0,0,0,0,0,0,0,
-	0,0,0,0,X,X,X,X,0,0,0,0,0,0,0,0,
-	0,0,0,0,X,X,X,X,0,0,0,0,0,0,0,0,
-	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	X,X,X,0,X,X,X,X,0,0,0,0,0,0,0,0,
+	X,X,0,0,X,X,X,X,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,X,X,X,X,0,0,0,0,0,0,0,
+	0,0,0,0,0,X,X,X,X,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,X,X,0,0,0,0,0,0,0,0,
 };
 static byte StdOrMask[MOUSE_IMG_SIZE*MOUSE_IMG_SIZE] = {
-	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-	0,X,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-	0,X,X,0,0,0,0,0,0,0,0,0,0,0,0,0,
-	0,X,X,X,0,0,0,0,0,0,0,0,0,0,0,0,
-	0,X,X,X,X,0,0,0,0,0,0,0,0,0,0,0,
-	0,X,X,X,X,X,0,0,0,0,0,0,0,0,0,0,
-	0,X,X,X,X,X,X,0,0,0,0,0,0,0,0,0,
-	0,X,X,0,X,0,0,0,0,0,0,0,0,0,0,0,
-	0,0,0,0,X,X,0,0,0,0,0,0,0,0,0,0,
-	0,0,0,0,X,X,0,0,0,0,0,0,0,0,0,0,
-	0,0,0,0,0,X,X,0,0,0,0,0,0,0,0,0,
-	0,0,0,0,0,X,X,0,0,0,0,0,0,0,0,0,
-	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	B,B,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	B,I,B,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	B,I,I,B,0,0,0,0,0,0,0,0,0,0,0,0,
+	B,I,I,I,B,0,0,0,0,0,0,0,0,0,0,0,
+	B,I,I,I,I,B,0,0,0,0,0,0,0,0,0,0,
+	B,I,I,I,I,I,B,0,0,0,0,0,0,0,0,0,
+	B,I,I,I,I,I,I,B,0,0,0,0,0,0,0,0,
+	B,I,I,I,I,I,I,I,B,0,0,0,0,0,0,0,
+	B,I,I,I,I,I,I,I,I,B,0,0,0,0,0,0,
+	B,I,I,I,I,I,B,B,B,B,0,0,0,0,0,0,
+	B,I,I,B,I,I,B,0,0,0,0,0,0,0,0,0,
+	B,I,B,0,B,I,I,B,0,0,0,0,0,0,0,0,
+	B,B,0,0,B,I,I,B,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,B,I,I,B,0,0,0,0,0,0,0,
+	0,0,0,0,0,B,I,I,B,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,B,B,0,0,0,0,0,0,0,0,
 };
 #undef X
+#undef B
+#undef I
 static VGLBitmap VGLMouseStdAndMask = 
     VGLBITMAP_INITIALIZER(MEMBUF, MOUSE_IMG_SIZE, MOUSE_IMG_SIZE, StdAndMask);
 static VGLBitmap VGLMouseStdOrMask = 
     VGLBITMAP_INITIALIZER(MEMBUF, MOUSE_IMG_SIZE, MOUSE_IMG_SIZE, StdOrMask);
 static VGLBitmap *VGLMouseAndMask, *VGLMouseOrMask;
 static int VGLMouseVisible = 0;
-static int VGLMouseShown = 0;
+static int VGLMouseShown = VGL_MOUSEHIDE;
 static int VGLMouseXpos = 0;
 static int VGLMouseYpos = 0;
 static int VGLMouseButtons = 0;
@@ -103,7 +109,7 @@ VGLMousePointerShow()
   VGLBitmap buffer =
     VGLBITMAP_INITIALIZER(MEMBUF, MOUSE_IMG_SIZE, MOUSE_IMG_SIZE, buf);
   byte crtcidx, crtcval, gdcidx, gdcval;
-  int i, pos, pos1;
+  int pos;
 
   if (!VGLMouseVisible) {
     INTOFF();
@@ -118,12 +124,10 @@ VGLMousePointerShow()
     __VGLBitmapCopy(&VGLVDisplay, VGLMouseXpos, VGLMouseYpos, 
                     &buffer, 0, 0, MOUSE_IMG_SIZE, MOUSE_IMG_SIZE);
     for (pos = 0; pos <  MOUSE_IMG_SIZE*MOUSE_IMG_SIZE; pos++)
-      for (i = 0; i < VGLDisplay->PixelBytes; i++) {
-        pos1 = pos * VGLDisplay->PixelBytes + i;
-        buffer.Bitmap[pos1] = (buffer.Bitmap[pos1] &
-                               ~VGLMouseAndMask->Bitmap[pos]) |
-                              VGLMouseOrMask->Bitmap[pos];
-      }
+      if (VGLMouseAndMask->Bitmap[pos])
+        bcopy(&VGLMouseOrMask->Bitmap[pos*VGLDisplay->PixelBytes],
+              &buffer.Bitmap[pos*VGLDisplay->PixelBytes],
+              VGLDisplay->PixelBytes);
     __VGLBitmapCopy(&buffer, 0, 0, VGLDisplay, 
 		  VGLMouseXpos, VGLMouseYpos, MOUSE_IMG_SIZE, MOUSE_IMG_SIZE);
     if (VGLModeInfo.vi_mem_model != V_INFO_MM_DIRECT) {
@@ -216,8 +220,17 @@ VGLMouseSetImage(VGLBitmap *AndMask, VGLBitmap *OrMask)
 {
   if (VGLMouseShown == VGL_MOUSESHOW)
     VGLMousePointerHide();
+
   VGLMouseAndMask = AndMask;
-  VGLMouseOrMask = OrMask;
+
+  if (VGLMouseOrMask != NULL) {
+    free(VGLMouseOrMask->Bitmap);
+    free(VGLMouseOrMask);
+  }
+  VGLMouseOrMask = VGLBitmapCreate(MEMBUF, OrMask->VXsize, OrMask->VYsize, 0);
+  VGLBitmapAllocateBits(VGLMouseOrMask);
+  VGLBitmapCvt(OrMask, VGLMouseOrMask);
+
   if (VGLMouseShown == VGL_MOUSESHOW)
     VGLMousePointerShow();
 }
@@ -225,34 +238,42 @@ VGLMouseSetImage(VGLBitmap *AndMask, VGLBitmap *OrMask)
 void
 VGLMouseSetStdImage()
 {
-  if (VGLMouseShown == VGL_MOUSESHOW)
-    VGLMousePointerHide();
-  VGLMouseAndMask = &VGLMouseStdAndMask;
-  VGLMouseOrMask = &VGLMouseStdOrMask;
-  if (VGLMouseShown == VGL_MOUSESHOW)
-    VGLMousePointerShow();
+  VGLMouseSetImage(&VGLMouseStdAndMask, &VGLMouseStdOrMask);
 }
 
 int
 VGLMouseInit(int mode)
 {
   struct mouse_info mouseinfo;
-  int error, i, mask;
+  int andmask, border, error, i, interior;
 
   switch (VGLModeInfo.vi_mem_model) {
   case V_INFO_MM_PACKED:
   case V_INFO_MM_PLANAR:
-    mask = 0x0f;
+    andmask = 0x0f;
+    border = 0x0f;
+    interior = 0x04;
     break;
   case V_INFO_MM_VGAX:
-    mask = 0x3f;
+    andmask = 0x3f;
+    border = 0x3f;
+    interior = 0x24;
     break;
   default:
-    mask = 0xff;
+    andmask = 0xff;
+    border = BORDER;
+    interior = INTERIOR;
     break;
   }
-  for (i = 0; i < 256; i++)
-    VGLMouseStdOrMask.Bitmap[i] &= mask;
+  if (VGLModeInfo.vi_mode == M_BG640x480)
+    border = 0;		/* XXX (palette makes 0x04 look like 0x0f) */
+  if (getenv("VGLMOUSEBORDERCOLOR") != NULL)
+    border = strtoul(getenv("VGLMOUSEBORDERCOLOR"), NULL, 0);
+  if (getenv("VGLMOUSEINTERIORCOLOR") != NULL)
+    interior = strtoul(getenv("VGLMOUSEINTERIORCOLOR"), NULL, 0);
+  for (i = 0; i < MOUSE_IMG_SIZE*MOUSE_IMG_SIZE; i++)
+    VGLMouseStdOrMask.Bitmap[i] = VGLMouseStdOrMask.Bitmap[i] == BORDER ?
+      border : VGLMouseStdOrMask.Bitmap[i] == INTERIOR ? interior : 0;
   VGLMouseSetStdImage();
   mouseinfo.operation = MOUSE_MODE;
   mouseinfo.u.mode.signal = SIGUSR2;
@@ -295,48 +316,66 @@ VGLMouseStatus(int *x, int *y, char *buttons)
   return VGLMouseShown;
 }
 
-int
-VGLMouseFreeze(int x, int y, int width, int hight, u_long color)
+void
+VGLMouseFreeze(void)
 {
-    INTOFF();
-    if (width > 1 || hight > 1 || (color & 0xc0000000) == 0) { /* bitmap */
-      if (VGLMouseShown == 1) {
-        int overlap;
+  INTOFF();
+}
 
-        if (x > VGLMouseXpos)
-          overlap = (VGLMouseXpos + MOUSE_IMG_SIZE) - x;
-        else
-          overlap = (x + width) - VGLMouseXpos;
-        if (overlap > 0) {
-          if (y > VGLMouseYpos)
-            overlap = (VGLMouseYpos + MOUSE_IMG_SIZE) - y;
-          else
-            overlap = (y + hight) - VGLMouseYpos;
-          if (overlap > 0)
-            VGLMousePointerHide();
-        } 
-      }
-    }
-    else {				/* bit */
-      if (VGLMouseShown &&
-          x >= VGLMouseXpos && x < VGLMouseXpos + MOUSE_IMG_SIZE &&
-          y >= VGLMouseYpos && y < VGLMouseYpos + MOUSE_IMG_SIZE) {
-        if (color & 0x80000000) {	/* Set */
-          if (VGLMouseAndMask->Bitmap 
-            [(y-VGLMouseYpos)*MOUSE_IMG_SIZE+(x-VGLMouseXpos)]) {
-            return 1;
-          }   
-        }   
-      }       
-    }
+int
+VGLMouseFreezeXY(int x, int y)
+{
+  INTOFF();
+  if (VGLMouseShown != VGL_MOUSESHOW)
+    return 0;
+  if (x >= VGLMouseXpos && x < VGLMouseXpos + MOUSE_IMG_SIZE &&
+      y >= VGLMouseYpos && y < VGLMouseYpos + MOUSE_IMG_SIZE &&
+      VGLMouseAndMask->Bitmap[(y-VGLMouseYpos)*MOUSE_IMG_SIZE+(x-VGLMouseXpos)])
+    return 1;
   return 0;
+}
+
+int
+VGLMouseOverlap(int x, int y, int width, int hight)
+{
+  int overlap;
+
+  if (VGLMouseShown != VGL_MOUSESHOW)
+    return 0;
+  if (x > VGLMouseXpos)
+    overlap = (VGLMouseXpos + MOUSE_IMG_SIZE) - x;
+  else
+    overlap = (x + width) - VGLMouseXpos;
+  if (overlap <= 0)
+    return 0;
+  if (y > VGLMouseYpos)
+    overlap = (VGLMouseYpos + MOUSE_IMG_SIZE) - y;
+  else
+    overlap = (y + hight) - VGLMouseYpos;
+  return overlap > 0;
+}
+
+void
+VGLMouseMerge(int x, int y, int width, byte *line)
+{
+  int pos, x1, xend, xstart;
+
+  xstart = x;
+  if (xstart < VGLMouseXpos)
+    xstart = VGLMouseXpos;
+  xend = x + width;
+  if (xend > VGLMouseXpos + MOUSE_IMG_SIZE)
+    xend = VGLMouseXpos + MOUSE_IMG_SIZE;
+  for (x1 = xstart; x1 < xend; x1++) {
+    pos = (y - VGLMouseYpos) * MOUSE_IMG_SIZE + x1 - VGLMouseXpos;
+    if (VGLMouseAndMask->Bitmap[pos])
+      bcopy(&VGLMouseOrMask->Bitmap[pos * VGLDisplay->PixelBytes],
+            &line[(x1 - x) * VGLDisplay->PixelBytes], VGLDisplay->PixelBytes);
+  }
 }
 
 void
 VGLMouseUnFreeze()
 {
-  if (VGLMouseShown == VGL_MOUSESHOW && !VGLMouseVisible && !VGLMintpending)
-    VGLMousePointerShow();
-  while (VGLMsuppressint)
-    INTON();
+  INTON();
 }
