@@ -786,7 +786,7 @@ BFLAGS+=	-B${WORLDTMP}/usr/bin
     (defined(X_COMPILER_TYPE) && ${X_COMPILER_TYPE} == gcc)
 .elif ${WANT_COMPILER_TYPE} == clang || \
     (defined(X_COMPILER_TYPE) && ${X_COMPILER_TYPE} == clang)
-XCFLAGS+=	-target=${TARGET_TRIPLE}
+XCFLAGS+=	-target ${TARGET_TRIPLE}
 .endif
 XCFLAGS+=	--sysroot=${WORLDTMP}
 
