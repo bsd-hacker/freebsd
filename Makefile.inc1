@@ -2467,7 +2467,7 @@ _elftctools=	lib/libelftc \
 
 .if ${MK_CLANG_BOOTSTRAP} != "no"
 .if ${MK_COVERAGE_SUPPORT} != "no"
-_coverage_libs+= lib/clang_rt/profile
+_coverage_libs+= lib/libclang_rt/profile
 .endif
 _clang=		usr.bin/clang
 .endif
