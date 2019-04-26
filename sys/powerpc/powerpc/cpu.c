@@ -183,7 +183,8 @@ static const struct cputab models[] = {
 	   PPC_FEATURE_SMT | PPC_FEATURE_ICACHE_SNOOP | PPC_FEATURE_ARCH_2_05 |
 	   PPC_FEATURE_ARCH_2_06 | PPC_FEATURE_HAS_VSX | PPC_FEATURE_TRUE_LE,
 	   PPC_FEATURE2_ARCH_2_07 | PPC_FEATURE2_HTM | PPC_FEATURE2_DSCR |
-	   PPC_FEATURE2_ISEL | PPC_FEATURE2_TAR | PPC_FEATURE2_HAS_VEC_CRYPTO |
+	   PPC_FEATURE2_EBB | PPC_FEATURE2_ISEL | PPC_FEATURE2_TAR |
+	   PPC_FEATURE2_HAS_VEC_CRYPTO | PPC_FEATURE2_HTM_NOSC |
 	   PPC_FEATURE2_ARCH_3_00 | PPC_FEATURE2_HAS_IEEE128 |
 	   PPC_FEATURE2_DARN, cpu_powerx_setup },
         { "Motorola PowerPC 7400",	MPC7400,	REVFMT_MAJMIN,
@@ -661,6 +662,9 @@ cpu_powerx_setup(int cpuid, uint16_t vers)
 #if defined(__powerpc64__) && defined(AIM)
 	if ((mfmsr() & PSL_HV) == 0)
 		return;
+
+	/* Nuke the FSCR, to disable all facilities. */
+	mtspr(SPR_FSCR, 0);
 
 	/* Configure power-saving */
 	switch (vers) {
