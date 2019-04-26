@@ -2515,7 +2515,7 @@ cross-tools: .MAKE .PHONY
 		    DIRPRFX=${_tool}/ all; \
 		${MAKE} CFLAGS="${XCFLAGS:M*target=} ${CFLAGS}" \
 		    DIRPRFX=${_tool}/ DESTDIR=${WORLDTMP} install
-.endif
+.endfor
 
 #
 # native-xtools is the current target for qemu-user cross builds of ports
