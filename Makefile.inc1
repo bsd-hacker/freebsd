@@ -2507,14 +2507,15 @@ cross-tools: .MAKE .PHONY
 		${MAKE} DIRPRFX=${_tool}/ all; \
 		${MAKE} DIRPRFX=${_tool}/ DESTDIR=${WORLDTMP} install
 .endfor
+	# Build coverage libraries for the target. This must be done here in
+	# order for the cross-toolchain to be able to find them with
+	# `make libraries` and the rest of buildworld.
 .for _tool in ${_coverage_libs}
 	${_+_}@${ECHODIR} "===> ${_tool} (obj,all,install)"; \
 		cd ${.CURDIR}/${_tool}; \
 		if [ -z "${NO_OBJWALK}" ]; then ${MAKE} DIRPRFX=${_tool}/ obj; fi; \
-		${MAKE} CFLAGS="${XCFLAGS:M*target=} ${CFLAGS}" \
-		    DIRPRFX=${_tool}/ all; \
-		${MAKE} CFLAGS="${XCFLAGS:M*target=} ${CFLAGS}" \
-		    DIRPRFX=${_tool}/ DESTDIR=${WORLDTMP} install
+		${CROSSENV} ${MAKE} DIRPRFX=${_tool}/ all; \
+		${CROSSENV} ${MAKE} DIRPRFX=${_tool}/ DESTDIR=${WORLDTMP} install
 .endfor
 
 #
