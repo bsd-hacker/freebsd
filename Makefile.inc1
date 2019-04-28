@@ -2724,13 +2724,16 @@ _coverage_libs+= lib/libclang_rt/profile
 .endif
 
 _target_toolchain_libs: .PHONY .MAKE
-.for _tool in \
+.for _lib in \
     ${_coverage_libs}
-	${_+_}@${ECHODIR} "===> ${_tool} (obj,all,install)"; \
-		cd ${.CURDIR}/${_tool}; \
-		if [ -z "${NO_OBJWALK}" ]; then ${MAKE} DIRPRFX=${_tool}/ obj; fi; \
-		${MAKE} DIRPRFX=${_tool}/ all; \
-		${MAKE} DIRPRFX=${_tool}/ DESTDIR=${WORLDTMP} install
+	${_+_}@${ECHODIR} "===> ${_lib} (obj,all,install)"; \
+		cd ${.CURDIR}/${_lib}; \
+		if [ -z "${NO_OBJWALK}" ]; then ${MAKE} DIRPRFX=${_lib}/ obj; fi; \
+		${MAKE} DIRPRFX=${_lib}/ all; \
+		${MAKE} DIRPRFX=${_lib}/ DESTDIR=${WORLDTMP} install; \
+		if [ -d "${HOST_OBJTOP}" ]; then \
+		    ${MAKE} DIRPRFX=${_lib}/ DESTDIR=${HOST_OBJTOP} install; \
+		fi
 .endfor
 
 #
