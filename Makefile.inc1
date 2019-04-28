@@ -2731,8 +2731,9 @@ _target_toolchain_libs: .PHONY .MAKE
 		if [ -z "${NO_OBJWALK}" ]; then ${MAKE} DIRPRFX=${_lib}/ obj; fi; \
 		${MAKE} DIRPRFX=${_lib}/ all; \
 		${MAKE} DIRPRFX=${_lib}/ DESTDIR=${WORLDTMP} install; \
-		if [ -d "${HOST_OBJTOP}" ]; then \
-		    ${MAKE} DIRPRFX=${_lib}/ DESTDIR=${HOST_OBJTOP} install; \
+		if [ -d "${HOST_OBJTOP}/tmp" ]; then \
+		    ${MAKE} DIRPRFX=${_lib}/ DESTDIR="${HOST_OBJTOP}/tmp" \
+		    install; \
 		fi
 .endfor
 
