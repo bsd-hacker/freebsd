@@ -321,7 +321,7 @@ def GenTestCase(cname):
                         aad, tag)
 
                     payload = data['Payload'].decode('hex')
-                    Plen = int(data('Plen'))
+                    plen = int(data('Plen'))
                     payload = payload[:plen]
                     self.assertEqual(r, payload,
                         "Count " + data['Count'] + \
@@ -406,7 +406,7 @@ def GenTestCase(cname):
 
                 for data in lines:
                     msg = data['Msg'].decode('hex')
-                                        msg = msg[:int(data['Len'])]
+                    msg = msg[:int(data['Len'])]
                     md = data['MD'].decode('hex')
 
                     try:

@@ -125,16 +125,17 @@ int VGLSetVScreenSize(VGLBitmap *object, int VXsize, int VYsize);
 int VGLPanScreen(VGLBitmap *object, int x, int y);
 int VGLSetSegment(unsigned int offset);
 /* mouse.c */
-void VGLMousePointerShow(void);
-void VGLMousePointerHide(void);
+int __VGLMouseMode(int mode);
 void VGLMouseMode(int mode);
-void VGLMouseAction(int dummy);
 void VGLMouseSetImage(VGLBitmap *AndMask, VGLBitmap *OrMask);
 void VGLMouseSetStdImage(void);
 int VGLMouseInit(int mode);
 void VGLMouseRestore(void);
 int VGLMouseStatus(int *x, int *y, char *buttons);
-int VGLMouseFreeze(int x, int y, int width, int hight, u_long color);
+void VGLMouseFreeze(void);
+int VGLMouseFreezeXY(int x, int y);
+void VGLMouseMerge(int x, int y, int width, byte *line);
+int VGLMouseOverlap(int x, int y, int width, int hight);
 void VGLMouseUnFreeze(void);
 /* simple.c */
 void VGLSetXY(VGLBitmap *object, int x, int y, u_long color);

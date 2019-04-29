@@ -51,19 +51,22 @@ static byte VGLSavePaletteBlue[256];
 void
 VGLSetXY(VGLBitmap *object, int x, int y, u_long color)
 {
-  int offset;
+  int offset, soffset, undermouse;
 
   VGLCheckSwitch();
   if (x>=0 && x<object->VXsize && y>=0 && y<object->VYsize) {
-    if (object == VGLDisplay)
+    if (object == VGLDisplay) {
+      undermouse = VGLMouseFreezeXY(x, y);
       VGLSetXY(&VGLVDisplay, x, y, color);
-    if (object->Type == MEMBUF ||
-        !VGLMouseFreeze(x, y, 1, 1, 0x80000000 | color)) {
+    } else if (object->Type != MEMBUF)
+      return;		/* invalid */
+    else
+      undermouse = 0;
+    if (!undermouse) {
       offset = (y * object->VXsize + x) * object->PixelBytes;
       switch (object->Type) {
       case VIDBUF8S:
       case VIDBUF16S:
-      case VIDBUF24S:
       case VIDBUF32S:
         offset = VGLSetSegment(offset);
         /* FALLTHROUGH */
@@ -88,6 +91,25 @@ VGLSetXY(VGLBitmap *object, int x, int y, u_long color)
           break;
         }
         break;
+      case VIDBUF24S:
+        soffset = VGLSetSegment(offset);
+        color = htole32(color);
+        switch (VGLAdpInfo.va_window_size - soffset) {
+        case 1:
+          memcpy(&object->Bitmap[soffset], &color, 1);
+          soffset = VGLSetSegment(offset + 1);
+          memcpy(&object->Bitmap[soffset], (byte *)&color + 1, 2);
+          break;
+        case 2:
+          memcpy(&object->Bitmap[soffset], &color, 2);
+          soffset = VGLSetSegment(offset + 2);
+          memcpy(&object->Bitmap[soffset], (byte *)&color + 2, 1);
+          break;
+        default:
+          memcpy(&object->Bitmap[soffset], &color, 3);
+          break;
+        }
+        break;
       case VIDBUF8X:
         outb(0x3c4, 0x02);
         outb(0x3c5, 0x01 << (x&0x3));
@@ -106,17 +128,24 @@ set_planar:
 	object->Bitmap[offset] |= (byte)color;
       }
     }
-    if (object->Type != MEMBUF)
+    if (object == VGLDisplay)
       VGLMouseUnFreeze();
   }
 }
 
-static u_long
-__VGLGetXY(VGLBitmap *object, int x, int y)
+u_long
+VGLGetXY(VGLBitmap *object, int x, int y)
 {
-  int offset;
   u_long color;
+  int offset;
 
+  VGLCheckSwitch();
+  if (x<0 || x>=object->VXsize || y<0 || y>=object->VYsize)
+    return 0;
+  if (object == VGLDisplay)
+    object = &VGLVDisplay;
+  else if (object->Type != MEMBUF)
+    return 0;		/* invalid */
   offset = (y * object->VXsize + x) * object->PixelBytes;
   switch (object->PixelBytes) {
   case 1:
@@ -133,19 +162,6 @@ __VGLGetXY(VGLBitmap *object, int x, int y)
     return le32toh(color);
   }
   return 0;		/* invalid */
-}
-
-u_long
-VGLGetXY(VGLBitmap *object, int x, int y)
-{
-  VGLCheckSwitch();
-  if (x<0 || x>=object->VXsize || y<0 || y>=object->VYsize)
-    return 0;
-  if (object == VGLDisplay)
-    object = &VGLVDisplay;
-  if (object->Type != MEMBUF)
-    return 0;		/* invalid */
-  return __VGLGetXY(object, x, y);
 }
 
  /*
@@ -449,13 +465,11 @@ void
 VGLClear(VGLBitmap *object, u_long color)
 {
   VGLBitmap src;
-  int offset;
-  int len;
-  int i;
+  int i, len, mousemode, offset;
 
   VGLCheckSwitch();
   if (object == VGLDisplay) {
-    VGLMouseFreeze(0, 0, object->Xsize, object->Ysize, color);
+    VGLMouseFreeze();
     VGLClear(&VGLVDisplay, color);
   } else if (object->Type != MEMBUF)
     return;		/* invalid */
@@ -482,18 +496,21 @@ VGLClear(VGLBitmap *object, u_long color)
     for (i = 0; i < object->VXsize; i++)
       bcopy(&color, src.Bitmap + i * object->PixelBytes, object->PixelBytes);
     for (i = 0; i < object->VYsize; i++)
-      __VGLBitmapCopy(&src, 0, 0, object, 0, i, object->VXsize, 1);
+      __VGLBitmapCopy(&src, 0, 0, object, 0, i, object->VXsize, -1);
     break;
 
   case VIDBUF8X:
+    mousemode = __VGLMouseMode(VGL_MOUSEHIDE);
     /* XXX works only for Xsize % 4 = 0 */
     outb(0x3c6, 0xff);
     outb(0x3c4, 0x02); outb(0x3c5, 0x0f);
     memset(object->Bitmap, (byte)color, VGLAdpInfo.va_line_width*object->VYsize);
+    __VGLMouseMode(mousemode);
     break;
 
   case VIDBUF4:
   case VIDBUF4S:
+    mousemode = __VGLMouseMode(VGL_MOUSEHIDE);
     /* XXX works only for Xsize % 8 = 0 */
     outb(0x3c4, 0x02); outb(0x3c5, 0x0f);
     outb(0x3ce, 0x05); outb(0x3cf, 0x02);		/* mode 2 */
@@ -507,6 +524,7 @@ VGLClear(VGLBitmap *object, u_long color)
       offset += len;
     }
     outb(0x3ce, 0x05); outb(0x3cf, 0x00);
+    __VGLMouseMode(mousemode);
     break;
   }
   if (object == VGLDisplay)
