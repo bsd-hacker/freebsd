@@ -1115,7 +1115,8 @@ _libraries:
 	@echo ">>> stage 4.2: building libraries"
 	@echo "--------------------------------------------------------------"
 	${_+_}cd ${.CURDIR}; \
-	    ${WMAKE} -DNO_FSCHG MK_HTML=no -DNO_LINT MK_MAN=no \
+	    ${WMAKE} -DNO_FSCHG -DNO_LINT \
+	    MK_COVERAGE_SUPPORT=${MK_COVERAGE} MK_HTML=no MK_MAN=no \
 	    MK_PROFILE=no MK_TESTS=no MK_TESTS_SUPPORT=${MK_TESTS} \
 	    libraries
 everything: .PHONY
@@ -2707,8 +2708,7 @@ hierarchy hier: .MAKE .PHONY
 #
 libraries: .MAKE .PHONY
 	${_+_}cd ${.CURDIR}; \
-	    ${MAKE} -f Makefile.inc1 _target_toolchain_libs MK_COVERAGE=no \
-	        MK_COVERAGE_SUPPORT=${MK_COVERAGE}; \
+	    ${MAKE} -f Makefile.inc1 _target_toolchain_libs; \
 	    ${MAKE} -f Makefile.inc1 _prereq_libs; \
 	    ${MAKE} -f Makefile.inc1 _startup_libs; \
 	    ${MAKE} -f Makefile.inc1 _prebuild_libs; \
