@@ -2717,7 +2717,7 @@ libraries: .MAKE .PHONY
 # Build coverage libraries for the target. This must be done here in
 # order for the cross-toolchain to be able to find them with
 # `make libraries` and the rest of buildworld.
-.if ${MK_CLANG_BOOTSTRAP} != "no"
+.if ${MK_CLANG_BOOTSTRAP} != "no" || ${MK_CLANG} != "no"
 .if ${MK_COVERAGE_SUPPORT} != "no"
 _coverage_libs+= lib/libclang_rt/profile
 .endif
