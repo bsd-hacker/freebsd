@@ -110,7 +110,8 @@ ${CONF}: Makefile
 .endfor
 
 CRUNCHGEN?= crunchgen
-CRUNCHENV+= MK_TESTS=no \
+CRUNCHENV+= MK_COVERAGE=no \
+	    MK_TESTS=no \
 	    UPDATE_DEPENDFILE=no \
 	    _RECURSING_CRUNCH=1
 .ORDER: ${OUTPUTS} objs
