@@ -426,10 +426,8 @@ static void
 bcache_free_instance(struct bcache *bc)
 {
     if (bc != NULL) {
-	if (bc->bcache_ctl)
-	    free(bc->bcache_ctl);
-	if (bc->bcache_data)
-	    free(bc->bcache_data);
+	free(bc->bcache_ctl);
+	free(bc->bcache_data);
 	free(bc);
     }
 }
@@ -469,7 +467,7 @@ bcache_invalidate(struct bcache *bc, daddr_t blkno)
 COMMAND_SET(bcachestat, "bcachestat", "get disk block cache stats", command_bcache);
 
 static int
-command_bcache(int argc, char *argv[])
+command_bcache(int argc, char *argv[] __unused)
 {
     if (argc != 1) {
 	command_errmsg = "wrong number of arguments";
