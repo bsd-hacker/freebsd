@@ -55,8 +55,7 @@ enum {
 };
 
 enum {
-	MLX5_CMD_TIMEOUT_MSEC	= 8 * 60 * 1000,
-	MLX5_CMD_WQ_MAX_NAME	= 32,
+	MLX5_CMD_TIMEOUT_MSEC	= 60 * 1000,
 };
 
 enum {
@@ -154,6 +153,7 @@ enum {
 	MLX5_REG_HOST_ENDIANNESS = 0x7004,
 	MLX5_REG_MTMP		 = 0x900a,
 	MLX5_REG_MCIA		 = 0x9014,
+	MLX5_REG_MFRL		 = 0x9028,
 	MLX5_REG_MPCNT		 = 0x9051,
 	MLX5_REG_MCQI		 = 0x9061,
 	MLX5_REG_MCC		 = 0x9062,
@@ -352,8 +352,6 @@ struct mlx5_cmd {
 	spinlock_t	token_lock;
 	u8		token;
 	unsigned long	bitmask;
-	char		wq_name[MLX5_CMD_WQ_MAX_NAME];
-	struct workqueue_struct *wq;
 	struct semaphore sem;
 	struct semaphore pages_sem;
 	enum mlx5_cmd_mode mode;
@@ -514,6 +512,8 @@ struct mlx5_core_health {
 	struct work_struct		work;
 	struct delayed_work		recover_work;
 	unsigned int			last_reset_req;
+	struct work_struct		work_cmd_completion;
+	struct workqueue_struct	       *wq_cmd;
 };
 
 #ifdef RATELIMIT
@@ -662,7 +662,6 @@ struct mlx5_special_contexts {
 };
 
 struct mlx5_flow_root_namespace;
-struct mlx5_dump_data;
 struct mlx5_core_dev {
 	struct pci_dev	       *pdev;
 	/* sync pci state */
@@ -702,7 +701,12 @@ struct mlx5_core_dev {
 	struct mlx5_flow_root_namespace *sniffer_rx_root_ns;
 	struct mlx5_flow_root_namespace *sniffer_tx_root_ns;
 	u32 num_q_counter_allocated[MLX5_INTERFACE_NUMBER];
-	struct mlx5_dump_data	*dump_data;
+	const struct mlx5_crspace_regmap *dump_rege;
+	uint32_t *dump_data;
+	unsigned dump_size;
+	bool dump_valid;
+	bool dump_copyout;
+	struct mtx dump_lock;
 
 	struct sysctl_ctx_list	sysctl_ctx;
 	int			msix_eqvec;

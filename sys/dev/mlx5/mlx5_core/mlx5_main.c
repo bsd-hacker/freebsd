@@ -1301,6 +1301,7 @@ static int init_one(struct pci_dev *pdev,
 	spin_lock_init(&priv->ctx_lock);
 	mutex_init(&dev->pci_status_mutex);
 	mutex_init(&dev->intf_state_mutex);
+	mtx_init(&dev->dump_lock, "mlx5dmp", NULL, MTX_DEF | MTX_NEW);
 	err = mlx5_pci_init(dev, priv);
 	if (err) {
 		device_printf(bsddev, "ERR: mlx5_pci_init failed %d\n", err);
@@ -1335,6 +1336,7 @@ close_pci:
 	mlx5_pci_close(dev, priv);
 clean_dev:
 	sysctl_ctx_free(&dev->sysctl_ctx);
+	mtx_destroy(&dev->dump_lock);
 	kfree(dev);
 	return err;
 }
@@ -1350,10 +1352,11 @@ static void remove_one(struct pci_dev *pdev)
 		return;
 	}
 
-	mlx5_fwdump_clean(dev);
 	mlx5_pagealloc_cleanup(dev);
 	mlx5_health_cleanup(dev);
+	mlx5_fwdump_clean(dev);
 	mlx5_pci_close(dev, priv);
+	mtx_destroy(&dev->dump_lock);
 	pci_set_drvdata(pdev, NULL);
 	sysctl_ctx_free(&dev->sysctl_ctx);
 	kfree(dev);
@@ -1608,13 +1611,13 @@ static int __init init(void)
 	if (err)
 		goto err_debug;
 
-	err = mlx5_fwdump_init();
+	err = mlx5_ctl_init();
 	if (err)
-		goto err_fwdump;
+		goto err_ctl;
  
  	return 0;
  
-err_fwdump:
+err_ctl:
 	pci_unregister_driver(&mlx5_core_driver);
 
 err_debug:
@@ -1623,7 +1626,7 @@ err_debug:
 
 static void __exit cleanup(void)
 {
-	mlx5_fwdump_fini();
+	mlx5_ctl_fini();
 	pci_unregister_driver(&mlx5_core_driver);
 }
 

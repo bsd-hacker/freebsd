@@ -36,9 +36,9 @@
 
 #define DRIVER_NAME "mlx5_core"
 #ifndef DRIVER_VERSION
-#define DRIVER_VERSION "3.5.0"
+#define DRIVER_VERSION "3.5.1"
 #endif
-#define DRIVER_RELDATE "November 2018"
+#define DRIVER_RELDATE "April 2019"
 
 extern int mlx5_core_debug_mask;
 
@@ -82,6 +82,8 @@ int mlx5_query_pcam_reg(struct mlx5_core_dev *dev, u32 *pcam,
 			u8 feature_group, u8 access_reg_group);
 int mlx5_query_mcam_reg(struct mlx5_core_dev *dev, u32 *mcap,
 			u8 feature_group, u8 access_reg_group);
+int mlx5_query_mfrl_reg(struct mlx5_core_dev *mdev, u8 *reset_level);
+int mlx5_set_mfrl_reg(struct mlx5_core_dev *mdev, u8 reset_level);
 int mlx5_cmd_init_hca(struct mlx5_core_dev *dev);
 int mlx5_cmd_teardown_hca(struct mlx5_core_dev *dev);
 int mlx5_cmd_force_teardown_hca(struct mlx5_core_dev *dev);
@@ -102,8 +104,8 @@ void mlx5e_cleanup(void);
 
 int mlx5_rename_eq(struct mlx5_core_dev *dev, int eq_ix, char *name);
 
-int mlx5_fwdump_init(void);
-void mlx5_fwdump_fini(void);
+int mlx5_ctl_init(void);
+void mlx5_ctl_fini(void);
 void mlx5_fwdump_prep(struct mlx5_core_dev *mdev);
 void mlx5_fwdump(struct mlx5_core_dev *mdev);
 void mlx5_fwdump_clean(struct mlx5_core_dev *mdev);

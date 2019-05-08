@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2013-2017, Mellanox Technologies, Ltd.  All rights reserved.
+ * Copyright (c) 2013-2019, Mellanox Technologies, Ltd.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -135,8 +135,10 @@ static bool sensor_fw_synd_rfr(struct mlx5_core_dev *dev)
 	return rfr && synd;
 }
 
-static void mlx5_trigger_cmd_completions(struct mlx5_core_dev *dev)
+static void mlx5_trigger_cmd_completions(struct work_struct *work)
 {
+	struct mlx5_core_dev *dev =
+	    container_of(work, struct mlx5_core_dev, priv.health.work_cmd_completion);
 	unsigned long flags;
 	u64 vector;
 
@@ -271,7 +273,15 @@ void mlx5_enter_error_state(struct mlx5_core_dev *dev, bool force)
 			return;
 		if (!force)
 			mlx5_core_err(dev, "internal state error detected\n");
-		mlx5_trigger_cmd_completions(dev);
+
+		/*
+		 * Queue the command completion handler on the command
+		 * work queue to avoid racing with the real command
+		 * completion handler and then wait for it to
+		 * complete:
+		 */
+		queue_work(dev->priv.health.wq_cmd, &dev->priv.health.work_cmd_completion);
+		flush_workqueue(dev->priv.health.wq_cmd);
 	}
 
 	mutex_lock(&dev->intf_state_mutex);
@@ -669,6 +679,7 @@ void mlx5_health_cleanup(struct mlx5_core_dev *dev)
 
 	destroy_workqueue(health->wq);
 	destroy_workqueue(health->wq_watchdog);
+	destroy_workqueue(health->wq_cmd);
 }
 
 int mlx5_health_init(struct mlx5_core_dev *dev)
@@ -681,19 +692,30 @@ int mlx5_health_init(struct mlx5_core_dev *dev)
 	snprintf(name, sizeof(name), "%s-rec", dev_name(&dev->pdev->dev));
 	health->wq = create_singlethread_workqueue(name);
 	if (!health->wq)
-		return -ENOMEM;
+		goto err_recovery;
 
 	snprintf(name, sizeof(name), "%s-wdg", dev_name(&dev->pdev->dev));
 	health->wq_watchdog = create_singlethread_workqueue(name);
-	if (!health->wq_watchdog) {
-		destroy_workqueue(health->wq);
-		return -ENOMEM;
-	}
+	if (!health->wq_watchdog)
+		goto err_watchdog;
+
+	snprintf(name, sizeof(name), "%s-cmd", dev_name(&dev->pdev->dev));
+	health->wq_cmd = create_singlethread_workqueue(name);
+	if (!health->wq_cmd)
+		goto err_cmd;
 
 	spin_lock_init(&health->wq_lock);
 	INIT_WORK(&health->work, health_care);
 	INIT_WORK(&health->work_watchdog, health_watchdog);
+	INIT_WORK(&health->work_cmd_completion, mlx5_trigger_cmd_completions);
 	INIT_DELAYED_WORK(&health->recover_work, health_recover);
 
 	return 0;
+
+err_cmd:
+	destroy_workqueue(health->wq_watchdog);
+err_watchdog:
+	destroy_workqueue(health->wq);
+err_recovery:
+	return -ENOMEM;
 }
