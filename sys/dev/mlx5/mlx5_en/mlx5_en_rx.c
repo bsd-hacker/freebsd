@@ -222,28 +222,31 @@ mlx5e_lro_update_hdr(struct mbuf *mb, struct mlx5_cqe64 *cqe)
 static uint64_t
 mlx5e_mbuf_tstmp(struct mlx5e_priv *priv, uint64_t hw_tstmp)
 {
-	struct mlx5e_clbr_point *cp;
+	struct mlx5e_clbr_point *cp, dcp;
 	uint64_t a1, a2, res;
 	u_int gen;
 
 	do {
 		cp = &priv->clbr_points[priv->clbr_curr];
 		gen = atomic_load_acq_int(&cp->clbr_gen);
-		a1 = (hw_tstmp - cp->clbr_hw_prev) >> MLX5E_TSTMP_PREC;
-		a2 = (cp->base_curr - cp->base_prev) >> MLX5E_TSTMP_PREC;
-		res = (a1 * a2) << MLX5E_TSTMP_PREC;
-
-		/*
-		 * Divisor cannot be zero because calibration callback
-		 * checks for the condition and disables timestamping
-		 * if clock halted.
-		 */
-		res /= (cp->clbr_hw_curr - cp->clbr_hw_prev) >>
-		    MLX5E_TSTMP_PREC;
-
-		res += cp->base_prev;
+		if (gen == 0)
+			return (0);
+		dcp = *cp;
 		atomic_thread_fence_acq();
-	} while (gen == 0 || gen != cp->clbr_gen);
+	} while (gen != cp->clbr_gen);
+
+	a1 = (hw_tstmp - dcp.clbr_hw_prev) >> MLX5E_TSTMP_PREC;
+	a2 = (dcp.base_curr - dcp.base_prev) >> MLX5E_TSTMP_PREC;
+	res = (a1 * a2) << MLX5E_TSTMP_PREC;
+
+	/*
+	 * Divisor cannot be zero because calibration callback
+	 * checks for the condition and disables timestamping
+	 * if clock halted.
+	 */
+	res /= (dcp.clbr_hw_curr - dcp.clbr_hw_prev) >> MLX5E_TSTMP_PREC;
+
+	res += dcp.base_prev;
 	return (res);
 }
 
@@ -385,7 +388,12 @@ mlx5e_decompress_cqe(struct mlx5e_cq *cq, struct mlx5_cqe64 *title,
 	 */
 	title->byte_cnt = mini->byte_cnt;
 	title->wqe_counter = cpu_to_be16((wqe_counter + i) & cq->wq.sz_m1);
-	title->check_sum = mini->checksum;
+	title->rss_hash_result = mini->rx_hash_result;
+	/*
+	 * Since we use MLX5_CQE_FORMAT_HASH when creating the RX CQ,
+	 * the value of the checksum should be ignored.
+	 */
+	title->check_sum = 0;
 	title->op_own = (title->op_own & 0xf0) |
 	    (((cq->wq.cc + i) >> cq->wq.log_sz) & 1);
 }
@@ -585,6 +593,9 @@ mlx5e_rx_cq_comp(struct mlx5_core_cq *mcq)
 		mlx5e_post_rx_wqes(rq);
 	}
 	mlx5e_post_rx_wqes(rq);
+	/* check for dynamic interrupt moderation callback */
+	if (rq->dim.mode != NET_DIM_CQ_PERIOD_MODE_DISABLED)
+		net_dim(&rq->dim, rq->stats.packets, rq->stats.bytes);
 	mlx5e_cq_arm(&rq->cq, MLX5_GET_DOORBELL_LOCK(&rq->channel->priv->doorbell_lock));
 	tcp_lro_flush_all(&rq->lro);
 	mtx_unlock(&rq->mtx);

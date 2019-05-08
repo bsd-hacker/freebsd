@@ -32,6 +32,8 @@
 #include <linux/kernel.h>
 #include <linux/sched.h>
 
+#include <dev/mlxfw/mlxfw.h>
+
 #define DRIVER_NAME "mlx5_core"
 #ifndef DRIVER_VERSION
 #define DRIVER_VERSION "3.5.0"
@@ -76,9 +78,14 @@ int mlx5_query_hca_caps(struct mlx5_core_dev *dev);
 int mlx5_query_board_id(struct mlx5_core_dev *dev);
 int mlx5_query_qcam_reg(struct mlx5_core_dev *mdev, u32 *qcam,
 			u8 feature_group, u8 access_reg_group);
+int mlx5_query_pcam_reg(struct mlx5_core_dev *dev, u32 *pcam,
+			u8 feature_group, u8 access_reg_group);
+int mlx5_query_mcam_reg(struct mlx5_core_dev *dev, u32 *mcap,
+			u8 feature_group, u8 access_reg_group);
 int mlx5_cmd_init_hca(struct mlx5_core_dev *dev);
 int mlx5_cmd_teardown_hca(struct mlx5_core_dev *dev);
 int mlx5_cmd_force_teardown_hca(struct mlx5_core_dev *dev);
+int mlx5_cmd_fast_teardown_hca(struct mlx5_core_dev *dev);
 void mlx5_core_event(struct mlx5_core_dev *dev, enum mlx5_dev_event event,
 		     unsigned long param);
 void mlx5_enter_error_state(struct mlx5_core_dev *dev, bool force);
@@ -87,6 +94,8 @@ void mlx5_recover_device(struct mlx5_core_dev *dev);
 
 int mlx5_register_device(struct mlx5_core_dev *dev);
 void mlx5_unregister_device(struct mlx5_core_dev *dev);
+
+int mlx5_firmware_flash(struct mlx5_core_dev *dev, const struct firmware *fw);
 
 void mlx5e_init(void);
 void mlx5e_cleanup(void);
@@ -107,5 +116,16 @@ struct mlx5_crspace_regmap {
 extern struct pci_driver mlx5_core_driver;
 
 SYSCTL_DECL(_hw_mlx5);
+
+enum {
+	MLX5_NIC_IFC_FULL		= 0,
+	MLX5_NIC_IFC_DISABLED		= 1,
+	MLX5_NIC_IFC_NO_DRAM_NIC	= 2,
+	MLX5_NIC_IFC_INVALID		= 3,
+	MLX5_NIC_IFC_SW_RESET		= 7,
+};
+
+u8 mlx5_get_nic_state(struct mlx5_core_dev *dev);
+void mlx5_set_nic_state(struct mlx5_core_dev *dev, u8 state);
 
 #endif /* __MLX5_CORE_H__ */

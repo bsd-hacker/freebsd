@@ -412,6 +412,7 @@ static int mlx5_internal_err_ret_value(struct mlx5_core_dev *dev, u16 op,
 	case MLX5_CMD_OP_MODIFY_HCA_VPORT_CONTEXT:
 	case MLX5_CMD_OP_QUERY_HCA_VPORT_GID:
 	case MLX5_CMD_OP_QUERY_HCA_VPORT_PKEY:
+	case MLX5_CMD_OP_QUERY_VNIC_ENV:
 	case MLX5_CMD_OP_QUERY_VPORT_COUNTER:
 	case MLX5_CMD_OP_ALLOC_Q_COUNTER:
 	case MLX5_CMD_OP_QUERY_Q_COUNTER:
@@ -537,6 +538,7 @@ const char *mlx5_command_str(int command)
 	MLX5_COMMAND_STR_CASE(MODIFY_HCA_VPORT_CONTEXT);
 	MLX5_COMMAND_STR_CASE(QUERY_HCA_VPORT_GID);
 	MLX5_COMMAND_STR_CASE(QUERY_HCA_VPORT_PKEY);
+	MLX5_COMMAND_STR_CASE(QUERY_VNIC_ENV);
 	MLX5_COMMAND_STR_CASE(QUERY_VPORT_COUNTER);
 	MLX5_COMMAND_STR_CASE(SET_WOL_ROL);
 	MLX5_COMMAND_STR_CASE(QUERY_WOL_ROL);
@@ -1143,6 +1145,9 @@ static void mlx5_cmd_change_mod(struct mlx5_core_dev *dev, int mode)
 	struct mlx5_cmd *cmd = &dev->cmd;
 	int i;
 
+	if (cmd->mode == mode)
+		return;
+
 	for (i = 0; i < cmd->max_reg_cmds; i++)
 		down(&cmd->sem);
 
@@ -1212,7 +1217,7 @@ void mlx5_cmd_comp_handler(struct mlx5_core_dev *dev, u64 vector_flags,
 				ent->ret = verify_signature(ent);
 			else
 				ent->ret = 0;
-			ent->status = ent->lay->status_own >> 1;
+
 			if (triggered)
 				ent->status = MLX5_DRIVER_STATUS_ABORTED;
 			else
@@ -1232,7 +1237,7 @@ EXPORT_SYMBOL(mlx5_cmd_comp_handler);
 
 static int status_to_err(u8 status)
 {
-	return status ? -1 : 0; /* TBD more meaningful codes */
+	return status ? -EIO : 0; /* TBD more meaningful codes */
 }
 
 static struct mlx5_cmd_msg *alloc_msg(struct mlx5_core_dev *dev, int in_size,

@@ -170,7 +170,7 @@ mlx5_fwdump_clean(struct mlx5_core_dev *mdev)
 }
 
 static int
-mlx5_dbsf_to_core(const struct mlx5_fwdump_addr *devaddr,
+mlx5_dbsf_to_core(const struct mlx5_tool_addr *devaddr,
     struct mlx5_core_dev **mdev)
 {
 	device_t dev;
@@ -231,8 +231,10 @@ mlx5_fwdump_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag,
 {
 	struct mlx5_core_dev *mdev;
 	struct mlx5_fwdump_get *fwg;
-	struct mlx5_fwdump_addr *devaddr;
+	struct mlx5_tool_addr *devaddr;
 	struct mlx5_dump_data *dd;
+	struct mlx5_fw_update *fu;
+	struct firmware fake_fw;
 	int error;
 
 	error = 0;
@@ -254,7 +256,7 @@ mlx5_fwdump_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag,
 			error = EBADF;
 			break;
 		}
-		devaddr = (struct mlx5_fwdump_addr *)data;
+		devaddr = (struct mlx5_tool_addr *)data;
 		error = mlx5_dbsf_to_core(devaddr, &mdev);
 		if (error != 0)
 			break;
@@ -269,11 +271,41 @@ mlx5_fwdump_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag,
 			error = EBADF;
 			break;
 		}
-		devaddr = (struct mlx5_fwdump_addr *)data;
+		devaddr = (struct mlx5_tool_addr *)data;
 		error = mlx5_dbsf_to_core(devaddr, &mdev);
 		if (error != 0)
 			break;
 		mlx5_fwdump(mdev);
+		break;
+	case MLX5_FW_UPDATE:
+		if ((fflag & FWRITE) == 0) {
+			error = EBADF;
+			break;
+		}
+		fu = (struct mlx5_fw_update *)data;
+		if (fu->img_fw_data_len > 10 * 1024 * 1024) {
+			error = EINVAL;
+			break;
+		}
+		devaddr = &fu->devaddr;
+		error = mlx5_dbsf_to_core(devaddr, &mdev);
+		if (error != 0)
+			break;
+		bzero(&fake_fw, sizeof(fake_fw));
+		fake_fw.name = "umlx_fw_up";
+		fake_fw.datasize = fu->img_fw_data_len;
+		fake_fw.version = 1;
+		fake_fw.data = (void *)kmem_malloc(fu->img_fw_data_len,
+		    M_WAITOK);
+		if (fake_fw.data == NULL) {
+			error = ENOMEM;
+			break;
+		}
+		error = copyin(fu->img_fw_data, __DECONST(void *, fake_fw.data),
+		    fu->img_fw_data_len);
+		if (error == 0)
+			error = -mlx5_firmware_flash(mdev, &fake_fw);
+		kmem_free((vm_offset_t)fake_fw.data, fu->img_fw_data_len);
 		break;
 	default:
 		error = ENOTTY;
