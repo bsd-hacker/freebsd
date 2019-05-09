@@ -20,6 +20,7 @@
 # compiler support for that feature:
 #
 # - c++11:     supports full (or nearly full) C++11 programming environment.
+# - coverage:  supports runtime coverage via the `--coverage` flag.
 # - retpoline: supports the retpoline speculative execution vulnerability
 #              mitigation.
 #
