@@ -33,6 +33,7 @@
 
 from __future__ import print_function
 import array
+import binascii
 from fcntl import ioctl
 import os
 import random
