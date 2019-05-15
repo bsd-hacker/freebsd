@@ -13,6 +13,7 @@
 # linker support for that feature:
 #
 # - build-id:  support for generating a Build-ID note
+# - dwarfv4:   support for DWARF v4 format
 # - retpoline: support for generating PLT with retpoline speculative
 #              execution vulnerability mitigation
 #
@@ -87,6 +88,7 @@ ${X_}LINKER_FEATURES+=	build-id
 ${X_}LINKER_FEATURES+=	ifunc
 .endif
 .if ${${X_}LINKER_TYPE} == "lld" && ${${X_}LINKER_VERSION} >= 60000
+${X_}LINKER_FEATURES+=	dwarfv4
 ${X_}LINKER_FEATURES+=	retpoline
 .endif
 .endif

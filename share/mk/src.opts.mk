@@ -318,13 +318,6 @@ __DEFAULT_NO_OPTIONS+=CLANG CLANG_BOOTSTRAP CLANG_IS_CC LLD
 .if ${__T} == "aarch64" || ${__T:Mriscv*} != ""
 BROKEN_OPTIONS+=BINUTILS BINUTILS_BOOTSTRAP GCC GCC_BOOTSTRAP GDB
 .endif
-# --coverage support does not work on arm/armv6 because LLD/LLVM is disabled on
-# these platforms by default, and the binutils in base lacks DWARF v4 support.
-#
-# Force support off.
-.if ${__T} == "arm" || ${__T} == "armv6"
-BROKEN_OPTIONS+=COVERAGE COVERAGE_SUPPORT
-.endif
 .if ${__T:Mriscv*} != ""
 BROKEN_OPTIONS+=OFED
 .endif

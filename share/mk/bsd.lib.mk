@@ -5,9 +5,10 @@
 .include <bsd.init.mk>
 .include <bsd.compiler.mk>
 
-# This forces coverage off if the compiler isn't capable, as src.opts.mk is too
-# late sometimes.
-.if !${COMPILER_FEATURES:Mcoverage}
+# This forces coverage off if the compiler/linker isn't capable, as src.opts.mk
+# is not always used in time.
+.if !${COMPILER_FEATURES:Mcoverage} && \
+    (${LINKER_TYPE} == "lld" && !${LINKER_FEATURES:Mdwarfv4})
 MK_COVERAGE:=	no
 .endif
 
