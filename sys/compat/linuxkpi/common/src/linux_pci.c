@@ -417,6 +417,22 @@ linux_pci_unregister_driver(struct pci_driver *pdrv)
 	mtx_unlock(&Giant);
 }
 
+void
+linux_pci_unregister_drm_driver(struct pci_driver *pdrv)
+{
+	devclass_t bus;
+
+	bus = devclass_find("vgapci");
+
+	spin_lock(&pci_lock);
+	list_del(&pdrv->links);
+	spin_unlock(&pci_lock);
+	mtx_lock(&Giant);
+	if (bus != NULL)
+		devclass_delete_driver(bus, &pdrv->bsddriver);
+	mtx_unlock(&Giant);
+}
+
 CTASSERT(sizeof(dma_addr_t) <= sizeof(uint64_t));
 
 struct linux_dma_obj {
@@ -504,6 +520,7 @@ linux_dma_alloc_coherent(struct device *dev, size_t size,
 	return (mem);
 }
 
+#if defined(__i386__) || defined(__amd64__) || defined(__aarch64__)
 dma_addr_t
 linux_dma_map_phys(struct device *dev, vm_paddr_t phys, size_t len)
 {
@@ -513,6 +530,15 @@ linux_dma_map_phys(struct device *dev, vm_paddr_t phys, size_t len)
 	bus_dma_segment_t seg;
 
 	priv = dev->dma_priv;
+
+	/*
+	 * If the resultant mapping will be entirely 1:1 with the
+	 * physical address, short-circuit the remainder of the
+	 * bus_dma API.  This avoids tracking collisions in the pctrie
+	 * with the additional benefit of reducing overhead.
+	 */
+	if (bus_dma_id_mapped(priv->dmat, phys, len))
+		return (phys);
 
 	obj = uma_zalloc(linux_dma_obj_zone, 0);
 
@@ -546,7 +572,15 @@ linux_dma_map_phys(struct device *dev, vm_paddr_t phys, size_t len)
 	DMA_PRIV_UNLOCK(priv);
 	return (obj->dma_addr);
 }
+#else
+dma_addr_t
+linux_dma_map_phys(struct device *dev, vm_paddr_t phys, size_t len)
+{
+	return (phys);
+}
+#endif
 
+#if defined(__i386__) || defined(__amd64__) || defined(__aarch64__)
 void
 linux_dma_unmap(struct device *dev, dma_addr_t dma_addr, size_t len)
 {
@@ -554,6 +588,9 @@ linux_dma_unmap(struct device *dev, dma_addr_t dma_addr, size_t len)
 	struct linux_dma_obj *obj;
 
 	priv = dev->dma_priv;
+
+	if (pctrie_is_empty(&priv->ptree))
+		return;
 
 	DMA_PRIV_LOCK(priv);
 	obj = LINUX_DMA_PCTRIE_LOOKUP(&priv->ptree, dma_addr);
@@ -568,6 +605,12 @@ linux_dma_unmap(struct device *dev, dma_addr_t dma_addr, size_t len)
 
 	uma_zfree(linux_dma_obj_zone, obj);
 }
+#else
+void
+linux_dma_unmap(struct device *dev, dma_addr_t dma_addr, size_t len)
+{
+}
+#endif
 
 int
 linux_dma_map_sg_attrs(struct device *dev, struct scatterlist *sgl, int nents,
