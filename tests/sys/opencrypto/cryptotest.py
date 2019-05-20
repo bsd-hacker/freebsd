@@ -243,7 +243,11 @@ def GenTestCase(cname):
                     self.assertEqual(r, ct)
 
         def runCCMEncrypt(self, fname):
-            for data in cryptodev.KATCCMParser(fname):
+            with cryptodev.KATCCMParser(fname) as parser:
+                self.runCCMEncryptWithParser(parser)
+
+        def runCCMEncryptWithParser(self, parser):
+            for data in next(parser):
                 Nlen = int(data['Nlen'])
                 if Nlen != 12:
                     # OCF only supports 12 byte IVs
@@ -278,11 +282,15 @@ def GenTestCase(cname):
                     repr(data) + " on " + cname)
 
         def runCCMDecrypt(self, fname):
+            with cryptodev.KATCCMParser(fname) as parser:
+                self.runCCMDecryptWithParser(parser)
+
+        def runCCMDecryptWithParser(self, parser):
             # XXX: Note that all of the current CCM
             # decryption test vectors use IV and tag sizes
             # that aren't supported by OCF none of the
             # tests are actually ran.
-            for data in cryptodev.KATCCMParser(fname):
+            for data in next(parser):
                 Nlen = int(data['Nlen'])
                 if Nlen != 12:
                     # OCF only supports 12 byte IVs

@@ -413,18 +413,24 @@ class KATParser:
 
             yield values
 
-if sys.version_info[0] < 3:
-    KATParser.next = KATParser.__next__
-
 # The CCM files use a bit of a different syntax that doesn't quite fit
 # the generic KATParser.  In particular, some keys are set globally at
 # the start of the file, and some are set globally at the start of a
 # section.
 class KATCCMParser:
     def __init__(self, fname):
-        self.fp = open(fname)
         self._pending = None
+        self.fname = fname
+        self.fp = None
+
+    def __enter__(self):
+        self.fp = open(self.fname)
         self.read_globals()
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        if self.fp is not None:
+            self.fp.close()
 
     def read_globals(self):
         self.global_values = {}
@@ -485,6 +491,9 @@ class KATCCMParser:
             self.section_values[f] = v
 
     def __iter__(self):
+        return self
+
+    def __next__(self):
         while True:
             if self._pending:
                 line = self._pending
@@ -492,7 +501,7 @@ class KATCCMParser:
             else:
                 line = self.fp.readline()
                 if not line:
-                    return
+                    raise StopIteration
 
             if (line and line[0] == '#') or not line.strip():
                 continue
@@ -521,9 +530,12 @@ class KATCCMParser:
 
             yield values
 
-
 def _spdechex(s):
     return binascii.hexlify(''.join(s.split()))
+
+if sys.version_info[0] < 3:
+    KATCCMParser.next = KATCCMParser.__next__
+    KATParser.next = KATParser.__next__
 
 if __name__ == '__main__':
     if True:
@@ -540,11 +552,13 @@ if __name__ == '__main__':
             except IOError:
                 pass
     elif False:
-        kp = KATParser('/usr/home/jmg/aesni.testing/format tweak value input - data unit seq no/XTSGenAES128.rsp', [ 'COUNT', 'DataUnitLen', 'Key', 'DataUnitSeqNumber', 'PT', 'CT' ])
-        for mode, ni in kp:
-            print(i, ni)
-            for j in ni:
-                print(j)
+        columns = [ 'COUNT', 'DataUnitLen', 'Key', 'DataUnitSeqNumber', 'PT', 'CT' ]
+        fname = '/usr/home/jmg/aesni.testing/format tweak value input - data unit seq no/XTSGenAES128.rsp'
+        with KATParser(fname, columns) as kp:
+            for mode, ni in kp:
+                print(i, ni)
+                for j in ni:
+                    print(j)
     elif False:
         key = _spdechex('c939cc13397c1d37de6ae0e1cb7c423c')
         iv = _spdechex('00000000000000000000000000000001')
