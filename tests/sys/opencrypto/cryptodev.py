@@ -356,7 +356,7 @@ class KATParser:
                 didread = True
 
             if didread and not i:
-                raise StopIteration
+                return
 
             if not i.startswith('#') and i.strip():
                 break
@@ -501,7 +501,7 @@ class KATCCMParser:
             else:
                 line = self.fp.readline()
                 if not line:
-                    raise StopIteration
+                    return
 
             if (line and line[0] == '#') or not line.strip():
                 continue
