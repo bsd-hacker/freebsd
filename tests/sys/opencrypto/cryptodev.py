@@ -552,15 +552,15 @@ if __name__ == '__main__':
         c = Crypto(CRYPTO_AES_ICM, key)
         enc = c.encrypt(pt, iv)
 
-        print('enc:', binascii.unhexlify(enc))
-        print(' ct:', binascii.unhexlify(ct))
+        print('enc:', binascii.hexlify(enc))
+        print(' ct:', binascii.hexlify(ct))
 
         assert ct == enc
 
         dec = c.decrypt(ct, iv)
 
-        print('dec:', binascii.unhexlify(dec))
-        print(' pt:', binascii.unhexlify(pt))
+        print('dec:', binascii.hexlify(dec))
+        print(' pt:', binascii.hexlify(pt))
 
         assert pt == dec
     elif False:

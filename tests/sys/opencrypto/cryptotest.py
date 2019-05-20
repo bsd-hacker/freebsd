@@ -164,8 +164,8 @@ def GenTestCase(cname):
                                 if e.errno != errno.EINVAL:
                                     raise
                                 continue
-                            data['rpt'] = binascii.unhexlify(rpt)
-                            data['rtag'] = binascii.unhexlify(rtag)
+                            data['rpt'] = binascii.hexlify(rpt)
+                            data['rtag'] = binascii.hexlify(rtag)
                             self.assertEqual(rpt, pt,
                                 repr(data))
 
