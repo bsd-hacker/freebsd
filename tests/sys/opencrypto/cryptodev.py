@@ -413,6 +413,9 @@ class KATParser:
 
             yield values
 
+if sys.version_info[0] < 3:
+    KATParser.next = KATParser.__next__
+
 # The CCM files use a bit of a different syntax that doesn't quite fit
 # the generic KATParser.  In particular, some keys are set globally at
 # the start of the file, and some are set globally at the start of a
