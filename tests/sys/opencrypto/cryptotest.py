@@ -248,15 +248,15 @@ def GenTestCase(cname):
                 if Nlen != 12:
                     # OCF only supports 12 byte IVs
                     continue
-                key = data['Key'].decode('hex')
-                nonce = data['Nonce'].decode('hex')
+                key = binascii.unhexlify(data['Key'])
+                nonce = binascii.unhexlify(data['Nonce'])
                 Alen = int(data['Alen'])
                 if Alen != 0:
-                    aad = data['Adata'].decode('hex')
+                    aad = binascii.unhexlify(data['Adata'])
                 else:
                     aad = None
-                payload = data['Payload'].decode('hex')
-                ct = data['CT'].decode('hex')
+                payload = binascii.unhexlify(data['Payload'])
+                ct = binascii.unhexlify(data['CT'])
 
                 try:
                     c = Crypto(crid=crid,
@@ -291,14 +291,14 @@ def GenTestCase(cname):
                 if Tlen != 16:
                     # OCF only supports 16 byte tags
                     continue
-                key = data['Key'].decode('hex')
-                nonce = data['Nonce'].decode('hex')
+                key = binascii.unhexlify(data['Key'])
+                nonce = binascii.unhexlify(data['Nonce'])
                 Alen = int(data['Alen'])
                 if Alen != 0:
-                    aad = data['Adata'].decode('hex')
+                    aad = binascii.unhexlify(data['Adata'])
                 else:
                     aad = None
-                ct = data['CT'].decode('hex')
+                ct = binascii.unhexlify(data['CT'])
                 tag = ct[-16:]
                 ct = ct[:-16]
 
@@ -320,7 +320,7 @@ def GenTestCase(cname):
                     r = Crypto.decrypt(c, payload, nonce,
                         aad, tag)
 
-                    payload = data['Payload'].decode('hex')
+                    payload = binascii.unhexlify(data['Payload'])
                     plen = int(data('Plen'))
                     payload = payload[:plen]
                     self.assertEqual(r, payload,
@@ -405,9 +405,9 @@ def GenTestCase(cname):
                     continue
 
                 for data in lines:
-                    msg = data['Msg'].decode('hex')
+                    msg = binascii.unhexlify(data['Msg'])
                     msg = msg[:int(data['Len'])]
-                    md = data['MD'].decode('hex')
+                    md = binascii.unhexlify(data['MD'])
 
                     try:
                         c = Crypto(mac=alg, crid=crid,
