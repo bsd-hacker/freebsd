@@ -381,9 +381,12 @@ def GenTestCase(cname):
             # Skip SHA512_(224|256) tests
             if fname.find('SHA512_') != -1:
                 return
+            columns = [ 'Len', 'Msg', 'MD' ]
+            with cryptodev.KATParser(fname, columns) as parser:
+                self.runSHAWithParser(parser)
 
-            for hashlength, lines in cryptodev.KATParser(fname,
-                [ 'Len', 'Msg', 'MD' ]):
+        def runSHAWithParser(self, parser):
+            for hashlength, lines in next(parser):
                 # E.g., hashlength will be "L=20" (bytes)
                 hashlen = int(hashlength.split("=")[1])
 
