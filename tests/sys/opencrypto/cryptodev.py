@@ -245,11 +245,10 @@ class Crypto:
         caead.flags = 0
         src = str_to_ascii(src)
         caead.len = len(src)
-        src = str_to_ascii(src)
-        s = array.array("B", src)
+        s = array.array('B', src)
         caead.src = caead.dst = s.buffer_info()[0]
-        caead.aadlen = len(aad)
         aad = str_to_ascii(aad)
+        caead.aadlen = len(aad)
         saad = array.array('B', aad)
         caead.aad = saad.buffer_info()[0]
 
@@ -262,7 +261,6 @@ class Crypto:
         else:
             assert len(tag) == self._maclen, \
                 '%d != %d' % (len(tag), self._maclen)
-            tag = str_to_ascii(tag)
             tag = array.array('B', tag)
 
         caead.tag = tag.buffer_info()[0]
@@ -288,7 +286,7 @@ class Crypto:
         cop.op = op
         cop.flags = 0
         cop.len = len(inp)
-        s = array.array('B', str_to_ascii(inp))
+        s = array.array('B', inp)
         cop.src = s.buffer_info()[0]
         cop.dst = out.buffer_info()[0]
         if self._maclen is not None:
