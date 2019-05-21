@@ -153,6 +153,11 @@ def _findop(crid, name):
 
     return fop.crid, name
 
+def array_tobytes(array_obj):
+    if sys.version_info[:2] >= (3, 2):
+        return array_obj.tobytes()
+    return array_obj.tostring()
+
 class Crypto:
     @staticmethod
     def findcrid(name):
@@ -224,12 +229,13 @@ class Crypto:
         ivbuf = array.array('B', self._to_bytes(iv))
         cop.iv = ivbuf.buffer_info()[0]
 
-        #print('cop:', cop)
-        ioctl(_cryptodev, CIOCCRYPT, str(cop))
+        cop_b = bytes(cop)
+        #print('cop:', cop_b)
+        ioctl(_cryptodev, CIOCCRYPT, cop_b)
 
-        s = s.tostring()
+        s = array_tobytes(s)
         if self._maclen is not None:
-            return s, m.tostring()
+            return s, array_tobytes(m)
 
         return s
 
@@ -265,11 +271,12 @@ class Crypto:
         caead.ivlen = len(iv)
         caead.iv = ivbuf.buffer_info()[0]
 
-        ioctl(_cryptodev, CIOCCRYPTAEAD, self._to_bytes(str(caead)))
+        caead_b = bytes(caead)
+        ioctl(_cryptodev, CIOCCRYPTAEAD, caead_b)
 
-        s = s.tostring()
+        s = array_tobytes(s)
 
-        return s, tag.tostring()
+        return s, array_tobytes(tag)
 
     def perftest(self, op, size, timeo=3):
         inp = array.array('B', (random.randint(0, 255) for x in range(size)))
@@ -299,8 +306,9 @@ class Crypto:
 
         start = time.time()
         reps = 0
+        cop_b = bytes(cop)
         while not exit[0]:
-            ioctl(_cryptodev, CIOCCRYPT, self._to_bytes(str(cop)))
+            ioctl(_cryptodev, CIOCCRYPT, cop_b)
             reps += 1
 
         end = time.time()
