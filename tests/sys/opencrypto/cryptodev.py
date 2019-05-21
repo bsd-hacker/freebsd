@@ -146,7 +146,7 @@ def str_to_ascii(val):
 def _findop(crid, name):
     fop = FindOp()
     fop.crid = crid
-    fop.name = name.encode("ascii")
+    fop.name = str_to_ascii(name)
     s = array.array('B', fop.pack_hdr())
     ioctl(_cryptodev, CIOCFINDDEV, s, 1)
     fop.unpack(s)
