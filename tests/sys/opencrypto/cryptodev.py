@@ -137,6 +137,12 @@ def _getdev():
 
 _cryptodev = _getdev()
 
+def str_to_ascii(val):
+    if sys.version_info[0] >= 3:
+        if isinstance(val, str):
+            return val.encode("ascii")
+    return val
+
 def _findop(crid, name):
     fop = FindOp()
     fop.crid = crid
@@ -208,13 +214,6 @@ class Crypto:
             pass
         self._ses = None
 
-    @staticmethod
-    def _to_bytes(val):
-        if sys.version_info[0] >= 3:
-            if isinstance(val, str):
-                return val.encode("ascii")
-        return val
-
     def _doop(self, op, src, iv):
         cop = CryptOp()
         cop.ses = self._ses
@@ -226,7 +225,7 @@ class Crypto:
         if self._maclen is not None:
             m = array.array('B', [0] * self._maclen)
             cop.mac = m.buffer_info()[0]
-        ivbuf = array.array('B', self._to_bytes(iv))
+        ivbuf = array.array('B', str_to_ascii(iv))
         cop.iv = ivbuf.buffer_info()[0]
 
         cop_b = bytes(cop)
@@ -246,11 +245,11 @@ class Crypto:
         caead.flags = CRD_F_IV_EXPLICIT
         caead.flags = 0
         caead.len = len(src)
-        src = self._to_bytes(src)
+        src = str_to_ascii(src)
         s = array.array("B", src)
         caead.src = caead.dst = s.buffer_info()[0]
         caead.aadlen = len(aad)
-        aad = self._to_bytes(aad)
+        aad = str_to_ascii(aad)
         saad = array.array('B', aad)
         caead.aad = saad.buffer_info()[0]
 
@@ -262,7 +261,7 @@ class Crypto:
         else:
             assert len(tag) == self._maclen, \
                 '%d != %d' % (len(tag), self._maclen)
-            tag = self._to_bytes(tag)
+            tag = str_to_ascii(tag)
             tag = array.array('B', tag)
 
         caead.tag = tag.buffer_info()[0]
@@ -280,7 +279,7 @@ class Crypto:
 
     def perftest(self, op, size, timeo=3):
         inp = array.array('B', (random.randint(0, 255) for x in range(size)))
-        out = array.array('B', self._to_bytes(inp))
+        out = array.array('B', str_to_ascii(inp))
 
         # prep ioctl
         cop = CryptOp()
@@ -288,7 +287,7 @@ class Crypto:
         cop.op = op
         cop.flags = 0
         cop.len = len(inp)
-        s = array.array('B', self._to_bytes(inp))
+        s = array.array('B', str_to_ascii(inp))
         cop.src = s.buffer_info()[0]
         cop.dst = out.buffer_info()[0]
         if self._maclen is not None:
