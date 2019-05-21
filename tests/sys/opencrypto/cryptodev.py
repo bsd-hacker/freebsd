@@ -228,9 +228,8 @@ class Crypto:
         ivbuf = array.array('B', str_to_ascii(iv))
         cop.iv = ivbuf.buffer_info()[0]
 
-        cop_b = bytes(cop)
-        #print('cop:', cop_b)
-        ioctl(_cryptodev, CIOCCRYPT, cop_b)
+        #print('cop:', cop)
+        ioctl(_cryptodev, CIOCCRYPT, bytes(cop))
 
         s = array_tobytes(s)
         if self._maclen is not None:
@@ -244,6 +243,7 @@ class Crypto:
         caead.op = op
         caead.flags = CRD_F_IV_EXPLICIT
         caead.flags = 0
+        src = str_to_ascii(src)
         caead.len = len(src)
         src = str_to_ascii(src)
         s = array.array("B", src)
@@ -256,6 +256,7 @@ class Crypto:
         if self._maclen is None:
             raise ValueError('must have a tag length')
 
+        tag = str_to_ascii(tag)
         if tag is None:
             tag = array.array('B', [0] * self._maclen)
         else:
@@ -270,8 +271,7 @@ class Crypto:
         caead.ivlen = len(iv)
         caead.iv = ivbuf.buffer_info()[0]
 
-        caead_b = bytes(caead)
-        ioctl(_cryptodev, CIOCCRYPTAEAD, caead_b)
+        ioctl(_cryptodev, CIOCCRYPTAEAD, bytes(caead))
 
         s = array_tobytes(s)
 
@@ -279,7 +279,8 @@ class Crypto:
 
     def perftest(self, op, size, timeo=3):
         inp = array.array('B', (random.randint(0, 255) for x in range(size)))
-        out = array.array('B', str_to_ascii(inp))
+        inp = str_to_ascii(inp)
+        out = array.array('B', inp)
 
         # prep ioctl
         cop = CryptOp()
@@ -305,9 +306,9 @@ class Crypto:
 
         start = time.time()
         reps = 0
-        cop_b = bytes(cop)
+        cop = bytes(cop)
         while not exit[0]:
-            ioctl(_cryptodev, CIOCCRYPT, cop_b)
+            ioctl(_cryptodev, CIOCCRYPT, cop)
             reps += 1
 
         end = time.time()
