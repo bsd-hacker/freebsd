@@ -9,7 +9,7 @@
 # This forces coverage off if the compiler/linker isn't capable, as src.opts.mk
 # is not always used in time.
 .if !${COMPILER_FEATURES:Mcoverage} && \
-    (${LINKER_TYPE} == "lld" && !${LINKER_FEATURES:Mdwarfv4})
+    ${LINKER_TYPE} != "lld" || !${LINKER_FEATURES:Mdwarfv4}
 MK_COVERAGE:=	no
 .endif
 
