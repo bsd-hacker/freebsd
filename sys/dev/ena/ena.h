@@ -1,7 +1,7 @@
 /*-
  * BSD LICENSE
  *
- * Copyright (c) 2015-2017 Amazon.com, Inc. or its affiliates.
+ * Copyright (c) 2015-2019 Amazon.com, Inc. or its affiliates.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -39,9 +39,9 @@
 #include "ena-com/ena_com.h"
 #include "ena-com/ena_eth_com.h"
 
-#define DRV_MODULE_VER_MAJOR	0
-#define DRV_MODULE_VER_MINOR	8
-#define DRV_MODULE_VER_SUBMINOR 4
+#define DRV_MODULE_VER_MAJOR	2
+#define DRV_MODULE_VER_MINOR	0
+#define DRV_MODULE_VER_SUBMINOR 0
 
 #define DRV_MODULE_NAME		"ena"
 
@@ -153,6 +153,33 @@
 #define	PCI_DEV_ID_ENA_LLQ_PF	0x1ec2
 #define	PCI_DEV_ID_ENA_VF	0xec20
 #define	PCI_DEV_ID_ENA_LLQ_VF	0xec21
+
+/*
+ * Flags indicating current ENA driver state
+ */
+enum ena_flags_t {
+	ENA_FLAG_DEVICE_RUNNING,
+	ENA_FLAG_DEV_UP,
+	ENA_FLAG_LINK_UP,
+	ENA_FLAG_MSIX_ENABLED,
+	ENA_FLAG_TRIGGER_RESET,
+	ENA_FLAG_ONGOING_RESET,
+	ENA_FLAG_DEV_UP_BEFORE_RESET,
+	ENA_FLAG_RSS_ACTIVE,
+	ENA_FLAGS_NUMBER = ENA_FLAG_RSS_ACTIVE
+};
+
+BITSET_DEFINE(_ena_state, ENA_FLAGS_NUMBER);
+typedef struct _ena_state ena_state_t;
+
+#define ENA_FLAG_ZERO(adapter)		\
+	BIT_ZERO(ENA_FLAGS_NUMBER, &(adapter)->flags)
+#define ENA_FLAG_ISSET(bit, adapter)	\
+	BIT_ISSET(ENA_FLAGS_NUMBER, (bit), &(adapter)->flags)
+#define ENA_FLAG_SET_ATOMIC(bit, adapter)	\
+	BIT_SET_ATOMIC(ENA_FLAGS_NUMBER, (bit), &(adapter)->flags)
+#define ENA_FLAG_CLEAR_ATOMIC(bit, adapter)	\
+	BIT_CLR_ATOMIC(ENA_FLAGS_NUMBER, (bit), &(adapter)->flags)
 
 struct msix_entry {
 	int entry;
@@ -319,6 +346,9 @@ struct ena_ring {
 		bool running;
 	};
 
+	/* How many packets are sent in one Tx loop, used for doorbells */
+	uint32_t acum_pkts;
+
 	/* Used for LLQ */
 	uint8_t *push_buf_intermediate_buf;
 } __aligned(CACHE_LINE_SIZE);
@@ -357,7 +387,6 @@ struct ena_adapter {
 	struct sx ioctl_sx;
 
 	/* MSI-X */
-	uint32_t msix_enabled;
 	struct msix_entry *msix_entries;
 	int msix_vecs;
 
@@ -383,15 +412,11 @@ struct ena_adapter {
 
 	/* RSS*/
 	uint8_t	rss_ind_tbl[ENA_RX_RSS_TABLE_SIZE];
-	bool rss_support;
 
 	uint8_t mac_addr[ETHER_ADDR_LEN];
 	/* mdio and phy*/
 
-	bool link_status;
-	bool trigger_reset;
-	bool up;
-	bool running;
+	ena_state_t flags;
 
 	/* Queue will represent one TX and one RX ring */
 	struct ena_que que[ENA_MAX_NUM_IO_QUEUES]

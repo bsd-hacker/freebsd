@@ -1,7 +1,7 @@
 /*-
  * BSD LICENSE
  *
- * Copyright (c) 2015-2017 Amazon.com, Inc. or its affiliates.
+ * Copyright (c) 2015-2019 Amazon.com, Inc. or its affiliates.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -326,7 +326,7 @@ ena_sysctl_buf_ring_size(SYSCTL_HANDLER_ARGS)
 	if (val != adapter->buf_ring_size) {
 		adapter->buf_ring_size = val;
 		adapter->reset_reason = ENA_REGS_RESET_OS_TRIGGER;
-		adapter->trigger_reset = true;
+		ENA_FLAG_SET_ATOMIC(ENA_FLAG_TRIGGER_RESET, adapter);
 	}
 
 	return (0);
@@ -357,7 +357,7 @@ ena_sysctl_rx_queue_size(SYSCTL_HANDLER_ARGS)
 	if (val != adapter->rx_ring_size) {
 		adapter->rx_ring_size = val;
 		adapter->reset_reason = ENA_REGS_RESET_OS_TRIGGER;
-		adapter->trigger_reset = true;
+		ENA_FLAG_SET_ATOMIC(ENA_FLAG_TRIGGER_RESET, adapter);
 	}
 
 	return (0);

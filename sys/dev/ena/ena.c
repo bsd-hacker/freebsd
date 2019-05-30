@@ -1,7 +1,7 @@
 /*-
  * BSD LICENSE
  *
- * Copyright (c) 2015-2017 Amazon.com, Inc. or its affiliates.
+ * Copyright (c) 2015-2019 Amazon.com, Inc. or its affiliates.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -134,7 +134,7 @@ static void	ena_cleanup(void *arg, int pending);
 static int	ena_handle_msix(void *);
 static int	ena_enable_msix(struct ena_adapter *);
 static void	ena_setup_mgmnt_intr(struct ena_adapter *);
-static void	ena_setup_io_intr(struct ena_adapter *);
+static int	ena_setup_io_intr(struct ena_adapter *);
 static int	ena_request_mgmnt_irq(struct ena_adapter *);
 static int	ena_request_io_irq(struct ena_adapter *);
 static void	ena_free_mgmnt_irq(struct ena_adapter *);
@@ -176,7 +176,7 @@ static int	ena_handle_updated_queues(struct ena_adapter *,
     struct ena_com_dev_get_features_ctx *);
 static int	ena_rss_init_default(struct ena_adapter *);
 static void	ena_rss_init_default_deferred(void *);
-static void	ena_config_host_info(struct ena_com_dev *);
+static void	ena_config_host_info(struct ena_com_dev *, device_t);
 static int	ena_attach(device_t);
 static int	ena_detach(device_t);
 static int	ena_device_init(struct ena_adapter *, device_t,
@@ -308,7 +308,7 @@ ena_probe(device_t dev)
 	while (ent->vendor_id != 0) {
 		if ((pci_vendor_id == ent->vendor_id) &&
 		    (pci_device_id == ent->device_id)) {
-			ena_trace(ENA_DBG, "vendor=%x device=%x ",
+			ena_trace(ENA_DBG, "vendor=%x device=%x\n",
 			    pci_vendor_id, pci_device_id);
 
 			sprintf(adapter_name, DEVICE_DESC);
@@ -590,6 +590,7 @@ ena_setup_tx_resources(struct ena_adapter *adapter, int qid)
 
 	tx_ring->next_to_use = 0;
 	tx_ring->next_to_clean = 0;
+	tx_ring->acum_pkts = 0;
 
 	/* Make sure that drbr is empty */
 	ENA_RING_MTX_LOCK(tx_ring);
@@ -776,8 +777,10 @@ validate_rx_req_id(struct ena_ring *rx_ring, uint16_t req_id)
 	counter_u64_add(rx_ring->rx_stats.bad_req_id, 1);
 
 	/* Trigger device reset */
-	rx_ring->adapter->reset_reason = ENA_REGS_RESET_INV_RX_REQ_ID;
-	rx_ring->adapter->trigger_reset = true;
+	if (likely(!ENA_FLAG_ISSET(ENA_FLAG_TRIGGER_RESET, rx_ring->adapter))) {
+		rx_ring->adapter->reset_reason = ENA_REGS_RESET_INV_RX_REQ_ID;
+		ENA_FLAG_SET_ATOMIC(ENA_FLAG_TRIGGER_RESET, rx_ring->adapter);
+	}
 
 	return (EFAULT);
 }
@@ -968,7 +971,7 @@ ena_alloc_rx_mbuf(struct ena_adapter *adapter,
 
 	/* Map packets for DMA */
 	ena_trace(ENA_DBG | ENA_RSC | ENA_RXPTH,
-	    "Using tag %p for buffers' DMA mapping, mbuf %p len: %d",
+	    "Using tag %p for buffers' DMA mapping, mbuf %p len: %d\n",
 	    adapter->rx_buf_tag,rx_info->mbuf, rx_info->mbuf->m_len);
 	error = bus_dmamap_load_mbuf_sg(adapter->rx_buf_tag, rx_info->map,
 	    rx_info->mbuf, segs, &nsegs, BUS_DMA_NOWAIT);
@@ -1029,7 +1032,7 @@ ena_refill_rx_bufs(struct ena_ring *rx_ring, uint32_t num)
 	uint32_t i;
 	int rc;
 
-	ena_trace(ENA_DBG | ENA_RXPTH | ENA_RSC, "refill qid: %d",
+	ena_trace(ENA_DBG | ENA_RXPTH | ENA_RSC, "refill qid: %d\n",
 	    rx_ring->qid);
 
 	next_to_use = rx_ring->next_to_use;
@@ -1038,7 +1041,7 @@ ena_refill_rx_bufs(struct ena_ring *rx_ring, uint32_t num)
 		struct ena_rx_buffer *rx_info;
 
 		ena_trace(ENA_DBG | ENA_RXPTH | ENA_RSC,
-		    "RX buffer - next to use: %d", next_to_use);
+		    "RX buffer - next to use: %d\n", next_to_use);
 
 		req_id = rx_ring->free_rx_ids[next_to_use];
 		rx_info = &rx_ring->rx_buffer_info[req_id];
@@ -1142,12 +1145,12 @@ ena_free_tx_bufs(struct ena_adapter *adapter, unsigned int qid)
 
 		if (print_once) {
 			device_printf(adapter->pdev,
-			    "free uncompleted tx mbuf qid %d idx 0x%x",
+			    "free uncompleted tx mbuf qid %d idx 0x%x\n",
 			    qid, i);
 			print_once = false;
 		} else {
 			ena_trace(ENA_DBG,
-			    "free uncompleted tx mbuf qid %d idx 0x%x",
+			    "free uncompleted tx mbuf qid %d idx 0x%x\n",
 			     qid, i);
 		}
 
@@ -1240,6 +1243,10 @@ validate_tx_req_id(struct ena_ring *tx_ring, uint16_t req_id)
 
 	device_printf(adapter->pdev, "Invalid req_id: %hu\n", req_id);
 	counter_u64_add(tx_ring->tx_stats.bad_req_id, 1);
+
+	/* Trigger device reset */
+	adapter->reset_reason = ENA_REGS_RESET_INV_TX_REQ_ID;
+	ENA_FLAG_SET_ATOMIC(ENA_FLAG_TRIGGER_RESET, adapter);
 
 	return (EFAULT);
 }
@@ -1403,7 +1410,7 @@ ena_tx_cleanup(struct ena_ring *tx_ring)
 			tx_info->seg_mapped = false;
 		}
 
-		ena_trace(ENA_DBG | ENA_TXPTH, "tx: q %d mbuf %p completed",
+		ena_trace(ENA_DBG | ENA_TXPTH, "tx: q %d mbuf %p completed\n",
 		    tx_ring->qid, mbuf);
 
 		m_freem(mbuf);
@@ -1428,7 +1435,7 @@ ena_tx_cleanup(struct ena_ring *tx_ring)
 
 	work_done = TX_BUDGET - budget;
 
-	ena_trace(ENA_DBG | ENA_TXPTH, "tx: q %d done. total pkts: %d",
+	ena_trace(ENA_DBG | ENA_TXPTH, "tx: q %d done. total pkts: %d\n",
 	tx_ring->qid, work_done);
 
 	/* If there is still something to commit update ring state */
@@ -1470,7 +1477,7 @@ ena_rx_hash_mbuf(struct ena_ring *rx_ring, struct ena_com_rx_ctx *ena_rx_ctx,
 {
 	struct ena_adapter *adapter = rx_ring->adapter;
 
-	if (likely(adapter->rss_support)) {
+	if (likely(ENA_FLAG_ISSET(ENA_FLAG_RSS_ACTIVE, adapter))) {
 		mbuf->m_pkthdr.flowid = ena_rx_ctx->hash;
 
 		if (ena_rx_ctx->frag &&
@@ -1550,7 +1557,7 @@ ena_rx_mbuf(struct ena_ring *rx_ring, struct ena_com_rx_buf_info *ena_bufs,
 		return (NULL);
 	}
 
-	ena_trace(ENA_DBG | ENA_RXPTH, "rx_info %p, mbuf %p, paddr %jx",
+	ena_trace(ENA_DBG | ENA_RXPTH, "rx_info %p, mbuf %p, paddr %jx\n",
 	    rx_info, rx_info->mbuf, (uintmax_t)rx_info->ena_buf.paddr);
 
 	bus_dmamap_sync(adapter->rx_buf_tag, rx_info->map,
@@ -1564,7 +1571,7 @@ ena_rx_mbuf(struct ena_ring *rx_ring, struct ena_com_rx_buf_info *ena_bufs,
 	/* Fill mbuf with hash key and it's interpretation for optimization */
 	ena_rx_hash_mbuf(rx_ring, ena_rx_ctx, mbuf);
 
-	ena_trace(ENA_DBG | ENA_RXPTH, "rx mbuf 0x%p, flags=0x%x, len: %d",
+	ena_trace(ENA_DBG | ENA_RXPTH, "rx mbuf 0x%p, flags=0x%x, len: %d\n",
 	    mbuf, mbuf->m_flags, mbuf->m_pkthdr.len);
 
 	/* DMA address is not needed anymore, unmap it */
@@ -1614,12 +1621,12 @@ ena_rx_mbuf(struct ena_ring *rx_ring, struct ena_com_rx_buf_info *ena_bufs,
 		    BUS_DMASYNC_POSTREAD);
 		if (unlikely(m_append(mbuf, len, rx_info->mbuf->m_data) == 0)) {
 			counter_u64_add(rx_ring->rx_stats.mbuf_alloc_fail, 1);
-			ena_trace(ENA_WARNING, "Failed to append Rx mbuf %p",
+			ena_trace(ENA_WARNING, "Failed to append Rx mbuf %p\n",
 			    mbuf);
 		}
 
 		ena_trace(ENA_DBG | ENA_RXPTH,
-		    "rx mbuf updated. len %d", mbuf->m_pkthdr.len);
+		    "rx mbuf updated. len %d\n", mbuf->m_pkthdr.len);
 
 		/* Free already appended mbuf, it won't be useful anymore */
 		bus_dmamap_unload(rx_ring->adapter->rx_buf_tag, rx_info->map);
@@ -1649,7 +1656,7 @@ ena_rx_checksum(struct ena_ring *rx_ring, struct ena_com_rx_ctx *ena_rx_ctx,
 		/* ipv4 checksum error */
 		mbuf->m_pkthdr.csum_flags = 0;
 		counter_u64_add(rx_ring->rx_stats.bad_csum, 1);
-		ena_trace(ENA_DBG, "RX IPv4 header checksum error");
+		ena_trace(ENA_DBG, "RX IPv4 header checksum error\n");
 		return;
 	}
 
@@ -1660,7 +1667,7 @@ ena_rx_checksum(struct ena_ring *rx_ring, struct ena_com_rx_ctx *ena_rx_ctx,
 			/* TCP/UDP checksum error */
 			mbuf->m_pkthdr.csum_flags = 0;
 			counter_u64_add(rx_ring->rx_stats.bad_csum, 1);
-			ena_trace(ENA_DBG, "RX L4 checksum error");
+			ena_trace(ENA_DBG, "RX L4 checksum error\n");
 		} else {
 			mbuf->m_pkthdr.csum_flags = CSUM_IP_CHECKED;
 			mbuf->m_pkthdr.csum_flags |= CSUM_IP_VALID;
@@ -1698,7 +1705,7 @@ ena_rx_cleanup(struct ena_ring *rx_ring)
 	io_sq = &adapter->ena_dev->io_sq_queues[ena_qid];
 	next_to_clean = rx_ring->next_to_clean;
 
-	ena_trace(ENA_DBG, "rx: qid %d", qid);
+	ena_trace(ENA_DBG, "rx: qid %d\n", qid);
 
 	do {
 		ena_rx_ctx.ena_bufs = rx_ring->ena_bufs;
@@ -1715,7 +1722,7 @@ ena_rx_cleanup(struct ena_ring *rx_ring)
 			break;
 
 		ena_trace(ENA_DBG | ENA_RXPTH, "rx: q %d got packet from ena. "
-		    "descs #: %d l3 proto %d l4 proto %d hash: %x",
+		    "descs #: %d l3 proto %d l4 proto %d hash: %x\n",
 		    rx_ring->qid, ena_rx_ctx.descs, ena_rx_ctx.l3_proto,
 		    ena_rx_ctx.l4_proto, ena_rx_ctx.hash);
 
@@ -1768,7 +1775,7 @@ ena_rx_cleanup(struct ena_ring *rx_ring)
 		}
 		if (do_if_input != 0) {
 			ena_trace(ENA_DBG | ENA_RXPTH,
-			    "calling if_input() with mbuf %p", mbuf);
+			    "calling if_input() with mbuf %p\n", mbuf);
 			(*ifp->if_input)(ifp, mbuf);
 		}
 
@@ -1798,8 +1805,10 @@ error:
 	counter_u64_add(rx_ring->rx_stats.bad_desc_num, 1);
 
 	/* Too many desc from the device. Trigger reset */
-	adapter->reset_reason = ENA_REGS_RESET_TOO_MANY_RX_DESCS;
-	adapter->trigger_reset = true;
+	if (likely(!ENA_FLAG_ISSET(ENA_FLAG_TRIGGER_RESET, adapter))) {
+		adapter->reset_reason = ENA_REGS_RESET_TOO_MANY_RX_DESCS;
+		ENA_FLAG_SET_ATOMIC(ENA_FLAG_TRIGGER_RESET, adapter);
+	}
 
 	return (0);
 }
@@ -1820,7 +1829,7 @@ ena_intr_msix_mgmnt(void *arg)
 	struct ena_adapter *adapter = (struct ena_adapter *)arg;
 
 	ena_com_admin_q_comp_intr_handler(adapter->ena_dev);
-	if (likely(adapter->running))
+	if (likely(ENA_FLAG_ISSET(ENA_FLAG_DEVICE_RUNNING, adapter)))
 		ena_com_aenq_intr_handler(adapter->ena_dev, arg);
 }
 
@@ -1840,7 +1849,7 @@ ena_cleanup(void *arg, int pending)
 	if (unlikely((if_getdrvflags(ifp) & IFF_DRV_RUNNING) == 0))
 		return;
 
-	ena_trace(ENA_DBG, "MSI-X TX/RX routine");
+	ena_trace(ENA_DBG, "MSI-X TX/RX routine\n");
 
 	tx_ring = que->tx_ring;
 	rx_ring = que->rx_ring;
@@ -1896,13 +1905,18 @@ ena_enable_msix(struct ena_adapter *adapter)
 	int msix_vecs, msix_req;
 	int i, rc = 0;
 
+	if (ENA_FLAG_ISSET(ENA_FLAG_MSIX_ENABLED, adapter)) {
+		device_printf(dev, "Error, MSI-X is already enabled\n");
+		return (EINVAL);
+	}
+
 	/* Reserved the max msix vectors we might need */
 	msix_vecs = ENA_MAX_MSIX_VEC(adapter->num_queues);
 
 	adapter->msix_entries = malloc(msix_vecs * sizeof(struct msix_entry),
 	    M_DEVBUF, M_WAITOK | M_ZERO);
 
-	ena_trace(ENA_DBG, "trying to enable MSI-X, vectors: %d", msix_vecs);
+	ena_trace(ENA_DBG, "trying to enable MSI-X, vectors: %d\n", msix_vecs);
 
 	for (i = 0; i < msix_vecs; i++) {
 		adapter->msix_entries[i].entry = i;
@@ -1935,7 +1949,7 @@ ena_enable_msix(struct ena_adapter *adapter)
 	}
 
 	adapter->msix_vecs = msix_vecs;
-	adapter->msix_enabled = true;
+	ENA_FLAG_SET_ATOMIC(ENA_FLAG_MSIX_ENABLED, adapter);
 
 	return (0);
 
@@ -1963,11 +1977,14 @@ ena_setup_mgmnt_intr(struct ena_adapter *adapter)
 	    adapter->msix_entries[ENA_MGMNT_IRQ_IDX].vector;
 }
 
-static void
+static int
 ena_setup_io_intr(struct ena_adapter *adapter)
 {
 	static int last_bind_cpu = -1;
 	int irq_idx;
+
+	if (adapter->msix_entries == NULL)
+		return (EINVAL);
 
 	for (int i = 0; i < adapter->num_queues; i++) {
 		irq_idx = ENA_IO_IRQ_IDX(i);
@@ -1991,6 +2008,8 @@ ena_setup_io_intr(struct ena_adapter *adapter)
 		    last_bind_cpu;
 		last_bind_cpu = CPU_NEXT(last_bind_cpu);
 	}
+
+	return (0);
 }
 
 static int
@@ -2045,7 +2064,7 @@ ena_request_io_irq(struct ena_adapter *adapter)
 	unsigned long flags = 0;
 	int rc = 0, i, rcc;
 
-	if (unlikely(adapter->msix_enabled == 0)) {
+	if (unlikely(!ENA_FLAG_ISSET(ENA_FLAG_MSIX_ENABLED, adapter))) {
 		device_printf(adapter->pdev,
 		    "failed to request I/O IRQ: MSI-X is not enabled\n");
 		return (EINVAL);
@@ -2195,10 +2214,14 @@ static void
 ena_disable_msix(struct ena_adapter *adapter)
 {
 
-	pci_release_msi(adapter->pdev);
+	if (ENA_FLAG_ISSET(ENA_FLAG_MSIX_ENABLED, adapter)) {
+		ENA_FLAG_CLEAR_ATOMIC(ENA_FLAG_MSIX_ENABLED, adapter);
+		pci_release_msi(adapter->pdev);
+	}
 
 	adapter->msix_vecs = 0;
-	free(adapter->msix_entries, M_DEVBUF);
+	if (adapter->msix_entries != NULL)
+		free(adapter->msix_entries, M_DEVBUF);
 	adapter->msix_entries = NULL;
 }
 
@@ -2249,7 +2272,7 @@ ena_up_complete(struct ena_adapter *adapter)
 {
 	int rc;
 
-	if (likely(adapter->rss_support)) {
+	if (likely(ENA_FLAG_ISSET(ENA_FLAG_RSS_ACTIVE, adapter))) {
 		rc = ena_rss_configure(adapter);
 		if (rc != 0)
 			return (rc);
@@ -2276,33 +2299,32 @@ ena_up(struct ena_adapter *adapter)
 		return (ENXIO);
 	}
 
-	if (unlikely(!adapter->running)) {
-		device_printf(adapter->pdev, "device is not running!\n");
-		return (ENXIO);
-	}
-
-	if (!adapter->up) {
+	if (!ENA_FLAG_ISSET(ENA_FLAG_DEV_UP, adapter)) {
 		device_printf(adapter->pdev, "device is going UP\n");
 
 		/* setup interrupts for IO queues */
-		ena_setup_io_intr(adapter);
+		rc = ena_setup_io_intr(adapter);
+		if (unlikely(rc != 0)) {
+			ena_trace(ENA_ALERT, "error setting up IO interrupt\n");
+			goto error;
+		}
 		rc = ena_request_io_irq(adapter);
 		if (unlikely(rc != 0)) {
-			ena_trace(ENA_ALERT, "err_req_irq");
-			goto err_req_irq;
+			ena_trace(ENA_ALERT, "err_req_irq\n");
+			goto error;
 		}
 
 		/* allocate transmit descriptors */
 		rc = ena_setup_all_tx_resources(adapter);
 		if (unlikely(rc != 0)) {
-			ena_trace(ENA_ALERT, "err_setup_tx");
+			ena_trace(ENA_ALERT, "err_setup_tx\n");
 			goto err_setup_tx;
 		}
 
 		/* allocate receive descriptors */
 		rc = ena_setup_all_rx_resources(adapter);
 		if (unlikely(rc != 0)) {
-			ena_trace(ENA_ALERT, "err_setup_rx");
+			ena_trace(ENA_ALERT, "err_setup_rx\n");
 			goto err_setup_rx;
 		}
 
@@ -2310,11 +2332,11 @@ ena_up(struct ena_adapter *adapter)
 		rc = ena_create_io_queues(adapter);
 		if (unlikely(rc != 0)) {
 			ena_trace(ENA_ALERT,
-			    "create IO queues failed");
+			    "create IO queues failed\n");
 			goto err_io_que;
 		}
 
-		if (unlikely(adapter->link_status))
+		if (ENA_FLAG_ISSET(ENA_FLAG_LINK_UP, adapter))
 			if_link_state_change(adapter->ifp, LINK_STATE_UP);
 
 		rc = ena_up_complete(adapter);
@@ -2331,7 +2353,7 @@ ena_up(struct ena_adapter *adapter)
 		callout_reset_sbt(&adapter->timer_service, SBT_1S, SBT_1S,
 		    ena_timer_service, (void *)adapter, 0);
 
-		adapter->up = true;
+		ENA_FLAG_SET_ATOMIC(ENA_FLAG_DEV_UP, adapter);
 
 		ena_unmask_all_io_irqs(adapter);
 	}
@@ -2346,7 +2368,7 @@ err_setup_rx:
 	ena_free_all_tx_resources(adapter);
 err_setup_tx:
 	ena_free_io_irq(adapter);
-err_req_irq:
+error:
 	return (rc);
 }
 
@@ -2386,16 +2408,16 @@ static void
 ena_media_status(if_t ifp, struct ifmediareq *ifmr)
 {
 	struct ena_adapter *adapter = if_getsoftc(ifp);
-	ena_trace(ENA_DBG, "enter");
+	ena_trace(ENA_DBG, "enter\n");
 
 	mtx_lock(&adapter->global_mtx);
 
 	ifmr->ifm_status = IFM_AVALID;
 	ifmr->ifm_active = IFM_ETHER;
 
-	if (!adapter->link_status) {
+	if (!ENA_FLAG_ISSET(ENA_FLAG_LINK_UP, adapter)) {
 		mtx_unlock(&adapter->global_mtx);
-		ena_trace(ENA_INFO, "link_status = false");
+		ena_trace(ENA_INFO, "Link is down\n");
 		return;
 	}
 
@@ -2410,7 +2432,7 @@ ena_init(void *arg)
 {
 	struct ena_adapter *adapter = (struct ena_adapter *)arg;
 
-	if (!adapter->up) {
+	if (!ENA_FLAG_ISSET(ENA_FLAG_DEV_UP, adapter)) {
 		sx_xlock(&adapter->ioctl_sx);
 		ena_up(adapter);
 		sx_unlock(&adapter->ioctl_sx);
@@ -2643,18 +2665,18 @@ ena_down(struct ena_adapter *adapter)
 {
 	int rc;
 
-	if (adapter->up) {
+	if (ENA_FLAG_ISSET(ENA_FLAG_DEV_UP, adapter)) {
 		device_printf(adapter->pdev, "device is going DOWN\n");
 
 		callout_drain(&adapter->timer_service);
 
-		adapter->up = false;
+		ENA_FLAG_CLEAR_ATOMIC(ENA_FLAG_DEV_UP, adapter);
 		if_setdrvflagbits(adapter->ifp, IFF_DRV_OACTIVE,
 		    IFF_DRV_RUNNING);
 
 		ena_free_io_irq(adapter);
 
-		if (adapter->trigger_reset) {
+		if (ENA_FLAG_ISSET(ENA_FLAG_TRIGGER_RESET, adapter)) {
 			rc = ena_com_dev_reset(adapter->ena_dev,
 			    adapter->reset_reason);
 			if (unlikely(rc != 0))
@@ -2678,6 +2700,7 @@ ena_tx_csum(struct ena_com_tx_ctx *ena_tx_ctx, struct mbuf *mbuf)
 {
 	struct ena_com_tx_meta *ena_meta;
 	struct ether_vlan_header *eh;
+	struct mbuf *mbuf_next;
 	u32 mss;
 	bool offload;
 	uint16_t etype;
@@ -2685,6 +2708,7 @@ ena_tx_csum(struct ena_com_tx_ctx *ena_tx_ctx, struct mbuf *mbuf)
 	struct ip *ip;
 	int iphlen;
 	struct tcphdr *th;
+	int offset;
 
 	offload = false;
 	ena_meta = &ena_tx_ctx->ena_meta;
@@ -2714,9 +2738,12 @@ ena_tx_csum(struct ena_com_tx_ctx *ena_tx_ctx, struct mbuf *mbuf)
 		ehdrlen = ETHER_HDR_LEN;
 	}
 
-	ip = (struct ip *)(mbuf->m_data + ehdrlen);
+	mbuf_next = m_getptr(mbuf, ehdrlen, &offset);
+	ip = (struct ip *)(mtodo(mbuf_next, offset));
 	iphlen = ip->ip_hl << 2;
-	th = (struct tcphdr *)((caddr_t)ip + iphlen);
+
+	mbuf_next = m_getptr(mbuf, iphlen + ehdrlen, &offset);
+	th = (struct tcphdr *)(mtodo(mbuf_next, offset));
 
 	if ((mbuf->m_pkthdr.csum_flags & CSUM_IP) != 0) {
 		ena_tx_ctx->l3_csum_enable = 1;
@@ -2935,7 +2962,7 @@ ena_tx_map_mbuf(struct ena_ring *tx_ring, struct ena_tx_buffer *tx_info,
 	    segs, &nsegs, BUS_DMA_NOWAIT);
 	if (unlikely((rc != 0) || (nsegs == 0))) {
 		ena_trace(ENA_WARNING,
-		    "dmamap load failed! err: %d nsegs: %d", rc, nsegs);
+		    "dmamap load failed! err: %d nsegs: %d\n", rc, nsegs);
 		goto dma_error;
 	}
 
@@ -2982,11 +3009,11 @@ ena_xmit_mbuf(struct ena_ring *tx_ring, struct mbuf **mbuf)
 	rc = ena_check_and_collapse_mbuf(tx_ring, mbuf);
 	if (unlikely(rc != 0)) {
 		ena_trace(ENA_WARNING,
-		    "Failed to collapse mbuf! err: %d", rc);
+		    "Failed to collapse mbuf! err: %d\n", rc);
 		return (rc);
 	}
 
-	ena_trace(ENA_DBG | ENA_TXPTH, "Tx: %d bytes", (*mbuf)->m_pkthdr.len);
+	ena_trace(ENA_DBG | ENA_TXPTH, "Tx: %d bytes\n", (*mbuf)->m_pkthdr.len);
 
 	next_to_use = tx_ring->next_to_use;
 	req_id = tx_ring->free_tx_ids[next_to_use];
@@ -3007,6 +3034,18 @@ ena_xmit_mbuf(struct ena_ring *tx_ring, struct mbuf **mbuf)
 
 	/* Set flags and meta data */
 	ena_tx_csum(&ena_tx_ctx, *mbuf);
+
+	if (tx_ring->acum_pkts == DB_THRESHOLD ||
+	    ena_com_is_doorbell_needed(tx_ring->ena_com_io_sq, &ena_tx_ctx)) {
+		ena_trace(ENA_DBG | ENA_TXPTH,
+		    "llq tx max burst size of queue %d achieved, writing doorbell to send burst\n",
+		    tx_ring->que->id);
+		wmb();
+		ena_com_write_sq_doorbell(tx_ring->ena_com_io_sq);
+		counter_u64_add(tx_ring->tx_stats.doorbells, 1);
+		tx_ring->acum_pkts = 0;
+	}
+
 	/* Prepare the packet's descriptors and send them to device */
 	rc = ena_com_prepare_tx(io_sq, &ena_tx_ctx, &nb_hw_desc);
 	if (unlikely(rc != 0)) {
@@ -3096,13 +3135,12 @@ ena_start_xmit(struct ena_ring *tx_ring)
 	struct ena_adapter *adapter = tx_ring->adapter;
 	struct ena_com_io_sq* io_sq;
 	int ena_qid;
-	int acum_pkts = 0;
 	int ret = 0;
 
 	if (unlikely((if_getdrvflags(adapter->ifp) & IFF_DRV_RUNNING) == 0))
 		return;
 
-	if (unlikely(!adapter->link_status))
+	if (unlikely(!ENA_FLAG_ISSET(ENA_FLAG_LINK_UP, adapter)))
 		return;
 
 	ena_qid = ENA_IO_TXQ_IDX(tx_ring->que->id);
@@ -3110,7 +3148,7 @@ ena_start_xmit(struct ena_ring *tx_ring)
 
 	while ((mbuf = drbr_peek(adapter->ifp, tx_ring->br)) != NULL) {
 		ena_trace(ENA_DBG | ENA_TXPTH, "\ndequeued mbuf %p with flags %#x and"
-		    " header csum flags %#jx",
+		    " header csum flags %#jx\n",
 		    mbuf, mbuf->m_flags, (uint64_t)mbuf->m_pkthdr.csum_flags);
 
 		if (unlikely(!tx_ring->running)) {
@@ -3137,25 +3175,17 @@ ena_start_xmit(struct ena_ring *tx_ring)
 		    IFF_DRV_RUNNING) == 0))
 			return;
 
-		acum_pkts++;
+		tx_ring->acum_pkts++;
 
 		BPF_MTAP(adapter->ifp, mbuf);
-
-		if (unlikely(acum_pkts == DB_THRESHOLD)) {
-			acum_pkts = 0;
-			wmb();
-			/* Trigger the dma engine */
-			ena_com_write_sq_doorbell(io_sq);
-			counter_u64_add(tx_ring->tx_stats.doorbells, 1);
-		}
-
 	}
 
-	if (likely(acum_pkts != 0)) {
+	if (likely(tx_ring->acum_pkts != 0)) {
 		wmb();
 		/* Trigger the dma engine */
 		ena_com_write_sq_doorbell(io_sq);
 		counter_u64_add(tx_ring->tx_stats.doorbells, 1);
+		tx_ring->acum_pkts = 0;
 	}
 
 	if (unlikely(!tx_ring->running))
@@ -3480,7 +3510,7 @@ ena_handle_updated_queues(struct ena_adapter *adapter,
 		    "falling back to %d queues\n",
 		    adapter->num_queues, io_queue_num);
 		adapter->num_queues = io_queue_num;
-		if (adapter->rss_support) {
+		if (ENA_FLAG_ISSET(ENA_FLAG_RSS_ACTIVE, adapter)) {
 			ena_com_rss_destroy(ena_dev);
 			rc = ena_rss_init_default(adapter);
 			if (unlikely(rc != 0) && (rc != EOPNOTSUPP)) {
@@ -3562,12 +3592,12 @@ ena_rss_init_default_deferred(void *arg)
 		adapter = devclass_get_softc(dc, max);
 		if (adapter != NULL) {
 			rc = ena_rss_init_default(adapter);
-			adapter->rss_support = true;
+			ENA_FLAG_SET_ATOMIC(ENA_FLAG_RSS_ACTIVE, adapter);
 			if (unlikely(rc != 0)) {
 				device_printf(adapter->pdev,
 				    "WARNING: RSS was not properly initialized,"
 				    " it will affect bandwidth\n");
-				adapter->rss_support = false;
+				ENA_FLAG_CLEAR_ATOMIC(ENA_FLAG_RSS_ACTIVE, adapter);
 			}
 		}
 	}
@@ -3575,9 +3605,10 @@ ena_rss_init_default_deferred(void *arg)
 SYSINIT(ena_rss_init, SI_SUB_KICK_SCHEDULER, SI_ORDER_SECOND, ena_rss_init_default_deferred, NULL);
 
 static void
-ena_config_host_info(struct ena_com_dev *ena_dev)
+ena_config_host_info(struct ena_com_dev *ena_dev, device_t dev)
 {
 	struct ena_admin_host_info *host_info;
+	uintptr_t rid;
 	int rc;
 
 	/* Allocate only the host info */
@@ -3589,6 +3620,8 @@ ena_config_host_info(struct ena_com_dev *ena_dev)
 
 	host_info = ena_dev->host_attr.host_info;
 
+	if (pci_get_id(dev, PCI_ID_RID, &rid) == 0)
+		host_info->bdf = rid;
 	host_info->os_type = ENA_ADMIN_OS_FREEBSD;
 	host_info->kernel_ver = osreldate;
 
@@ -3677,7 +3710,7 @@ ena_device_init(struct ena_adapter *adapter, device_t pdev,
 	 */
 	ena_com_set_admin_polling_mode(ena_dev, true);
 
-	ena_config_host_info(ena_dev);
+	ena_config_host_info(ena_dev, pdev);
 
 	/* Get Device Attributes */
 	rc = ena_com_get_dev_attr_feat(ena_dev, get_feat_ctx);
@@ -3781,8 +3814,10 @@ static void check_for_missing_keep_alive(struct ena_adapter *adapter)
 		device_printf(adapter->pdev,
 		    "Keep alive watchdog timeout.\n");
 		counter_u64_add(adapter->dev_stats.wd_expired, 1);
-		adapter->reset_reason = ENA_REGS_RESET_KEEP_ALIVE_TO;
-		adapter->trigger_reset = true;
+		if (likely(!ENA_FLAG_ISSET(ENA_FLAG_TRIGGER_RESET, adapter))) {
+			adapter->reset_reason = ENA_REGS_RESET_KEEP_ALIVE_TO;
+			ENA_FLAG_SET_ATOMIC(ENA_FLAG_TRIGGER_RESET, adapter);
+		}
 	}
 }
 
@@ -3794,8 +3829,10 @@ static void check_for_admin_com_state(struct ena_adapter *adapter)
 		device_printf(adapter->pdev,
 		    "ENA admin queue is not in running state!\n");
 		counter_u64_add(adapter->dev_stats.admin_q_pause, 1);
-		adapter->reset_reason = ENA_REGS_RESET_ADMIN_TO;
-		adapter->trigger_reset = true;
+		if (likely(!ENA_FLAG_ISSET(ENA_FLAG_TRIGGER_RESET, adapter))) {
+			adapter->reset_reason = ENA_REGS_RESET_ADMIN_TO;
+			ENA_FLAG_SET_ATOMIC(ENA_FLAG_TRIGGER_RESET, adapter);
+		}
 	}
 }
 
@@ -3813,9 +3850,11 @@ check_for_rx_interrupt_queue(struct ena_adapter *adapter,
 
 	if (rx_ring->no_interrupt_event_cnt == ENA_MAX_NO_INTERRUPT_ITERATIONS) {
 		device_printf(adapter->pdev, "Potential MSIX issue on Rx side "
-		   "Queue = %d. Reset the device\n", rx_ring->qid);
-		adapter->reset_reason = ENA_REGS_RESET_MISS_INTERRUPT;
-		adapter->trigger_reset = true;
+		    "Queue = %d. Reset the device\n", rx_ring->qid);
+		if (likely(!ENA_FLAG_ISSET(ENA_FLAG_TRIGGER_RESET, adapter))) {
+			adapter->reset_reason = ENA_REGS_RESET_MISS_INTERRUPT;
+			ENA_FLAG_SET_ATOMIC(ENA_FLAG_TRIGGER_RESET, adapter);
+		}
 		return (EIO);
 	}
 
@@ -3853,8 +3892,13 @@ check_missing_comp_in_tx_queue(struct ena_adapter *adapter,
 			device_printf(adapter->pdev,
 			    "Potential MSIX issue on Tx side Queue = %d. "
 			    "Reset the device\n", tx_ring->qid);
-			adapter->reset_reason = ENA_REGS_RESET_MISS_INTERRUPT;
-			adapter->trigger_reset = true;
+			if (likely(!ENA_FLAG_ISSET(ENA_FLAG_TRIGGER_RESET,
+			    adapter))) {
+				adapter->reset_reason =
+				    ENA_REGS_RESET_MISS_INTERRUPT;
+				ENA_FLAG_SET_ATOMIC(ENA_FLAG_TRIGGER_RESET,
+				    adapter);
+			}
 			return (EIO);
 		}
 
@@ -3876,8 +3920,10 @@ check_missing_comp_in_tx_queue(struct ena_adapter *adapter,
 		    "The number of lost tx completion is above the threshold "
 		    "(%d > %d). Reset the device\n",
 		    missed_tx, adapter->missing_tx_threshold);
-		adapter->reset_reason = ENA_REGS_RESET_MISS_TX_CMPL;
-		adapter->trigger_reset = true;
+		if (likely(!ENA_FLAG_ISSET(ENA_FLAG_TRIGGER_RESET, adapter))) {
+			adapter->reset_reason = ENA_REGS_RESET_MISS_TX_CMPL;
+			ENA_FLAG_SET_ATOMIC(ENA_FLAG_TRIGGER_RESET, adapter);
+		}
 		rc = EIO;
 	}
 
@@ -3902,10 +3948,10 @@ check_for_missing_completions(struct ena_adapter *adapter)
 	/* Make sure the driver doesn't turn the device in other process */
 	rmb();
 
-	if (!adapter->up)
+	if (!ENA_FLAG_ISSET(ENA_FLAG_DEV_UP, adapter))
 		return;
 
-	if (adapter->trigger_reset)
+	if (ENA_FLAG_ISSET(ENA_FLAG_TRIGGER_RESET, adapter))
 		return;
 
 	if (adapter->missing_tx_timeout == ENA_HW_HINTS_NO_TIMEOUT)
@@ -3953,10 +3999,10 @@ check_for_empty_rx_ring(struct ena_adapter *adapter)
 	struct ena_ring *rx_ring;
 	int i, refill_required;
 
-	if (!adapter->up)
+	if (!ENA_FLAG_ISSET(ENA_FLAG_DEV_UP, adapter))
 		return;
 
-	if (adapter->trigger_reset)
+	if (ENA_FLAG_ISSET(ENA_FLAG_TRIGGER_RESET, adapter))
 		return;
 
 	for (i = 0; i < adapter->num_queues; i++) {
@@ -4037,7 +4083,7 @@ ena_timer_service(void *data)
 	if (host_info != NULL)
 		ena_update_host_info(host_info, adapter->ifp);
 
-	if (unlikely(adapter->trigger_reset)) {
+	if (unlikely(ENA_FLAG_ISSET(ENA_FLAG_TRIGGER_RESET, adapter))) {
 		device_printf(adapter->pdev, "Trigger reset is on\n");
 		taskqueue_enqueue(adapter->reset_tq, &adapter->reset_task);
 		return;
@@ -4050,83 +4096,172 @@ ena_timer_service(void *data)
 }
 
 static void
-ena_reset_task(void *arg, int pending)
+ena_destroy_device(struct ena_adapter *adapter, bool graceful)
 {
-	struct ena_com_dev_get_features_ctx get_feat_ctx;
-	struct ena_adapter *adapter = (struct ena_adapter *)arg;
+	if_t ifp = adapter->ifp;
 	struct ena_com_dev *ena_dev = adapter->ena_dev;
 	bool dev_up;
+
+	if (!ENA_FLAG_ISSET(ENA_FLAG_DEVICE_RUNNING, adapter))
+		return;
+
+	if_link_state_change(ifp, LINK_STATE_DOWN);
+
+	callout_drain(&adapter->timer_service);
+
+	dev_up = ENA_FLAG_ISSET(ENA_FLAG_DEV_UP, adapter);
+	if (dev_up)
+		ENA_FLAG_SET_ATOMIC(ENA_FLAG_DEV_UP_BEFORE_RESET, adapter);
+	else
+		ENA_FLAG_CLEAR_ATOMIC(ENA_FLAG_DEV_UP_BEFORE_RESET, adapter);
+
+	if (!graceful)
+		ena_com_set_admin_running_state(ena_dev, false);
+
+	if (ENA_FLAG_ISSET(ENA_FLAG_DEV_UP, adapter))
+		ena_down(adapter);
+
+	/*
+	 * Stop the device from sending AENQ events (if the device was up, and
+	 * the trigger reset was on, ena_down already performs device reset)
+	 */
+	if (!(ENA_FLAG_ISSET(ENA_FLAG_TRIGGER_RESET, adapter) && dev_up))
+		ena_com_dev_reset(adapter->ena_dev, adapter->reset_reason);
+
+	ena_free_mgmnt_irq(adapter);
+
+	ena_disable_msix(adapter);
+
+	ena_com_abort_admin_commands(ena_dev);
+
+	ena_com_wait_for_abort_completion(ena_dev);
+
+	ena_com_admin_destroy(ena_dev);
+
+	ena_com_mmio_reg_read_request_destroy(ena_dev);
+
+	adapter->reset_reason = ENA_REGS_RESET_NORMAL;
+
+	ENA_FLAG_CLEAR_ATOMIC(ENA_FLAG_TRIGGER_RESET, adapter);
+	ENA_FLAG_CLEAR_ATOMIC(ENA_FLAG_DEVICE_RUNNING, adapter);
+}
+
+static int
+ena_device_validate_params(struct ena_adapter *adapter,
+    struct ena_com_dev_get_features_ctx *get_feat_ctx)
+{
+
+	if (memcmp(get_feat_ctx->dev_attr.mac_addr, adapter->mac_addr,
+	    ETHER_ADDR_LEN) != 0) {
+		device_printf(adapter->pdev,
+		    "Error, mac address are different\n");
+		return (EINVAL);
+	}
+
+	if (get_feat_ctx->dev_attr.max_mtu < if_getmtu(adapter->ifp)) {
+		device_printf(adapter->pdev,
+		    "Error, device max mtu is smaller than ifp MTU\n");
+		return (EINVAL);
+	}
+
+	return 0;
+}
+
+static int
+ena_restore_device(struct ena_adapter *adapter)
+{
+	struct ena_com_dev_get_features_ctx get_feat_ctx;
+	struct ena_com_dev *ena_dev = adapter->ena_dev;
+	if_t ifp = adapter->ifp;
+	device_t dev = adapter->pdev;
+	int wd_active;
 	int rc;
 
-	if (unlikely(!adapter->trigger_reset)) {
+	ENA_FLAG_SET_ATOMIC(ENA_FLAG_ONGOING_RESET, adapter);
+
+	rc = ena_device_init(adapter, dev, &get_feat_ctx, &wd_active);
+	if (rc != 0) {
+		device_printf(dev, "Cannot initialize device\n");
+		goto err;
+	}
+	/*
+	 * Only enable WD if it was enabled before reset, so it won't override
+	 * value set by the user by the sysctl.
+	 */
+	if (adapter->wd_active != 0)
+		adapter->wd_active = wd_active;
+
+	rc = ena_device_validate_params(adapter, &get_feat_ctx);
+	if (rc != 0) {
+		device_printf(dev, "Validation of device parameters failed\n");
+		goto err_device_destroy;
+	}
+
+	rc = ena_handle_updated_queues(adapter, &get_feat_ctx);
+	if (rc != 0)
+		goto err_device_destroy;
+
+	ENA_FLAG_CLEAR_ATOMIC(ENA_FLAG_ONGOING_RESET, adapter);
+	/* Make sure we don't have a race with AENQ Links state handler */
+	if (ENA_FLAG_ISSET(ENA_FLAG_LINK_UP, adapter))
+		if_link_state_change(ifp, LINK_STATE_UP);
+
+	rc = ena_enable_msix_and_set_admin_interrupts(adapter,
+	    adapter->num_queues);
+	if (rc != 0) {
+		device_printf(dev, "Enable MSI-X failed\n");
+		goto err_device_destroy;
+	}
+
+	/* If the interface was up before the reset bring it up */
+	if (ENA_FLAG_ISSET(ENA_FLAG_DEV_UP_BEFORE_RESET, adapter)) {
+		rc = ena_up(adapter);
+		if (rc != 0) {
+			device_printf(dev, "Failed to create I/O queues\n");
+			goto err_disable_msix;
+		}
+	}
+
+	ENA_FLAG_SET_ATOMIC(ENA_FLAG_DEVICE_RUNNING, adapter);
+	callout_reset_sbt(&adapter->timer_service, SBT_1S, SBT_1S,
+	    ena_timer_service, (void *)adapter, 0);
+
+	device_printf(dev,
+	    "Device reset completed successfully, Driver info: %s\n", ena_version);
+
+	return (rc);
+
+err_disable_msix:
+	ena_free_mgmnt_irq(adapter);
+	ena_disable_msix(adapter);
+err_device_destroy:
+	ena_com_abort_admin_commands(ena_dev);
+	ena_com_wait_for_abort_completion(ena_dev);
+	ena_com_admin_destroy(ena_dev);
+	ena_com_dev_reset(ena_dev, ENA_REGS_RESET_DRIVER_INVALID_STATE);
+	ena_com_mmio_reg_read_request_destroy(ena_dev);
+err:
+	ENA_FLAG_CLEAR_ATOMIC(ENA_FLAG_DEVICE_RUNNING, adapter);
+	ENA_FLAG_CLEAR_ATOMIC(ENA_FLAG_ONGOING_RESET, adapter);
+	device_printf(dev, "Reset attempt failed. Can not reset the device\n");
+
+	return (rc);
+}
+
+static void
+ena_reset_task(void *arg, int pending)
+{
+	struct ena_adapter *adapter = (struct ena_adapter *)arg;
+
+	if (unlikely(!ENA_FLAG_ISSET(ENA_FLAG_TRIGGER_RESET, adapter))) {
 		device_printf(adapter->pdev,
 		    "device reset scheduled but trigger_reset is off\n");
 		return;
 	}
 
 	sx_xlock(&adapter->ioctl_sx);
-
-	callout_drain(&adapter->timer_service);
-
-	dev_up = adapter->up;
-
-	ena_com_set_admin_running_state(ena_dev, false);
-	ena_down(adapter);
-	ena_free_mgmnt_irq(adapter);
-	ena_disable_msix(adapter);
-	ena_com_abort_admin_commands(ena_dev);
-	ena_com_wait_for_abort_completion(ena_dev);
-	ena_com_admin_destroy(ena_dev);
-	ena_com_mmio_reg_read_request_destroy(ena_dev);
-
-	adapter->reset_reason = ENA_REGS_RESET_NORMAL;
-	adapter->trigger_reset = false;
-
-	/* Finished destroy part. Restart the device */
-	rc = ena_device_init(adapter, adapter->pdev, &get_feat_ctx,
-	    &adapter->wd_active);
-	if (unlikely(rc != 0)) {
-		device_printf(adapter->pdev,
-		    "ENA device init failed! (err: %d)\n", rc);
-		goto err_dev_free;
-	}
-
-	rc = ena_handle_updated_queues(adapter, &get_feat_ctx);
-	if (unlikely(rc != 0))
-		goto err_dev_free;
-
-	rc = ena_enable_msix_and_set_admin_interrupts(adapter,
-	    adapter->num_queues);
-	if (unlikely(rc != 0)) {
-		device_printf(adapter->pdev, "Enable MSI-X failed\n");
-		goto err_com_free;
-	}
-
-	/* If the interface was up before the reset bring it up */
-	if (dev_up) {
-		rc = ena_up(adapter);
-		if (unlikely(rc != 0)) {
-			device_printf(adapter->pdev,
-			    "Failed to create I/O queues\n");
-			goto err_msix_free;
-		}
-	}
-
-	callout_reset_sbt(&adapter->timer_service, SBT_1S, SBT_1S,
-	    ena_timer_service, (void *)adapter, 0);
-
-	sx_unlock(&adapter->ioctl_sx);
-
-	return;
-
-err_msix_free:
-	ena_free_mgmnt_irq(adapter);
-	ena_disable_msix(adapter);
-err_com_free:
-	ena_com_admin_destroy(ena_dev);
-err_dev_free:
-	device_printf(adapter->pdev, "ENA reset failed!\n");
-	adapter->running = false;
+	ena_destroy_device(adapter, false);
+	ena_restore_device(adapter);
 	sx_unlock(&adapter->ioctl_sx);
 }
 
@@ -4204,6 +4339,9 @@ ena_attach(device_t pdev)
 
 	ena_dev->tx_mem_queue_type = ENA_ADMIN_PLACEMENT_POLICY_HOST;
 
+	/* Initially clear all the flags */
+	ENA_FLAG_ZERO(adapter);
+
 	/* Device initialization */
 	rc = ena_device_init(adapter, pdev, &get_feat_ctx, &adapter->wd_active);
 	if (unlikely(rc != 0)) {
@@ -4238,9 +4376,6 @@ ena_attach(device_t pdev)
 	adapter->keep_alive_timestamp = getsbinuptime();
 
 	adapter->tx_offload_cap = get_feat_ctx.offload.tx;
-
-	/* Set for sure that interface is not up */
-	adapter->up = false;
 
 	memcpy(adapter->mac_addr, get_feat_ctx.dev_attr.mac_addr,
 	    ETHER_ADDR_LEN);
@@ -4327,8 +4462,8 @@ ena_attach(device_t pdev)
 
 	/* Tell the stack that the interface is not active */
 	if_setdrvflagbits(adapter->ifp, IFF_DRV_OACTIVE, IFF_DRV_RUNNING);
+	ENA_FLAG_SET_ATOMIC(ENA_FLAG_DEVICE_RUNNING, adapter);
 
-	adapter->running = true;
 	return (0);
 
 err_msix_free:
@@ -4383,6 +4518,7 @@ ena_detach(device_t pdev)
 
 	sx_xlock(&adapter->ioctl_sx);
 	ena_down(adapter);
+	ena_destroy_device(adapter, true);
 	sx_unlock(&adapter->ioctl_sx);
 
 	ena_free_all_io_rings_resources(adapter);
@@ -4391,9 +4527,6 @@ ena_detach(device_t pdev)
 	    sizeof(struct ena_hw_stats));
 	ena_free_counters((counter_u64_t *)&adapter->dev_stats,
 	    sizeof(struct ena_stats_dev));
-
-	if (likely(adapter->rss_support))
-		ena_com_rss_destroy(ena_dev);
 
 	rc = ena_free_rx_dma_tag(adapter);
 	if (unlikely(rc != 0))
@@ -4405,23 +4538,14 @@ ena_detach(device_t pdev)
 		device_printf(adapter->pdev,
 		    "Unmapped TX DMA tag associations\n");
 
-	/* Reset the device only if the device is running. */
-	if (adapter->running)
-		ena_com_dev_reset(ena_dev, adapter->reset_reason);
-
-	ena_com_delete_host_info(ena_dev);
-
 	ena_free_irqs(adapter);
 
-	ena_com_abort_admin_commands(ena_dev);
-
-	ena_com_wait_for_abort_completion(ena_dev);
-
-	ena_com_admin_destroy(ena_dev);
-
-	ena_com_mmio_reg_read_request_destroy(ena_dev);
-
 	ena_free_pci_resources(adapter);
+
+	if (likely(ENA_FLAG_ISSET(ENA_FLAG_RSS_ACTIVE, adapter)))
+		ena_com_rss_destroy(ena_dev);
+
+	ena_com_delete_host_info(ena_dev);
 
 	mtx_destroy(&adapter->global_mtx);
 	sx_destroy(&adapter->ioctl_sx);
@@ -4460,16 +4584,14 @@ ena_update_on_link_change(void *adapter_data,
 
 	if (status != 0) {
 		device_printf(adapter->pdev, "link is UP\n");
-		if_link_state_change(ifp, LINK_STATE_UP);
-	} else if (status == 0) {
+		ENA_FLAG_SET_ATOMIC(ENA_FLAG_LINK_UP, adapter);
+		if (!ENA_FLAG_ISSET(ENA_FLAG_ONGOING_RESET, adapter))
+			if_link_state_change(ifp, LINK_STATE_UP);
+	} else {
 		device_printf(adapter->pdev, "link is DOWN\n");
 		if_link_state_change(ifp, LINK_STATE_DOWN);
-	} else {
-		device_printf(adapter->pdev, "invalid value recvd\n");
-		BUG();
+		ENA_FLAG_CLEAR_ATOMIC(ENA_FLAG_LINK_UP, adapter);
 	}
-
-	adapter->link_status = status;
 }
 
 static void ena_notification(void *adapter_data,
