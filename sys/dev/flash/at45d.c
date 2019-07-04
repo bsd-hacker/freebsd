@@ -381,7 +381,6 @@ at45d_delayed_attach(void *xsc)
 	sc->disk->d_mediasize = pagesize * ident->pagecount;
 	sc->disk->d_unit = device_get_unit(sc->dev);
 	disk_create(sc->disk, DISK_VERSION);
-	disk_add_alias(sc->disk, "flash/spi");
 	bioq_init(&sc->bio_queue);
 	kproc_create(&at45d_task, sc, &sc->p, 0, 0, "task: at45d flash");
 	sc->taskstate = TSTATE_RUNNING;
@@ -607,6 +606,6 @@ DRIVER_MODULE(at45d, spibus, at45d_driver, at45d_devclass, NULL, NULL);
 MODULE_DEPEND(at45d, spibus, 1, 1, 1);
 #ifdef FDT
 MODULE_DEPEND(at45d, fdt_slicer, 1, 1, 1);
-SPIBUS_PNP_INFO(compat_data);
+SPIBUS_FDT_PNP_INFO(compat_data);
 #endif
 

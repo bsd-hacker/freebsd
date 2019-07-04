@@ -27,6 +27,7 @@ MAN=	acct.5 \
 	forward.5 \
 	fs.5 \
 	fstab.5 \
+	fusefs.5 \
 	group.5 \
 	hosts.5 \
 	hosts.equiv.5 \
@@ -98,10 +99,6 @@ MAN+=	freebsd-update.conf.5
 
 .if ${MK_HESIOD} != "no"
 MAN+=	hesiod.conf.5 
-.endif
-
-.if ${MK_NAND} != "no"
-MAN+=	nandfs.5
 .endif
 
 .if ${MK_PF} != "no"

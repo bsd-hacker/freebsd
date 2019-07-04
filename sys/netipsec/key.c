@@ -4760,32 +4760,8 @@ key_random()
 {
 	u_long value;
 
-	key_randomfill(&value, sizeof(value));
+	arc4random_buf(&value, sizeof(value));
 	return value;
-}
-
-void
-key_randomfill(void *p, size_t l)
-{
-	size_t n;
-	u_long v;
-	static int warn = 1;
-
-	n = 0;
-	n = (size_t)read_random(p, (u_int)l);
-	/* last resort */
-	while (n < l) {
-		v = random();
-		bcopy(&v, (u_int8_t *)p + n,
-		    l - n < sizeof(v) ? l - n : sizeof(v));
-		n += sizeof(v);
-
-		if (warn) {
-			printf("WARNING: pseudo-random number generator "
-			    "used for IPsec processing\n");
-			warn = 0;
-		}
-	}
 }
 
 /*
@@ -7188,7 +7164,7 @@ key_register(struct socket *so, struct mbuf *m, const struct sadb_msghdr *mhp)
 		return key_senderror(so, m, ENOBUFS);
 
 	MGETHDR(n, M_NOWAIT, MT_DATA);
-	if (len > MHLEN) {
+	if (n != NULL && len > MHLEN) {
 		if (!(MCLGET(n, M_NOWAIT))) {
 			m_freem(n);
 			n = NULL;

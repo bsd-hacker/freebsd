@@ -110,6 +110,7 @@ struct ip6_direct_ctx {
 	uint32_t	ip6dc_off;	/* offset to next header */
 };
 
+#if defined(_NETINET6_IN6_VAR_H_) && defined(_KERNEL)
 /*
  * Structure attached to inpcb.in6p_moptions and
  * passed to ip6_output when IPv6 multicast options are in use.
@@ -119,13 +120,11 @@ struct ip6_moptions {
 	struct	ifnet *im6o_multicast_ifp; /* ifp for outgoing multicasts */
 	u_char	im6o_multicast_hlim;	/* hoplimit for outgoing multicasts */
 	u_char	im6o_multicast_loop;	/* 1 >= hear sends if a member */
-	u_short	im6o_num_memberships;	/* no. memberships this socket */
-	u_short	im6o_max_memberships;	/* max memberships this socket */
-	struct	in6_multi **im6o_membership;	/* group memberships */
-	struct	in6_mfilter *im6o_mfilters;	/* source filters */
-	struct	epoch_context imo6_epoch_ctx;
+	struct ip6_mfilter_head im6o_head; /* group membership list */
 };
-
+#else
+struct ip6_moptions;
+#endif
 /*
  * Control options for outgoing packets
  */
@@ -208,6 +207,7 @@ struct	ip6stat {
 	uint64_t ip6s_localout;		/* total ip packets generated here */
 	uint64_t ip6s_odropped;		/* lost packets due to nobufs, etc. */
 	uint64_t ip6s_reassembled;	/* total packets reassembled ok */
+	uint64_t ip6s_atomicfrags;	/* atomic fragments */
 	uint64_t ip6s_fragmented;	/* datagrams successfully fragmented */
 	uint64_t ip6s_ofragments;	/* output fragments created */
 	uint64_t ip6s_cantfrag;		/* don't fragment flag was set, etc. */
@@ -353,6 +353,11 @@ VNET_DECLARE(struct pfil_head *, inet6_pfil_head);
 #ifdef IPSTEALTH
 VNET_DECLARE(int, ip6stealth);
 #define	V_ip6stealth			VNET(ip6stealth)
+#endif
+
+#ifdef EXPERIMENTAL
+VNET_DECLARE(int, nd6_ignore_ipv6_only_ra);
+#define	V_nd6_ignore_ipv6_only_ra	VNET(nd6_ignore_ipv6_only_ra)
 #endif
 
 extern struct	pr_usrreqs rip6_usrreqs;

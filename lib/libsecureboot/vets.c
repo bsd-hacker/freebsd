@@ -49,8 +49,25 @@ __FBSDID("$FreeBSD$");
 int DebugVe = 0;
 
 typedef VECTOR(br_x509_certificate) cert_list;
+typedef VECTOR(hash_data) digest_list;
 
 static anchor_list trust_anchors = VEC_INIT;
+static anchor_list forbidden_anchors = VEC_INIT;
+static digest_list forbidden_digests = VEC_INIT;
+
+static int anchor_verbose = 0;
+
+void
+ve_anchor_verbose_set(int n)
+{
+	anchor_verbose = n;
+}
+
+int
+ve_anchor_verbose_get(void)
+{
+	return (anchor_verbose);
+}
 
 void
 ve_debug_set(int n)
@@ -113,12 +130,117 @@ free_cert_contents(br_x509_certificate *xc)
 	xfree(xc->data);
 }
 
-/**
- * @brief
- * add certs to our trust store
+/*
+ * a bit of a dance to get commonName from a certificate
  */
-size_t
-ve_trust_anchors_add(br_x509_certificate *xcs, size_t num)
+static char *
+x509_cn_get(br_x509_certificate *xc, char *buf, size_t len)
+{
+	br_x509_minimal_context mc;
+	br_name_element cn;
+	unsigned char cn_oid[4];
+	int err;
+
+	if (buf == NULL)
+		return (buf);
+	/*
+	 * We want the commonName field
+	 * the OID we want is 2,5,4,3 - but DER encoded
+	 */
+	cn_oid[0] = 3;
+	cn_oid[1] = 0x55;
+	cn_oid[2] = 4;
+	cn_oid[3] = 3;
+	cn.oid = cn_oid;
+	cn.buf = buf;
+	cn.len = len;
+	cn.buf[0] = '\0';
+
+	br_x509_minimal_init(&mc, &br_sha256_vtable, NULL, 0);
+	br_x509_minimal_set_name_elements(&mc, &cn, 1);
+	/* the below actually does the work - updates cn.status */
+	mc.vtable->start_chain(&mc.vtable, NULL);
+	mc.vtable->start_cert(&mc.vtable, xc->data_len);
+	mc.vtable->append(&mc.vtable, xc->data, xc->data_len);
+	mc.vtable->end_cert(&mc.vtable);
+	/* we don' actually care about cert status - just its name */
+	err = mc.vtable->end_chain(&mc.vtable);
+
+	if (!cn.status)
+		buf = NULL;
+	return (buf);
+}
+
+/* ASN parsing related defines */
+#define ASN1_PRIMITIVE_TAG 0x1F
+#define ASN1_INF_LENGTH    0x80
+#define ASN1_LENGTH_MASK   0x7F
+
+/*
+ * Get TBS part of certificate.
+ * Since BearSSL doesn't provide any API to do this,
+ * it has to be implemented here.
+ */
+static void*
+X509_to_tbs(unsigned char* cert, size_t* output_size)
+{
+	unsigned char *result;
+	size_t tbs_size;
+	int size, i;
+
+	if (cert == NULL)
+		return (NULL);
+
+	/* Strip two sequences to get to the TBS section */
+	for (i = 0; i < 2; i++) {
+		/*
+		 * XXX: We don't need to support extended tags since
+		 * they should not be present in certificates.
+		 */
+		if ((*cert & ASN1_PRIMITIVE_TAG) == ASN1_PRIMITIVE_TAG)
+			return (NULL);
+
+		cert++;
+
+		if (*cert == ASN1_INF_LENGTH)
+			return (NULL);
+
+		size = *cert & ASN1_LENGTH_MASK;
+		tbs_size = 0;
+
+		/* Size can either be stored on a single or multiple bytes */
+		if (*cert & (ASN1_LENGTH_MASK + 1)) {
+			cert++;
+			while (*cert == 0 && size > 0) {
+				cert++;
+				size--;
+			}
+			while (size-- > 0) {
+				tbs_size <<= 8;
+				tbs_size |= *(cert++);
+			}
+		}
+		if (i == 0)
+			result = cert;
+	}
+	tbs_size += (cert - result);
+
+	if (output_size != NULL)
+		*output_size = tbs_size;
+
+	return (result);
+}
+
+void
+ve_forbidden_digest_add(hash_data *digest, size_t num)
+{
+	while (num--)
+		VEC_ADD(forbidden_digests, digest[num]);
+}
+
+static size_t
+ve_anchors_add(br_x509_certificate *xcs, size_t num, anchor_list *anchors,
+    char *anchors_name)
 {
 	br_x509_trust_anchor ta;
 	size_t u;
@@ -127,9 +249,89 @@ ve_trust_anchors_add(br_x509_certificate *xcs, size_t num)
 		if (certificate_to_trust_anchor_inner(&ta, &xcs[u]) < 0) {
 			break;
 		}
-		VEC_ADD(trust_anchors, ta);
+		VEC_ADD(*anchors, ta);
+		if (anchor_verbose && anchors_name) {
+			char buf[64];
+			char *cp;
+
+			cp = x509_cn_get(&xcs[u], buf, sizeof(buf));
+			if (cp) {
+				printf("x509_anchor(%s) %s\n", cp, anchors_name);
+			}
+		}
 	}
 	return (u);
+}
+
+/**
+ * @brief
+ * add certs to our trust store
+ */
+size_t
+ve_trust_anchors_add(br_x509_certificate *xcs, size_t num)
+{
+	return (ve_anchors_add(xcs, num, &trust_anchors, "trusted"));
+}
+
+size_t
+ve_forbidden_anchors_add(br_x509_certificate *xcs, size_t num)
+{
+	return (ve_anchors_add(xcs, num, &forbidden_anchors, "forbidden"));
+}
+
+
+/**
+ * @brief add trust anchors in buf
+ *
+ * Assume buf contains x509 certificates, but if not and
+ * we support OpenPGP try adding as that.
+ *
+ * @return number of anchors added
+ */
+size_t
+ve_trust_anchors_add_buf(unsigned char *buf, size_t len)
+{
+	br_x509_certificate *xcs;
+	size_t num;
+
+	num = 0;
+	xcs = parse_certificates(buf, len, &num);
+	if (xcs != NULL) {
+		num = ve_trust_anchors_add(xcs, num);
+#ifdef VE_OPENPGP_SUPPORT
+	} else {
+		num = openpgp_trust_add_buf(buf, len);
+#endif
+	}
+	return (num);
+}
+
+/**
+ * @brief revoke trust anchors in buf
+ *
+ * Assume buf contains x509 certificates, but if not and
+ * we support OpenPGP try revoking keyId
+ *
+ * @return number of anchors revoked
+ */
+size_t
+ve_trust_anchors_revoke(unsigned char *buf, size_t len)
+{
+	br_x509_certificate *xcs;
+	size_t num;
+
+	num = 0;
+	xcs = parse_certificates(buf, len, &num);
+	if (xcs != NULL) {
+		num = ve_forbidden_anchors_add(xcs, num);
+#ifdef VE_OPENPGP_SUPPORT
+	} else {
+		if (buf[len - 1] == '\n')
+			buf[len - 1] = '\0';
+		num = openpgp_trust_revoke((char *)buf);
+#endif
+	}
+	return (num);
 }
 
 /**
@@ -139,13 +341,10 @@ ve_trust_anchors_add(br_x509_certificate *xcs, size_t num)
 int
 ve_trust_init(void)
 {
-	br_x509_certificate *xcs;
 	static int once = -1;
-	size_t num;
 
 	if (once >= 0)
 		return (once);
-	once = 0;
 
 	ve_utc_set(time(NULL));
 #ifdef BUILD_UTC
@@ -157,16 +356,14 @@ ve_trust_init(void)
 #endif
 
 #ifdef TRUST_ANCHOR_STR
-	xcs = parse_certificates(__DECONST(unsigned char *, TRUST_ANCHOR_STR),
-	    sizeof(TRUST_ANCHOR_STR), &num);
-	if (xcs == NULL)
-		return (0);
-	num = ve_trust_anchors_add(xcs, num);
-	once = (int) num;
-#else
-	num = 0;
+	ve_trust_anchors_add_buf(__DECONST(unsigned char *, TRUST_ANCHOR_STR),
+	    sizeof(TRUST_ANCHOR_STR));
 #endif
-	return (num);
+	once = (int) VEC_LEN(trust_anchors);
+#ifdef VE_OPENPGP_SUPPORT
+	once += openpgp_trust_init();
+#endif
+	return (once);
 }
 
 /**
@@ -177,7 +374,8 @@ ve_trust_init(void)
 static br_x509_pkey *
 verify_signer_xcs(br_x509_certificate *xcs,
     size_t num,
-    br_name_element *elts, size_t num_elts)
+    br_name_element *elts, size_t num_elts,
+    anchor_list *anchors)
 {
 	br_x509_minimal_context mc;
 	br_x509_certificate *xc;
@@ -196,11 +394,11 @@ verify_signer_xcs(br_x509_certificate *xcs,
 	}
 
 	DEBUG_PRINTF(5, ("verify_signer: %zu trust anchors\n",
-		VEC_LEN(trust_anchors)));
+		VEC_LEN(*anchors)));
 
 	br_x509_minimal_init(&mc, &br_sha256_vtable,
-	    &VEC_ELT(trust_anchors, 0),
-	    VEC_LEN(trust_anchors));
+	    &VEC_ELT(*anchors, 0),
+	    VEC_LEN(*anchors));
 #ifdef VE_ECDSA_SUPPORT
 	br_x509_minimal_set_ecdsa(&mc,
 	    &br_ec_prime_i31, &br_ecdsa_i31_vrfy_asn1);
@@ -255,8 +453,94 @@ verify_signer_xcs(br_x509_certificate *xcs,
 			pk = xpkeydup(tpk);
 		}
 	}
-	VEC_CLEAREXT(chain, &free_cert_contents);
+	VEC_CLEAR(chain);
 	return (pk);
+}
+
+/*
+ * Check if digest of one of the certificates from verified chain
+ * is present in the forbidden database.
+ * Since UEFI allows to store three types of digests
+ * all of them have to be checked separately.
+ */
+static int
+check_forbidden_digests(br_x509_certificate *xcs, size_t num)
+{
+	unsigned char sha256_digest[br_sha256_SIZE];
+	unsigned char sha384_digest[br_sha384_SIZE];
+	unsigned char sha512_digest[br_sha512_SIZE];
+	void *tbs;
+	hash_data *digest;
+	br_hash_compat_context ctx;
+	const br_hash_class *md;
+	size_t tbs_len, i;
+	int have_sha256, have_sha384, have_sha512;
+
+	if (VEC_LEN(forbidden_digests) == 0)
+		return (0);
+
+	/*
+	 * Iterate through certificates, extract their To-Be-Signed section,
+	 * and compare its digest against the ones in the forbidden database.
+	 */
+	while (num--) {
+		tbs = X509_to_tbs(xcs[num].data, &tbs_len);
+		if (tbs == NULL) {
+			printf("Failed to obtain TBS part of certificate\n");
+			return (1);
+		}
+		have_sha256 = have_sha384 = have_sha512 = 0;
+
+		for (i = 0; i < VEC_LEN(forbidden_digests); i++) {
+			digest = &VEC_ELT(forbidden_digests, i);
+			switch (digest->hash_size) {
+			case br_sha256_SIZE:
+				if (!have_sha256) {
+					have_sha256 = 1;
+					md = &br_sha256_vtable;
+					md->init(&ctx.vtable);
+					md->update(&ctx.vtable, tbs, tbs_len);
+					md->out(&ctx.vtable, sha256_digest);
+				}
+				if (!memcmp(sha256_digest,
+					digest->data,
+					br_sha256_SIZE))
+					return (1);
+
+				break;
+			case br_sha384_SIZE:
+				if (!have_sha384) {
+					have_sha384 = 1;
+					md = &br_sha384_vtable;
+					md->init(&ctx.vtable);
+					md->update(&ctx.vtable, tbs, tbs_len);
+					md->out(&ctx.vtable, sha384_digest);
+				}
+				if (!memcmp(sha384_digest,
+					digest->data,
+					br_sha384_SIZE))
+					return (1);
+
+				break;
+			case br_sha512_SIZE:
+				if (!have_sha512) {
+					have_sha512 = 1;
+					md = &br_sha512_vtable;
+					md->init(&ctx.vtable);
+					md->update(&ctx.vtable, tbs, tbs_len);
+					md->out(&ctx.vtable, sha512_digest);
+				}
+				if (!memcmp(sha512_digest,
+					digest->data,
+					br_sha512_SIZE))
+					return (1);
+
+				break;
+			}
+		}
+	}
+
+	return (0);
 }
 
 static br_x509_pkey *
@@ -266,15 +550,46 @@ verify_signer(const char *certs,
 	br_x509_certificate *xcs;
 	br_x509_pkey *pk;
 	size_t num;
-    
+
+	pk = NULL;
+
 	ve_trust_init();
 	xcs = read_certificates(certs, &num);
 	if (xcs == NULL) {
 		ve_error_set("cannot read certificates\n");
 		return (NULL);
 	}
-	pk = verify_signer_xcs(xcs, num, elts, num_elts);
-	xfree(xcs);
+
+	/*
+	 * Check if either
+	 * 1. There is a direct match between cert from forbidden_anchors
+	 * and a cert from chain.
+	 * 2. CA that signed the chain is found in forbidden_anchors.
+	 */
+	if (VEC_LEN(forbidden_anchors) > 0)
+		pk = verify_signer_xcs(xcs, num, elts, num_elts, &forbidden_anchors);
+	if (pk != NULL) {
+		ve_error_set("Certificate is on forbidden list\n");
+		xfreepkey(pk);
+		pk = NULL;
+		goto out;
+	}
+
+	pk = verify_signer_xcs(xcs, num, elts, num_elts, &trust_anchors);
+	if (pk == NULL)
+		goto out;
+
+	/*
+	 * Check if hash of tbs part of any certificate in chain
+	 * is on the forbidden list.
+	 */
+	if (check_forbidden_digests(xcs, num)) {
+		ve_error_set("Certificate hash is on forbidden list\n");
+		xfreepkey(pk);
+		pk = NULL;
+	}
+out:
+	free_certificates(xcs, num);
 	return (pk);
 }
 
@@ -351,6 +666,7 @@ verify_ec(br_x509_pkey *pk, const char *file, const char *sigfile)
 	br_sha256_init(&ctx);
 	br_sha256_update(&ctx, fcp, flen);
 	br_sha256_out(&ctx, rhbuf);
+#ifdef VE_ECDSA_HASH_AGAIN
 	hex = hexdigest(hexbuf, sizeof(hexbuf), rhbuf, br_sha256_SIZE);
 	/* now hash that */
 	if (hex) {
@@ -358,6 +674,7 @@ verify_ec(br_x509_pkey *pk, const char *file, const char *sigfile)
 		br_sha256_update(&ctx, hex, strlen(hex));
 		br_sha256_out(&ctx, rhbuf);
 	}
+#endif
 	ec = br_ec_get_default();
 	vrfy = br_ecdsa_vrfy_asn1_get_default();
 	if (!vrfy(ec, rhbuf, br_sha256_SIZE, &pk->key.ec, po->data,
@@ -615,7 +932,7 @@ test_hash(const br_hash_class *md, size_t hlen,
 #define ve_test_hash(n, N) \
 	printf("Testing hash: " #n "\t\t\t\t%s\n", \
 	    test_hash(&br_ ## n ## _vtable, br_ ## n ## _SIZE, #n, \
-	    VE_HASH_KAT_STR, sizeof(VE_HASH_KAT_STR), \
+	    VE_HASH_KAT_STR, VE_HASH_KAT_STRLEN(VE_HASH_KAT_STR), \
 	    vh_ ## N) ? "Failed" : "Passed")
 
 /**
@@ -664,33 +981,32 @@ ve_self_tests(void)
 #ifdef VERIFY_CERTS_STR
 	xcs = parse_certificates(__DECONST(unsigned char *, VERIFY_CERTS_STR),
 	    sizeof(VERIFY_CERTS_STR), &num);
-	if (xcs == NULL)
-		return (0);
-	/*
-	 * We want the commonName field
-	 * the OID we want is 2,5,4,3 - but DER encoded
-	 */
-	cn_oid[0] = 3;
-	cn_oid[1] = 0x55;
-	cn_oid[2] = 4;
-	cn_oid[3] = 3;
-	cn.oid = cn_oid;
-	cn.buf = cn_buf;
+	if (xcs != NULL) {
+		/*
+		 * We want the commonName field
+		 * the OID we want is 2,5,4,3 - but DER encoded
+		 */
+		cn_oid[0] = 3;
+		cn_oid[1] = 0x55;
+		cn_oid[2] = 4;
+		cn_oid[3] = 3;
+		cn.oid = cn_oid;
+		cn.buf = cn_buf;
 
-	for (u = 0; u < num; u ++) {
-		cn.len = sizeof(cn_buf);
-		if ((pk = verify_signer_xcs(&xcs[u], 1, &cn, 1)) != NULL) {
-			once++;
-			printf("Testing verify certificate: %s\tPassed\n",
-			    cn.status ? cn_buf : "");
-			xfreepkey(pk);
+		for (u = 0; u < num; u ++) {
+			cn.len = sizeof(cn_buf);
+			if ((pk = verify_signer_xcs(&xcs[u], 1, &cn, 1, &trust_anchors)) != NULL) {
+				free_cert_contents(&xcs[u]);
+				once++;
+				printf("Testing verify certificate: %s\tPassed\n",
+				    cn.status ? cn_buf : "");
+				xfreepkey(pk);
+			}
 		}
+		if (!once)
+			printf("Testing verify certificate:\t\t\tFailed\n");
+		xfree(xcs);
 	}
-	if (!once)
-		printf("Testing verify certificate:\t\t\tFailed\n");
-	xfree(xcs);
-#else
-	printf("No X.509 self tests\n");
 #endif	/* VERIFY_CERTS_STR */
 #ifdef VE_OPENPGP_SUPPORT
 	if (!openpgp_self_tests())

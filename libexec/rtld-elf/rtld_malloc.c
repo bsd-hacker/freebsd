@@ -45,17 +45,14 @@ static char *rcsid = "$FreeBSD$";
  * This is designed for use in a virtual memory environment.
  */
 
-#include <sys/types.h>
+#include <sys/param.h>
 #include <sys/sysctl.h>
+#include <sys/mman.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/param.h>
-#include <sys/mman.h>
 #include "rtld.h"
 #include "rtld_printf.h"
 #include "paths.h"
@@ -81,30 +78,16 @@ union	overhead {
 	struct {
 		u_char	ovu_magic;	/* magic number */
 		u_char	ovu_index;	/* bucket # */
-#ifdef RCHECK
-		u_short	ovu_rmagic;	/* range magic number */
-		u_int	ovu_size;	/* actual block size */
-#endif
 	} ovu;
 #define	ov_magic	ovu.ovu_magic
 #define	ov_index	ovu.ovu_index
-#define	ov_rmagic	ovu.ovu_rmagic
-#define	ov_size		ovu.ovu_size
 };
 
 static void morecore(int bucket);
 static int morepages(int n);
 static int findbucket(union overhead *freep, int srchlen);
 
-
 #define	MAGIC		0xef		/* magic # on accounting info */
-#define RMAGIC		0x5555		/* magic # on range info */
-
-#ifdef RCHECK
-#define	RSLOP		sizeof (u_short)
-#else
-#define	RSLOP		0
-#endif
 
 /*
  * nextf[i] is the pointer to the next free block of size 2^(i+3).  The
@@ -116,33 +99,6 @@ static	union overhead *nextf[NBUCKETS];
 
 static	int pagesz;			/* page size */
 static	int pagebucket;			/* page size bucket */
-
-#ifdef MSTATS
-/*
- * nmalloc[i] is the difference between the number of mallocs and frees
- * for a given block size.
- */
-static	u_int nmalloc[NBUCKETS];
-#include <stdio.h>
-#endif
-
-#if defined(MALLOC_DEBUG) || defined(RCHECK)
-#define	ASSERT(p)   if (!(p)) botch("p")
-#include <stdio.h>
-static void
-botch(s)
-	char *s;
-{
-	fprintf(stderr, "\r\nassertion botched: %s\r\n", s);
- 	(void) fflush(stderr);		/* just in case user buffered it */
-	abort();
-}
-#else
-#define	ASSERT(p)
-#endif
-
-/* Debugging stuff */
-#define TRACE()	rtld_printf("TRACE %s:%d\n", __FILE__, __LINE__)
 
 /*
  * The array of supported page sizes is provided by the user, i.e., the
@@ -188,15 +144,10 @@ __crt_malloc(size_t nbytes)
 	 * stored in hash buckets which satisfies request.
 	 * Account for space used per block for accounting.
 	 */
-	if (nbytes <= (unsigned long)(n = pagesz - sizeof (*op) - RSLOP)) {
-#ifndef RCHECK
+	if (nbytes <= (unsigned long)(n = pagesz - sizeof(*op))) {
 		amt = 8;	/* size of first bucket */
 		bucket = 0;
-#else
-		amt = 16;	/* size of first bucket */
-		bucket = 1;
-#endif
-		n = -(sizeof (*op) + RSLOP);
+		n = -sizeof(*op);
 	} else {
 		amt = pagesz;
 		bucket = pagebucket;
@@ -220,18 +171,6 @@ __crt_malloc(size_t nbytes)
   	nextf[bucket] = op->ov_next;
 	op->ov_magic = MAGIC;
 	op->ov_index = bucket;
-#ifdef MSTATS
-  	nmalloc[bucket]++;
-#endif
-#ifdef RCHECK
-	/*
-	 * Record allocated size of block and
-	 * bound space with magic numbers.
-	 */
-	op->ov_size = roundup2(nbytes, RSLOP);
-	op->ov_rmagic = RMAGIC;
-  	*(u_short *)((caddr_t)(op + 1) + op->ov_size) = RMAGIC;
-#endif
   	return ((char *)(op + 1));
 }
 
@@ -266,13 +205,9 @@ morecore(int bucket)
 	 * sbrk_size <= 0 only for big, FLUFFY, requests (about
 	 * 2^30 bytes on a VAX, I think) or for a negative arg.
 	 */
-	sz = 1 << (bucket + 3);
-#ifdef MALLOC_DEBUG
-	ASSERT(sz > 0);
-#else
-	if (sz <= 0)
+	if ((unsigned)bucket >= NBBY * sizeof(int) - 4)
 		return;
-#endif
+	sz = 1 << (bucket + 3);
 	if (sz < pagesz) {
 		amt = pagesz;
   		nblks = amt / sz;
@@ -306,23 +241,11 @@ __crt_free(void *cp)
   	if (cp == NULL)
   		return;
 	op = (union overhead *)((caddr_t)cp - sizeof (union overhead));
-#ifdef MALLOC_DEBUG
-  	ASSERT(op->ov_magic == MAGIC);		/* make sure it was in use */
-#else
 	if (op->ov_magic != MAGIC)
 		return;				/* sanity */
-#endif
-#ifdef RCHECK
-  	ASSERT(op->ov_rmagic == RMAGIC);
-	ASSERT(*(u_short *)((caddr_t)(op + 1) + op->ov_size) == RMAGIC);
-#endif
   	size = op->ov_index;
-  	ASSERT(size < NBUCKETS);
 	op->ov_next = nextf[size];	/* also clobbers ov_magic */
   	nextf[size] = op;
-#ifdef MSTATS
-  	nmalloc[size]--;
-#endif
 }
 
 /*
@@ -374,26 +297,21 @@ __crt_realloc(void *cp, size_t nbytes)
 	}
 	onb = 1 << (i + 3);
 	if (onb < (u_int)pagesz)
-		onb -= sizeof (*op) + RSLOP;
+		onb -= sizeof(*op);
 	else
-		onb += pagesz - sizeof (*op) - RSLOP;
+		onb += pagesz - sizeof(*op);
 	/* avoid the copy if same size block */
 	if (was_alloced) {
 		if (i) {
 			i = 1 << (i + 2);
 			if (i < pagesz)
-				i -= sizeof (*op) + RSLOP;
+				i -= sizeof(*op);
 			else
-				i += pagesz - sizeof (*op) - RSLOP;
+				i += pagesz - sizeof(*op);
 		}
-		if (nbytes <= onb && nbytes > (size_t)i) {
-#ifdef RCHECK
-			op->ov_size = roundup2(nbytes, RSLOP);
-			*(u_short *)((caddr_t)(op + 1) + op->ov_size) = RMAGIC;
-#endif
-			return(cp);
-		} else
-			__crt_free(cp);
+		if (nbytes <= onb && nbytes > (size_t)i)
+			return (cp);
+		__crt_free(cp);
 	}
   	if ((res = __crt_malloc(nbytes)) == NULL)
 		return (NULL);
@@ -424,48 +342,14 @@ findbucket(union overhead *freep, int srchlen)
 	return (-1);
 }
 
-#ifdef MSTATS
-/*
- * mstats - print out statistics about malloc
- *
- * Prints two lines of numbers, one showing the length of the free list
- * for each size category, the second showing the number of mallocs -
- * frees for each size category.
- */
-mstats(char * s)
-{
-	int i, j;
-	union overhead *p;
-  	int totfree = 0,
-  	totused = 0;
-
-  	fprintf(stderr, "Memory allocation statistics %s\nfree:\t", s);
-  	for (i = 0; i < NBUCKETS; i++) {
-  		for (j = 0, p = nextf[i]; p; p = p->ov_next, j++)
-  			;
-  		fprintf(stderr, " %d", j);
-  		totfree += j * (1 << (i + 3));
-  	}
-  	fprintf(stderr, "\nused:\t");
-  	for (i = 0; i < NBUCKETS; i++) {
-  		fprintf(stderr, " %d", nmalloc[i]);
-  		totused += nmalloc[i] * (1 << (i + 3));
-  	}
-  	fprintf(stderr, "\n\tTotal in use: %d, total free: %d\n",
-	    totused, totfree);
-}
-#endif
-
-
 static int
 morepages(int n)
 {
-	int	fd = -1;
-	int	offset;
+	caddr_t	addr;
+	int offset;
 
 	if (pagepool_end - pagepool_start > pagesz) {
-		caddr_t	addr = (caddr_t)
-			(((long)pagepool_start + pagesz - 1) & ~(pagesz - 1));
+		addr = (caddr_t)roundup2((long)pagepool_start, pagesz);
 		if (munmap(addr, pagepool_end - addr) != 0) {
 #ifdef IN_RTLD
 			rtld_fdprintf(STDERR_FILENO, _BASENAME_RTLD ": "
@@ -475,20 +359,21 @@ morepages(int n)
 		}
 	}
 
-	offset = (long)pagepool_start - ((long)pagepool_start & ~(pagesz - 1));
+	offset = (long)pagepool_start - rounddown2((long)pagepool_start,
+	    pagesz);
 
-	if ((pagepool_start = mmap(0, n * pagesz,
-			PROT_READ|PROT_WRITE,
-			MAP_ANON|MAP_PRIVATE, fd, 0)) == (caddr_t)-1) {
+	pagepool_start = mmap(0, n * pagesz, PROT_READ | PROT_WRITE,
+	    MAP_ANON | MAP_PRIVATE, -1, 0);
+	if (pagepool_start == MAP_FAILED) {
 #ifdef IN_RTLD
 		rtld_fdprintf(STDERR_FILENO, _BASENAME_RTLD ": morepages: "
 		    "cannot mmap anonymous memory: %s\n",
 		    rtld_strerror(errno));
 #endif
-		return 0;
+		return (0);
 	}
 	pagepool_end = pagepool_start + n * pagesz;
 	pagepool_start += offset;
 
-	return n;
+	return (n);
 }

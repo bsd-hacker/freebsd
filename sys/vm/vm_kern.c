@@ -586,7 +586,7 @@ _kmem_unback(vm_object_t object, vm_offset_t addr, vm_size_t size)
 #endif
 	for (; offset < end; offset += PAGE_SIZE, m = next) {
 		next = vm_page_next(m);
-		vm_page_unwire(m, PQ_NONE);
+		vm_page_unwire_noq(m);
 		vm_page_free(m);
 	}
 	VM_OBJECT_WUNLOCK(object);
@@ -641,7 +641,8 @@ kmap_alloc_wait(vm_map_t map, vm_size_t size)
 		 * to lock out sleepers/wakers.
 		 */
 		vm_map_lock(map);
-		if (vm_map_findspace(map, vm_map_min(map), size, &addr) == 0)
+		addr = vm_map_findspace(map, vm_map_min(map), size);
+		if (addr + size <= vm_map_max(map))
 			break;
 		/* no space now; see if we can ever get space */
 		if (vm_map_max(map) - vm_map_min(map) < size) {

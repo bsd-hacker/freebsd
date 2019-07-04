@@ -294,7 +294,7 @@ vm_fault_soft_fast(struct faultstate *fs, vm_offset_t vaddr, vm_prot_t prot,
 	    rounddown2(vaddr, pagesizes[m_super->psind]) >= fs->entry->start &&
 	    roundup2(vaddr + 1, pagesizes[m_super->psind]) <= fs->entry->end &&
 	    (vaddr & (pagesizes[m_super->psind] - 1)) == (VM_PAGE_TO_PHYS(m) &
-	    (pagesizes[m_super->psind] - 1)) &&
+	    (pagesizes[m_super->psind] - 1)) && !wired &&
 	    pmap_ps_enabled(fs->map->pmap)) {
 		flags = PS_ALL_VALID;
 		if ((prot & VM_PROT_WRITE) != 0) {
@@ -469,7 +469,7 @@ vm_fault_populate(struct faultstate *fs, vm_prot_t prot, int fault_type,
 		psind = m->psind;
 		if (psind > 0 && ((vaddr & (pagesizes[psind] - 1)) != 0 ||
 		    pidx + OFF_TO_IDX(pagesizes[psind]) - 1 > pager_last ||
-		    !pmap_ps_enabled(fs->map->pmap)))
+		    !pmap_ps_enabled(fs->map->pmap) || wired))
 			psind = 0;
 #else
 		psind = 0;
@@ -1004,7 +1004,7 @@ readrest:
 			 */
 			if (rv == VM_PAGER_ERROR || rv == VM_PAGER_BAD) {
 				vm_page_lock(fs.m);
-				if (fs.m->wire_count == 0)
+				if (!vm_page_wired(fs.m))
 					vm_page_free(fs.m);
 				else
 					vm_page_xunbusy_maybelocked(fs.m);
@@ -1027,7 +1027,7 @@ readrest:
 			 */
 			if (fs.object != fs.first_object) {
 				vm_page_lock(fs.m);
-				if (fs.m->wire_count == 0)
+				if (!vm_page_wired(fs.m))
 					vm_page_free(fs.m);
 				else
 					vm_page_xunbusy_maybelocked(fs.m);
@@ -1144,7 +1144,7 @@ readrest:
 			    fs.object == fs.first_object->backing_object) {
 				vm_page_lock(fs.m);
 				vm_page_dequeue(fs.m);
-				vm_page_remove(fs.m);
+				(void)vm_page_remove(fs.m);
 				vm_page_unlock(fs.m);
 				vm_page_lock(fs.first_m);
 				vm_page_replace_checked(fs.m, fs.first_object,
@@ -1667,6 +1667,7 @@ vm_fault_copy_entry(vm_map_t dst_map, vm_map_t src_map,
 	if (src_object != dst_object) {
 		dst_entry->object.vm_object = dst_object;
 		dst_entry->offset = 0;
+		dst_entry->eflags &= ~MAP_ENTRY_VN_EXEC;
 	}
 	if (fork_charge != NULL) {
 		KASSERT(dst_entry->cred == NULL,
@@ -1757,8 +1758,7 @@ again:
 			}
 			pmap_copy_page(src_m, dst_m);
 			VM_OBJECT_RUNLOCK(object);
-			dst_m->valid = VM_PAGE_BITS_ALL;
-			dst_m->dirty = VM_PAGE_BITS_ALL;
+			dst_m->dirty = dst_m->valid = src_m->valid;
 		} else {
 			dst_m = src_m;
 			if (vm_page_sleep_if_busy(dst_m, "fltupg"))
@@ -1771,8 +1771,6 @@ again:
 				 */
 				break;
 			vm_page_xbusy(dst_m);
-			KASSERT(dst_m->valid == VM_PAGE_BITS_ALL,
-			    ("invalid dst page %p", dst_m));
 		}
 		VM_OBJECT_WUNLOCK(dst_object);
 
@@ -1780,9 +1778,18 @@ again:
 		 * Enter it in the pmap. If a wired, copy-on-write
 		 * mapping is being replaced by a write-enabled
 		 * mapping, then wire that new mapping.
+		 *
+		 * The page can be invalid if the user called
+		 * msync(MS_INVALIDATE) or truncated the backing vnode
+		 * or shared memory object.  In this case, do not
+		 * insert it into pmap, but still do the copy so that
+		 * all copies of the wired map entry have similar
+		 * backing pages.
 		 */
-		pmap_enter(dst_map->pmap, vaddr, dst_m, prot,
-		    access | (upgrade ? PMAP_ENTER_WIRED : 0), 0);
+		if (dst_m->valid == VM_PAGE_BITS_ALL) {
+			pmap_enter(dst_map->pmap, vaddr, dst_m, prot,
+			    access | (upgrade ? PMAP_ENTER_WIRED : 0), 0);
+		}
 
 		/*
 		 * Mark it no longer busy, and put it on the active list.
@@ -1798,7 +1805,7 @@ again:
 				vm_page_wire(dst_m);
 				vm_page_unlock(dst_m);
 			} else {
-				KASSERT(dst_m->wire_count > 0,
+				KASSERT(vm_page_wired(dst_m),
 				    ("dst_m %p is not wired", dst_m));
 			}
 		} else {

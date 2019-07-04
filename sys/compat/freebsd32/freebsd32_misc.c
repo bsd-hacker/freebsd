@@ -834,8 +834,8 @@ freebsd32_gettimeofday(struct thread *td,
 		error = copyout(&atv32, uap->tp, sizeof (atv32));
 	}
 	if (error == 0 && uap->tzp != NULL) {
-		rtz.tz_minuteswest = tz_minuteswest;
-		rtz.tz_dsttime = tz_dsttime;
+		rtz.tz_minuteswest = 0;
+		rtz.tz_dsttime = 0;
 		error = copyout(&rtz, uap->tzp, sizeof (rtz));
 	}
 	return (error);
@@ -1160,8 +1160,8 @@ freebsd32_copy_msg_out(struct msghdr *msg, struct mbuf *control)
 				cm = NULL;
 			}
 
-			msg->msg_controllen += FREEBSD32_ALIGN(sizeof(*cm)) +
-			    datalen_out;
+			msg->msg_controllen +=
+			    FREEBSD32_CMSG_SPACE(datalen_out);
 		}
 	}
 	if (len == 0 && m != NULL) {
@@ -3327,8 +3327,13 @@ freebsd32_procctl(struct thread *td, struct freebsd32_procctl_args *uap)
 	} x32;
 	int error, error1, flags, signum;
 
+	if (uap->com >= PROC_PROCCTL_MD_MIN)
+		return (cpu_procctl(td, uap->idtype, PAIR32TO64(id_t, uap->id),
+		    uap->com, PTRIN(uap->data)));
+
 	switch (uap->com) {
 	case PROC_ASLR_CTL:
+	case PROC_PROTMAX_CTL:
 	case PROC_SPROTECT:
 	case PROC_TRACE_CTL:
 	case PROC_TRAPCAP_CTL:
@@ -3361,6 +3366,7 @@ freebsd32_procctl(struct thread *td, struct freebsd32_procctl_args *uap)
 		data = &x.rk;
 		break;
 	case PROC_ASLR_STATUS:
+	case PROC_PROTMAX_STATUS:
 	case PROC_TRACE_STATUS:
 	case PROC_TRAPCAP_STATUS:
 		data = &flags;
@@ -3390,6 +3396,7 @@ freebsd32_procctl(struct thread *td, struct freebsd32_procctl_args *uap)
 			error = error1;
 		break;
 	case PROC_ASLR_STATUS:
+	case PROC_PROTMAX_STATUS:
 	case PROC_TRACE_STATUS:
 	case PROC_TRAPCAP_STATUS:
 		if (error == 0)

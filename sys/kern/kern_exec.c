@@ -145,8 +145,6 @@ static int map_at_zero = 0;
 SYSCTL_INT(_security_bsd, OID_AUTO, map_at_zero, CTLFLAG_RWTUN, &map_at_zero, 0,
     "Permit processes to map an object at virtual address 0.");
 
-EVENTHANDLER_LIST_DECLARE(process_exec);
-
 static int
 sysctl_kern_ps_strings(SYSCTL_HANDLER_ARGS)
 {
@@ -375,7 +373,6 @@ do_execve(struct thread *td, struct image_args *args, struct mac *mac_p)
 #endif
 	struct vnode *oldtextvp = NULL, *newtextvp;
 	int credential_changing;
-	int textset;
 #ifdef MAC
 	struct label *interpvplabel = NULL;
 	int will_transition;
@@ -423,8 +420,8 @@ do_execve(struct thread *td, struct image_args *args, struct mac *mac_p)
 	 * interpreter if this is an interpreted binary.
 	 */
 	if (args->fname != NULL) {
-		NDINIT(&nd, LOOKUP, ISOPEN | LOCKLEAF | FOLLOW | SAVENAME
-		    | AUDITVNODE1, UIO_SYSSPACE, args->fname, td);
+		NDINIT(&nd, LOOKUP, ISOPEN | LOCKLEAF | LOCKSHARED | FOLLOW |
+		    SAVENAME | AUDITVNODE1, UIO_SYSSPACE, args->fname, td);
 	}
 
 	SDT_PROBE1(proc, , , exec, args->fname);
@@ -457,13 +454,14 @@ interpret:
 		error = fgetvp_exec(td, args->fd, &cap_fexecve_rights, &newtextvp);
 		if (error)
 			goto exec_fail;
-		vn_lock(newtextvp, LK_EXCLUSIVE | LK_RETRY);
+		vn_lock(newtextvp, LK_SHARED | LK_RETRY);
 		AUDIT_ARG_VNODE1(newtextvp);
 		imgp->vp = newtextvp;
 	}
 
 	/*
-	 * Check file permissions (also 'opens' file)
+	 * Check file permissions.  Also 'opens' file and sets its vnode to
+	 * text mode.
 	 */
 	error = exec_check_permissions(imgp);
 	if (error)
@@ -472,16 +470,6 @@ interpret:
 	imgp->object = imgp->vp->v_object;
 	if (imgp->object != NULL)
 		vm_object_reference(imgp->object);
-
-	/*
-	 * Set VV_TEXT now so no one can write to the executable while we're
-	 * activating it.
-	 *
-	 * Remember if this was set before and unset it in case this is not
-	 * actually an executable image.
-	 */
-	textset = VOP_IS_TEXT(imgp->vp);
-	VOP_SET_TEXT(imgp->vp);
 
 	error = exec_map_first_page(imgp);
 	if (error)
@@ -610,11 +598,8 @@ interpret:
 	}
 
 	if (error) {
-		if (error == -1) {
-			if (textset == 0)
-				VOP_UNSET_TEXT(imgp->vp);
+		if (error == -1)
 			error = ENOEXEC;
-		}
 		goto exec_fail_dealloc;
 	}
 
@@ -625,12 +610,13 @@ interpret:
 	if (imgp->interpreted) {
 		exec_unmap_first_page(imgp);
 		/*
-		 * VV_TEXT needs to be unset for scripts.  There is a short
-		 * period before we determine that something is a script where
-		 * VV_TEXT will be set. The vnode lock is held over this
-		 * entire period so nothing should illegitimately be blocked.
+		 * The text reference needs to be removed for scripts.
+		 * There is a short period before we determine that
+		 * something is a script where text reference is active.
+		 * The vnode lock is held over this entire period
+		 * so nothing should illegitimately be blocked.
 		 */
-		VOP_UNSET_TEXT(imgp->vp);
+		VOP_UNSET_TEXT_CHECKED(imgp->vp);
 		/* free name buffer and old vnode */
 		if (args->fname != NULL)
 			NDFREE(&nd, NDF_ONLY_PNBUF);
@@ -679,23 +665,14 @@ interpret:
 		sys_cap_enter(td, NULL);
 
 	/*
-	 * Copy out strings (args and env) and initialize stack base
+	 * Copy out strings (args and env) and initialize stack base.
 	 */
-	if (p->p_sysent->sv_copyout_strings)
-		stack_base = (*p->p_sysent->sv_copyout_strings)(imgp);
-	else
-		stack_base = exec_copyout_strings(imgp);
+	stack_base = (*p->p_sysent->sv_copyout_strings)(imgp);
 
 	/*
-	 * If custom stack fixup routine present for this process
-	 * let it do the stack setup.
-	 * Else stuff argument count as first item on stack
+	 * Stack setup.
 	 */
-	if (p->p_sysent->sv_fixup != NULL)
-		error = (*p->p_sysent->sv_fixup)(&stack_base, imgp);
-	else
-		error = suword(--stack_base, imgp->args->argc) == 0 ?
-		    0 : EFAULT;
+	error = (*p->p_sysent->sv_fixup)(&stack_base, imgp);
 	if (error != 0) {
 		vn_lock(imgp->vp, LK_SHARED | LK_RETRY);
 		goto exec_fail_dealloc;
@@ -880,11 +857,7 @@ interpret:
 #endif
 
 	/* Set values passed into the program in registers. */
-	if (p->p_sysent->sv_setregs)
-		(*p->p_sysent->sv_setregs)(td, imgp, 
-		    (u_long)(uintptr_t)stack_base);
-	else
-		exec_setregs(td, imgp, (u_long)(uintptr_t)stack_base);
+	(*p->p_sysent->sv_setregs)(td, imgp, (u_long)(uintptr_t)stack_base);
 
 	vfs_mark_atime(imgp->vp, td->td_ucred);
 
@@ -899,6 +872,8 @@ exec_fail_dealloc:
 			NDFREE(&nd, NDF_ONLY_PNBUF);
 		if (imgp->opened)
 			VOP_CLOSE(imgp->vp, FREAD, td->td_ucred, td);
+		if (imgp->textset)
+			VOP_UNSET_TEXT_CHECKED(imgp->vp);
 		if (error != 0)
 			vput(imgp->vp);
 		else
@@ -1100,7 +1075,8 @@ exec_new_vmspace(struct image_params *imgp, struct sysentvec *sv)
 	else
 		sv_minuser = MAX(sv->sv_minuser, PAGE_SIZE);
 	if (vmspace->vm_refcnt == 1 && vm_map_min(map) == sv_minuser &&
-	    vm_map_max(map) == sv->sv_maxuser) {
+	    vm_map_max(map) == sv->sv_maxuser &&
+	    cpu_exec_vmspace_reuse(p, map)) {
 		shmexit(vmspace);
 		pmap_remove_pages(vmspace_pmap(vmspace));
 		vm_map_remove(map, vm_map_min(map), vm_map_max(map));
@@ -1718,7 +1694,7 @@ exec_check_permissions(struct image_params *imgp)
 	struct vnode *vp = imgp->vp;
 	struct vattr *attr = imgp->attr;
 	struct thread *td;
-	int error, writecount;
+	int error;
 
 	td = curthread;
 
@@ -1762,12 +1738,17 @@ exec_check_permissions(struct image_params *imgp)
 	/*
 	 * Check number of open-for-writes on the file and deny execution
 	 * if there are any.
+	 *
+	 * Add a text reference now so no one can write to the
+	 * executable while we're activating it.
+	 *
+	 * Remember if this was set before and unset it in case this is not
+	 * actually an executable image.
 	 */
-	error = VOP_GET_WRITECOUNT(vp, &writecount);
+	error = VOP_SET_TEXT(vp);
 	if (error != 0)
 		return (error);
-	if (writecount != 0)
-		return (ETXTBSY);
+	imgp->textset = true;
 
 	/*
 	 * Call filesystem specific open routine (which does nothing in the

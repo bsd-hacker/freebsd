@@ -72,6 +72,10 @@ sysctl_hw_machine(SYSCTL_HANDLER_ARGS)
 SYSCTL_PROC(_hw, HW_MACHINE, machine, CTLTYPE_STRING | CTLFLAG_RD |
 	CTLFLAG_MPSAFE, NULL, 0, sysctl_hw_machine, "A", "Machine class");
 
+static char cpu_model[64];
+SYSCTL_STRING(_hw, HW_MODEL, model, CTLFLAG_RD,
+	cpu_model, sizeof(cpu_model), "Machine model");
+
 /*
  * Per-CPU affinity as provided in MPIDR_EL1
  * Indexed by CPU number in logical order selected by the system.
@@ -494,6 +498,50 @@ print_cpu_features(u_int cpu)
 		printed = 0;
 		sbuf_printf(sb, " Instruction Set Attributes 0 = <");
 
+		switch (ID_AA64ISAR0_DP(cpu_desc[cpu].id_aa64isar0)) {
+		case ID_AA64ISAR0_DP_NONE:
+			break;
+		case ID_AA64ISAR0_DP_IMPL:
+			sbuf_printf(sb, "%sDotProd", SEP_STR);
+			break;
+		default:
+			sbuf_printf(sb, "%sUnknown DP", SEP_STR);
+			break;
+		}
+
+		switch (ID_AA64ISAR0_SM4(cpu_desc[cpu].id_aa64isar0)) {
+		case ID_AA64ISAR0_SM4_NONE:
+			break;
+		case ID_AA64ISAR0_SM4_IMPL:
+			sbuf_printf(sb, "%sSM4", SEP_STR);
+			break;
+		default:
+			sbuf_printf(sb, "%sUnknown SM4", SEP_STR);
+			break;
+		}
+
+		switch (ID_AA64ISAR0_SM3(cpu_desc[cpu].id_aa64isar0)) {
+		case ID_AA64ISAR0_SM3_NONE:
+			break;
+		case ID_AA64ISAR0_SM3_IMPL:
+			sbuf_printf(sb, "%sSM3", SEP_STR);
+			break;
+		default:
+			sbuf_printf(sb, "%sUnknown SM3", SEP_STR);
+			break;
+		}
+
+		switch (ID_AA64ISAR0_SHA3(cpu_desc[cpu].id_aa64isar0)) {
+		case ID_AA64ISAR0_SHA3_NONE:
+			break;
+		case ID_AA64ISAR0_SHA3_IMPL:
+			sbuf_printf(sb, "%sSHA3", SEP_STR);
+			break;
+		default:
+			sbuf_printf(sb, "%sUnknown SHA3", SEP_STR);
+			break;
+		}
+
 		switch (ID_AA64ISAR0_RDM(cpu_desc[cpu].id_aa64isar0)) {
 		case ID_AA64ISAR0_RDM_NONE:
 			break;
@@ -514,28 +562,14 @@ print_cpu_features(u_int cpu)
 			sbuf_printf(sb, "%sUnknown Atomic", SEP_STR);
 		}
 
-		switch (ID_AA64ISAR0_AES(cpu_desc[cpu].id_aa64isar0)) {
-		case ID_AA64ISAR0_AES_NONE:
+		switch (ID_AA64ISAR0_CRC32(cpu_desc[cpu].id_aa64isar0)) {
+		case ID_AA64ISAR0_CRC32_NONE:
 			break;
-		case ID_AA64ISAR0_AES_BASE:
-			sbuf_printf(sb, "%sAES", SEP_STR);
-			break;
-		case ID_AA64ISAR0_AES_PMULL:
-			sbuf_printf(sb, "%sAES+PMULL", SEP_STR);
+		case ID_AA64ISAR0_CRC32_BASE:
+			sbuf_printf(sb, "%sCRC32", SEP_STR);
 			break;
 		default:
-			sbuf_printf(sb, "%sUnknown AES", SEP_STR);
-			break;
-		}
-
-		switch (ID_AA64ISAR0_SHA1(cpu_desc[cpu].id_aa64isar0)) {
-		case ID_AA64ISAR0_SHA1_NONE:
-			break;
-		case ID_AA64ISAR0_SHA1_BASE:
-			sbuf_printf(sb, "%sSHA1", SEP_STR);
-			break;
-		default:
-			sbuf_printf(sb, "%sUnknown SHA1", SEP_STR);
+			sbuf_printf(sb, "%sUnknown CRC32", SEP_STR);
 			break;
 		}
 
@@ -553,58 +587,28 @@ print_cpu_features(u_int cpu)
 			break;
 		}
 
-		switch (ID_AA64ISAR0_CRC32(cpu_desc[cpu].id_aa64isar0)) {
-		case ID_AA64ISAR0_CRC32_NONE:
+		switch (ID_AA64ISAR0_SHA1(cpu_desc[cpu].id_aa64isar0)) {
+		case ID_AA64ISAR0_SHA1_NONE:
 			break;
-		case ID_AA64ISAR0_CRC32_BASE:
-			sbuf_printf(sb, "%sCRC32", SEP_STR);
+		case ID_AA64ISAR0_SHA1_BASE:
+			sbuf_printf(sb, "%sSHA1", SEP_STR);
 			break;
 		default:
-			sbuf_printf(sb, "%sUnknown CRC32", SEP_STR);
+			sbuf_printf(sb, "%sUnknown SHA1", SEP_STR);
 			break;
 		}
 
-		switch (ID_AA64ISAR0_SHA3(cpu_desc[cpu].id_aa64isar0)) {
-		case ID_AA64ISAR0_SHA3_NONE:
+		switch (ID_AA64ISAR0_AES(cpu_desc[cpu].id_aa64isar0)) {
+		case ID_AA64ISAR0_AES_NONE:
 			break;
-		case ID_AA64ISAR0_SHA3_IMPL:
-			sbuf_printf(sb, "%sSHA3", SEP_STR);
+		case ID_AA64ISAR0_AES_BASE:
+			sbuf_printf(sb, "%sAES", SEP_STR);
 			break;
-		default:
-			sbuf_printf(sb, "%sUnknown SHA3", SEP_STR);
-			break;
-		}
-
-		switch (ID_AA64ISAR0_SM3(cpu_desc[cpu].id_aa64isar0)) {
-		case ID_AA64ISAR0_SM3_NONE:
-			break;
-		case ID_AA64ISAR0_SM3_IMPL:
-			sbuf_printf(sb, "%sSM3", SEP_STR);
+		case ID_AA64ISAR0_AES_PMULL:
+			sbuf_printf(sb, "%sAES+PMULL", SEP_STR);
 			break;
 		default:
-			sbuf_printf(sb, "%sUnknown SM3", SEP_STR);
-			break;
-		}
-
-		switch (ID_AA64ISAR0_SM4(cpu_desc[cpu].id_aa64isar0)) {
-		case ID_AA64ISAR0_SM4_NONE:
-			break;
-		case ID_AA64ISAR0_SM4_IMPL:
-			sbuf_printf(sb, "%sSM4", SEP_STR);
-			break;
-		default:
-			sbuf_printf(sb, "%sUnknown SM4", SEP_STR);
-			break;
-		}
-
-		switch (ID_AA64ISAR0_DP(cpu_desc[cpu].id_aa64isar0)) {
-		case ID_AA64ISAR0_DP_NONE:
-			break;
-		case ID_AA64ISAR0_DP_IMPL:
-			sbuf_printf(sb, "%sDotProd", SEP_STR);
-			break;
-		default:
-			sbuf_printf(sb, "%sUnknown DP", SEP_STR);
+			sbuf_printf(sb, "%sUnknown AES", SEP_STR);
 			break;
 		}
 
@@ -868,17 +872,6 @@ print_cpu_features(u_int cpu)
 			break;
 		}
 
-		switch (ID_AA64MMFR0_TGRAN16(cpu_desc[cpu].id_aa64mmfr0)) {
-		case ID_AA64MMFR0_TGRAN16_NONE:
-			break;
-		case ID_AA64MMFR0_TGRAN16_IMPL:
-			sbuf_printf(sb, "%s16k Granule", SEP_STR);
-			break;
-		default:
-			sbuf_printf(sb, "%sUnknown 16k Granule", SEP_STR);
-			break;
-		}
-
 		switch (ID_AA64MMFR0_TGRAN64(cpu_desc[cpu].id_aa64mmfr0)) {
 		case ID_AA64MMFR0_TGRAN64_NONE:
 			break;
@@ -890,14 +883,14 @@ print_cpu_features(u_int cpu)
 			break;
 		}
 
-		switch (ID_AA64MMFR0_BIGEND(cpu_desc[cpu].id_aa64mmfr0)) {
-		case ID_AA64MMFR0_BIGEND_FIXED:
+		switch (ID_AA64MMFR0_TGRAN16(cpu_desc[cpu].id_aa64mmfr0)) {
+		case ID_AA64MMFR0_TGRAN16_NONE:
 			break;
-		case ID_AA64MMFR0_BIGEND_MIXED:
-			sbuf_printf(sb, "%sMixedEndian", SEP_STR);
+		case ID_AA64MMFR0_TGRAN16_IMPL:
+			sbuf_printf(sb, "%s16k Granule", SEP_STR);
 			break;
 		default:
-			sbuf_printf(sb, "%sUnknown Endian switching", SEP_STR);
+			sbuf_printf(sb, "%sUnknown 16k Granule", SEP_STR);
 			break;
 		}
 
@@ -920,6 +913,17 @@ print_cpu_features(u_int cpu)
 			break;
 		default:
 			sbuf_printf(sb, "%sUnknown S/NS Mem", SEP_STR);
+			break;
+		}
+
+		switch (ID_AA64MMFR0_BIGEND(cpu_desc[cpu].id_aa64mmfr0)) {
+		case ID_AA64MMFR0_BIGEND_FIXED:
+			break;
+		case ID_AA64MMFR0_BIGEND_MIXED:
+			sbuf_printf(sb, "%sMixedEndian", SEP_STR);
+			break;
+		default:
+			sbuf_printf(sb, "%sUnknown Endian switching", SEP_STR);
 			break;
 		}
 
@@ -1312,6 +1316,10 @@ identify_cpu(void)
 
 	cpu_desc[cpu].cpu_revision = CPU_REV(midr);
 	cpu_desc[cpu].cpu_variant = CPU_VAR(midr);
+
+	snprintf(cpu_model, sizeof(cpu_model), "%s %s r%dp%d",
+	    cpu_desc[cpu].cpu_impl_name, cpu_desc[cpu].cpu_part_name,
+	    cpu_desc[cpu].cpu_variant, cpu_desc[cpu].cpu_revision);
 
 	/* Save affinity for current CPU */
 	cpu_desc[cpu].mpidr = get_mpidr();

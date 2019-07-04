@@ -36,8 +36,6 @@ __FBSDID("$FreeBSD$");
 #include <verify_file.h>
 #include <manifests.h>
 
-#define VE_NOT_CHECKED -42
-
 #ifdef UNIT_TEST
 # include <err.h>
 # define panic warn
@@ -112,7 +110,7 @@ struct verify_status {
 	struct verify_status *vs_next;
 };
 
-static int
+int
 is_verified(struct stat *stp)
 {
 	struct verify_status *vsp;
@@ -126,7 +124,7 @@ is_verified(struct stat *stp)
 }
 
 /* most recent first, since most likely to see repeated calls. */
-static void
+void
 add_verify_status(struct stat *stp, int status)
 {
 	struct verify_status *vsp;
@@ -248,7 +246,9 @@ severity_guess(const char *filename)
 }
 
 static void
-verify_tweak(char *tweak, int *accept_no_fp, int *verbose, int *verifying)
+verify_tweak(int fd, off_t off, struct stat *stp,
+    char *tweak, int *accept_no_fp,
+    int *verbose, int *verifying)
 {
 	if (strcmp(tweak, "off") == 0) {
 		*verifying = 0;
@@ -270,6 +270,25 @@ verify_tweak(char *tweak, int *accept_no_fp, int *verbose, int *verifying)
 		*verbose = 1;
 	} else if (strcmp(tweak, "quiet") == 0) {
 		*verbose = 0;
+	} else if (strncmp(tweak, "trust", 5) == 0) {
+		/* content is trust anchor to add or revoke */
+		unsigned char *ucp;
+		size_t num;
+
+		if (off > 0)
+			lseek(fd, 0, SEEK_SET);
+		ucp = read_fd(fd, stp->st_size);
+		if (ucp == NULL)
+			return;
+		if (strstr(tweak, "revoke")) {
+			num = ve_trust_anchors_revoke(ucp, stp->st_size);
+			DEBUG_PRINTF(3, ("revoked %d trust anchors\n",
+				(int) num));
+		} else {
+			num = ve_trust_anchors_add_buf(ucp, stp->st_size);
+			DEBUG_PRINTF(3, ("added %d trust anchors\n",
+				(int) num));
+		}
 	}
 }
 
@@ -319,8 +338,10 @@ verify_file(int fd, const char *filename, off_t off, int severity)
 		rc = verifying ? VE_NOT_CHECKED : VE_NOT_VERIFYING;
 		ve_status_set(0, rc);
 		ve_status_state = VE_STATUS_NONE;
-		if (verifying)
+		if (verifying) {
 			ve_self_tests();
+			ve_anchor_verbose_set(1);
+		}
 	}
 	if (!verifying)
 		return (0);
@@ -342,13 +363,25 @@ verify_file(int fd, const char *filename, off_t off, int severity)
 	if (rc != VE_FINGERPRINT_WRONG && loaded_manifests) {
 		if (severity <= VE_GUESS)
 			severity = severity_guess(filename);
+#ifdef VE_PCR_SUPPORT
+		/*
+		 * Only update pcr with things that must verify
+		 * these tend to be processed in a more deterministic
+		 * order, which makes our pseudo pcr more useful.
+		 */
+		ve_pcr_updating_set((severity == VE_MUST));
+#endif
 		if ((rc = verify_fd(fd, filename, off, &st)) >= 0) {
 			if (verbose || severity > VE_WANT) {
 #if defined(VE_DEBUG_LEVEL) && VE_DEBUG_LEVEL > 0
-				printf("Verified %s %llu,%llu\n", filename,
-				    st.st_dev, st.st_ino);
+				printf("%serified %s %llu,%llu\n",
+				    (rc == VE_FINGERPRINT_IGNORE) ? "Unv" : "V",
+				    filename,
+				    (long long)st.st_dev, (long long)st.st_ino);
 #else
-				printf("Verified %s\n", filename);
+				printf("%serified %s\n",
+				    (rc == VE_FINGERPRINT_IGNORE) ? "Unv" : "V",
+				    filename);
 #endif
 			}
 			if (severity < VE_MUST) { /* not a kernel or module */
@@ -357,7 +390,7 @@ verify_file(int fd, const char *filename, off_t off, int severity)
 					cp++;
 					if (strncmp(cp, "loader.ve.", 10) == 0) {
 						cp += 10;
-						verify_tweak(cp,
+						verify_tweak(fd, off, &st, cp,
 						    &accept_no_fp, &verbose,
 						    &verifying);
 					}
@@ -368,7 +401,7 @@ verify_file(int fd, const char *filename, off_t off, int severity)
 			return (rc);
 		}
 
-		if (severity || verbose)
+		if (severity || verbose || rc == VE_FINGERPRINT_WRONG)
 			printf("Unverified: %s\n", ve_error_get());
 		if (rc == VE_FINGERPRINT_UNKNOWN && severity < VE_MUST)
 			rc = VE_UNVERIFIED_OK;

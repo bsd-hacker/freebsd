@@ -1996,7 +1996,6 @@ trapsignal(struct thread *td, ksiginfo_t *ksi)
 			ps->ps_sigact[_SIG_IDX(sig)] = SIG_DFL;
 		}
 		mtx_unlock(&ps->ps_mtx);
-		p->p_code = code;	/* XXX for core dump/debugger */
 		p->p_sig = sig;		/* XXX to verify code */
 		tdsendsignal(p, td, sig, ksi);
 	}
@@ -2577,7 +2576,15 @@ ptracestop(struct thread *td, int sig, ksiginfo_t *si)
 			    p->p_xthread == NULL)) {
 				p->p_xsig = sig;
 				p->p_xthread = td;
-				td->td_dbgflags &= ~TDB_FSTP;
+
+				/*
+				 * If we are on sleepqueue already,
+				 * let sleepqueue code decide if it
+				 * needs to go sleep after attach.
+				 */
+				if (td->td_wchan == NULL)
+					td->td_dbgflags &= ~TDB_FSTP;
+
 				p->p_flag2 &= ~P2_PTRACE_FSTP;
 				p->p_flag |= P_STOPPED_SIG | P_STOPPED_TRACE;
 				sig_suspend_threads(td, p, 0);
@@ -3062,7 +3069,6 @@ postsig(int sig)
 			returnmask = td->td_sigmask;
 
 		if (p->p_sig == sig) {
-			p->p_code = 0;
 			p->p_sig = 0;
 		}
 		(*p->p_sysent->sv_sendsig)(action, &ksi, &returnmask);
@@ -3392,10 +3398,16 @@ corefile_open_last(struct thread *td, char *name, int indexpos,
 	}
 
 	if (oldvp != NULL) {
-		if (nextvp == NULL)
-			nextvp = oldvp;
-		else
+		if (nextvp == NULL) {
+			if ((td->td_proc->p_flag & P_SUGID) != 0) {
+				error = EFAULT;
+				vnode_close_locked(td, oldvp);
+			} else {
+				nextvp = oldvp;
+			}
+		} else {
 			vnode_close_locked(td, oldvp);
+		}
 	}
 	if (error != 0) {
 		if (nextvp != NULL)
@@ -3515,6 +3527,8 @@ corefile_open(const char *comm, uid_t uid, pid_t pid, struct thread *td,
 		oflags = VN_OPEN_NOAUDIT | VN_OPEN_NAMECACHE |
 		    (capmode_coredump ? VN_OPEN_NOCAPCHECK : 0);
 		flags = O_CREAT | FWRITE | O_NOFOLLOW;
+		if ((td->td_proc->p_flag & P_SUGID) != 0)
+			flags |= O_EXCL;
 
 		NDINIT(&nd, LOOKUP, NOFOLLOW, UIO_SYSSPACE, name, td);
 		error = vn_open_cred(&nd, &flags, cmode, oflags, td->td_ucred,
@@ -3591,10 +3605,11 @@ coredump(struct thread *td)
 
 	/*
 	 * Don't dump to non-regular files or files with links.
-	 * Do not dump into system files.
+	 * Do not dump into system files. Effective user must own the corefile.
 	 */
 	if (vp->v_type != VREG || VOP_GETATTR(vp, &vattr, cred) != 0 ||
-	    vattr.va_nlink != 1 || (vp->v_vflag & VV_SYSTEM) != 0) {
+	    vattr.va_nlink != 1 || (vp->v_vflag & VV_SYSTEM) != 0 ||
+	    vattr.va_uid != cred->cr_uid) {
 		VOP_UNLOCK(vp, 0);
 		error = EFAULT;
 		goto out;

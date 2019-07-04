@@ -31,7 +31,7 @@ SRCS+=	metadata.c
 .endif
 
 .if ${LOADER_DISK_SUPPORT:Uyes} == "yes"
-SRCS+=	disk.c part.c
+SRCS+=	disk.c part.c vdisk.c
 .endif
 
 .if ${LOADER_NET_SUPPORT:Uno} == "yes"
@@ -77,6 +77,10 @@ SRCS+=	interp_simple.c
 CFLAGS+= -DLOADER_VERIEXEC -I${SRCTOP}/lib/libsecureboot/h
 .endif
 
+.if ${MK_LOADER_VERIEXEC_PASS_MANIFEST} != "no"
+CFLAGS+= -DLOADER_VERIEXEC_PASS_MANIFEST -I${SRCTOP}/lib/libsecureboot/h
+.endif
+
 .if defined(BOOT_PROMPT_123)
 CFLAGS+=	-DBOOT_PROMPT_123
 .endif
@@ -94,9 +98,6 @@ CFLAGS+=	-DLOADER_EXT2FS_SUPPORT
 .endif
 .if ${LOADER_MSDOS_SUPPORT:Uno} == "yes"
 CFLAGS+=	-DLOADER_MSDOS_SUPPORT
-.endif
-.if ${LOADER_NANDFS_SUPPORT:U${MK_NAND}} == "yes"
-CFLAGS+=	-DLOADER_NANDFS_SUPPORT
 .endif
 .if ${LOADER_UFS_SUPPORT:Uyes} == "yes"
 CFLAGS+=	-DLOADER_UFS_SUPPORT

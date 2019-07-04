@@ -88,6 +88,7 @@ COMPAT_FREEBSD7	opt_global.h
 COMPAT_FREEBSD9	opt_global.h
 COMPAT_FREEBSD10	opt_global.h
 COMPAT_FREEBSD11	opt_global.h
+COMPAT_FREEBSD12	opt_global.h
 COMPAT_CLOUDABI32	opt_dontuse.h
 COMPAT_CLOUDABI64	opt_dontuse.h
 COMPAT_LINUXKPI	opt_dontuse.h
@@ -253,9 +254,8 @@ CD9660		opt_dontuse.h
 EXT2FS		opt_dontuse.h
 FDESCFS		opt_dontuse.h
 FFS		opt_dontuse.h
-FUSE		opt_dontuse.h
+FUSEFS		opt_dontuse.h
 MSDOSFS		opt_dontuse.h
-NANDFS		opt_dontuse.h
 NULLFS		opt_dontuse.h
 PROCFS		opt_dontuse.h
 PSEUDOFS	opt_dontuse.h
@@ -640,6 +640,9 @@ NFS_MINDIRATTRTIMO	opt_nfs.h
 NFS_MAXDIRATTRTIMO	opt_nfs.h
 NFS_DEBUG		opt_nfs.h
 
+# TMPFS options
+TMPFS_PAGES_MINRESERVED		opt_tmpfs.h
+
 # For the Bt848/Bt848A/Bt849/Bt878/Bt879 driver
 OVERRIDE_CARD			opt_bktr.h
 OVERRIDE_TUNER			opt_bktr.h
@@ -730,7 +733,6 @@ DEV_PCI			opt_pci.h
 DEV_PF			opt_pf.h
 DEV_PFLOG		opt_pf.h
 DEV_PFSYNC		opt_pf.h
-DEV_RANDOM		opt_global.h
 DEV_SPLASH		opt_splash.h
 DEV_VLAN		opt_vlan.h
 
@@ -859,6 +861,12 @@ AH_INTERRUPT_DEBUGGING	opt_ah.h
 # XXX do not use this for AR9130
 AH_AR5416_INTERRUPT_MITIGATION	opt_ah.h
 
+# options for the Altera mSGDMA driver (altera_msgdma)
+ALTERA_MSGDMA_DESC_STD		opt_altera_msgdma.h
+ALTERA_MSGDMA_DESC_EXT		opt_altera_msgdma.h
+ALTERA_MSGDMA_DESC_PF_STD	opt_altera_msgdma.h
+ALTERA_MSGDMA_DESC_PF_EXT	opt_altera_msgdma.h
+
 # options for the Broadcom BCM43xx driver (bwi)
 BWI_DEBUG		opt_bwi.h
 BWI_DEBUG_VERBOSE	opt_bwi.h
@@ -982,6 +990,9 @@ RANDOM_LOADABLE	opt_global.h
 # the uma slab allocator.
 RANDOM_ENABLE_UMA	opt_global.h
 RANDOM_ENABLE_ETHER	opt_global.h
+
+# This options turns TPM into entropy source.
+TPM_HARVEST	opt_tpm.h
 
 # BHND(4) driver
 BHND_LOGLEVEL	opt_global.h

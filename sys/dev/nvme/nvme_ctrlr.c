@@ -237,7 +237,7 @@ nvme_ctrlr_fail_req_task(void *arg, int pending)
 		STAILQ_REMOVE_HEAD(&ctrlr->fail_req, stailq);
 		mtx_unlock(&ctrlr->lock);
 		nvme_qpair_manual_complete_request(req->qpair, req,
-		    NVME_SCT_GENERIC, NVME_SC_ABORTED_BY_REQUEST, TRUE);
+		    NVME_SCT_GENERIC, NVME_SC_ABORTED_BY_REQUEST);
 		mtx_lock(&ctrlr->lock);
 	}
 	mtx_unlock(&ctrlr->lock);
@@ -515,28 +515,33 @@ nvme_ctrlr_create_qpairs(struct nvme_controller *ctrlr)
 }
 
 static int
-nvme_ctrlr_destroy_qpair(struct nvme_controller *ctrlr, struct nvme_qpair *qpair)
+nvme_ctrlr_destroy_qpairs(struct nvme_controller *ctrlr)
 {
 	struct nvme_completion_poll_status	status;
+	struct nvme_qpair			*qpair;
 
-	status.done = 0;
-	nvme_ctrlr_cmd_delete_io_sq(ctrlr, qpair,
-	    nvme_completion_poll_cb, &status);
-	while (!atomic_load_acq_int(&status.done))
-		pause("nvme", 1);
-	if (nvme_completion_is_error(&status.cpl)) {
-		nvme_printf(ctrlr, "nvme_destroy_io_sq failed!\n");
-		return (ENXIO);
-	}
+	for (int i = 0; i < ctrlr->num_io_queues; i++) {
+		qpair = &ctrlr->ioq[i];
 
-	status.done = 0;
-	nvme_ctrlr_cmd_delete_io_cq(ctrlr, qpair,
-	    nvme_completion_poll_cb, &status);
-	while (!atomic_load_acq_int(&status.done))
-		pause("nvme", 1);
-	if (nvme_completion_is_error(&status.cpl)) {
-		nvme_printf(ctrlr, "nvme_destroy_io_cq failed!\n");
-		return (ENXIO);
+		status.done = 0;
+		nvme_ctrlr_cmd_delete_io_sq(ctrlr, qpair,
+		    nvme_completion_poll_cb, &status);
+		while (!atomic_load_acq_int(&status.done))
+			pause("nvme", 1);
+		if (nvme_completion_is_error(&status.cpl)) {
+			nvme_printf(ctrlr, "nvme_destroy_io_sq failed!\n");
+			return (ENXIO);
+		}
+
+		status.done = 0;
+		nvme_ctrlr_cmd_delete_io_cq(ctrlr, qpair,
+		    nvme_completion_poll_cb, &status);
+		while (!atomic_load_acq_int(&status.done))
+			pause("nvme", 1);
+		if (nvme_completion_is_error(&status.cpl)) {
+			nvme_printf(ctrlr, "nvme_destroy_io_cq failed!\n");
+			return (ENXIO);
+		}
 	}
 
 	return (0);
@@ -1314,8 +1319,8 @@ nvme_ctrlr_destruct(struct nvme_controller *ctrlr, device_t dev)
 	if (ctrlr->cdev)
 		destroy_dev(ctrlr->cdev);
 
+	nvme_ctrlr_destroy_qpairs(ctrlr);
 	for (i = 0; i < ctrlr->num_io_queues; i++) {
-		nvme_ctrlr_destroy_qpair(ctrlr, &ctrlr->ioq[i]);
 		nvme_io_qpair_destroy(&ctrlr->ioq[i]);
 	}
 	free(ctrlr->ioq, M_NVME);

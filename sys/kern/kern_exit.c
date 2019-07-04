@@ -47,6 +47,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/capsicum.h>
 #include <sys/eventhandler.h>
 #include <sys/kernel.h>
+#include <sys/ktr.h>
 #include <sys/malloc.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -98,8 +99,6 @@ SDT_PROBE_DEFINE1(proc, , , exit, "int");
 
 /* Hook for NFS teardown procedure. */
 void (*nlminfo_release_p)(struct proc *p);
-
-EVENTHANDLER_LIST_DECLARE(process_exit);
 
 struct proc *
 proc_realparent(struct proc *child)
@@ -543,6 +542,11 @@ exit1(struct thread *td, int rval, int signo)
 	 */
 	while ((q = LIST_FIRST(&p->p_orphans)) != NULL) {
 		PROC_LOCK(q);
+		KASSERT(q->p_oppid == p->p_pid,
+		    ("orphan %p of %p has unexpected oppid %d", q, p,
+		    q->p_oppid));
+		q->p_oppid = q->p_reaper->p_pid;
+
 		/*
 		 * If we are the real parent of this process
 		 * but it has been reparented to a debugger, then

@@ -263,9 +263,28 @@ LdLoadFieldElements (
     ACPI_WALK_STATE         *WalkState)
 {
     ACPI_PARSE_OBJECT       *Child = NULL;
+    ACPI_PARSE_OBJECT       *SourceRegion;
     ACPI_NAMESPACE_NODE     *Node;
     ACPI_STATUS             Status;
 
+
+
+    SourceRegion = UtGetArg (Op, 0);
+    if (SourceRegion)
+    {
+        Status = AcpiNsLookup (WalkState->ScopeInfo,
+            SourceRegion->Asl.Value.String,
+            ACPI_TYPE_REGION, ACPI_IMODE_EXECUTE,
+            ACPI_NS_DONT_OPEN_SCOPE, NULL, &Node);
+        if (Status == AE_NOT_FOUND)
+        {
+            /*
+             * If the named object is not found, it means that it is either a
+             * forward reference or the named object does not exist.
+             */
+            SourceRegion->Asl.CompileFlags |= OP_NOT_FOUND_DURING_LOAD;
+        }
+    }
 
     /* Get the first named field element */
 
@@ -324,6 +343,7 @@ LdLoadFieldElements (
                     (Node->Flags & ANOBJ_IS_EXTERNAL))
                 {
                     Node->Type = (UINT8) ACPI_TYPE_LOCAL_REGION_FIELD;
+                    Node->Flags &= ~ANOBJ_IS_EXTERNAL;
                 }
                 else
                 {
@@ -702,7 +722,7 @@ LdNamespace1Begin (
 
                 /* However, this is an error -- operand to Scope must exist */
 
-                if (strlen (Op->Asl.ExternalName) == ACPI_NAME_SIZE)
+                if (strlen (Op->Asl.ExternalName) == ACPI_NAMESEG_SIZE)
                 {
                     AslError (ASL_ERROR, ASL_MSG_NOT_FOUND, Op,
                         Op->Asl.ExternalName);
@@ -731,7 +751,7 @@ LdNamespace1Begin (
              * 10/2015.
              */
             if ((Node->Flags & ANOBJ_IS_EXTERNAL) &&
-                (ACPI_COMPARE_NAME (AslGbl_TableSignature, "DSDT")))
+                (ACPI_COMPARE_NAMESEG (AslGbl_TableSignature, "DSDT")))
             {
                 /* However, allowed if the reference is within a method */
 
@@ -1095,7 +1115,7 @@ LdNamespace2Begin (
             {
                 /* Standalone NameSeg vs. NamePath */
 
-                if (strlen (Arg->Asl.ExternalName) == ACPI_NAME_SIZE)
+                if (strlen (Arg->Asl.ExternalName) == ACPI_NAMESEG_SIZE)
                 {
                     AslError (ASL_ERROR, ASL_MSG_NOT_FOUND, Op,
                         Arg->Asl.ExternalName);

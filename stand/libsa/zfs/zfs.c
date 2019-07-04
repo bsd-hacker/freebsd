@@ -425,8 +425,10 @@ vdev_read(vdev_t *vdev, void *priv, off_t offset, void *buf, size_t bytes)
 		}
 	}
 
-	if (lseek(fd, start_sec * secsz, SEEK_SET) == -1)
-		return (errno);
+	if (lseek(fd, start_sec * secsz, SEEK_SET) == -1) {
+		ret = errno;
+		goto error;
+	}
 
 	/* Partial data return from first sector */
 	if (head > 0) {
@@ -588,7 +590,7 @@ zfs_probe_dev(const char *devname, uint64_t *pool_guid)
 		int slice = dev->d_slice;
 
 		free(dev);
-		if (partition != -1 && slice != -1) {
+		if (partition != D_PARTNONE && slice != D_SLICENONE) {
 			ret = zfs_probe(pa.fd, pool_guid);
 			if (ret == 0)
 				return (0);

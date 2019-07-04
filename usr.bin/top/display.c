@@ -675,6 +675,9 @@ i_swap(int *stats)
 {
     swap_buffer = setup_buffer(swap_buffer, 0);
 
+    if (swap_names == NULL)
+	    return;
+
     fputs("\nSwap: ", stdout);
     lastline++;
 
@@ -689,6 +692,9 @@ u_swap(int *stats)
     static char *new = NULL;
 
     new = setup_buffer(new, 0);
+
+    if (swap_names == NULL)
+	    return;
 
     /* format the new line */
     summary_format(new, stats, swap_names);
@@ -1347,7 +1353,8 @@ i_uptime(struct timeval *bt, time_t *tod)
 static char *
 setup_buffer(char *buffer, int addlen)
 {
-    size_t len;
+    size_t len, old_len;
+    char *new_buffer;
 
     setup_buffer_bufsiz = screen_width;
     if (setup_buffer_bufsiz < SETUPBUFFER_MIN_SCREENWIDTH)
@@ -1355,13 +1362,18 @@ setup_buffer(char *buffer, int addlen)
 	setup_buffer_bufsiz = SETUPBUFFER_MIN_SCREENWIDTH;
     }
 
-    free(buffer);
     len = setup_buffer_bufsiz + addlen + SETUPBUFFER_REQUIRED_ADDBUFSIZ;
-    buffer = calloc(len, sizeof(char));
-    if (buffer == NULL)
+    new_buffer = calloc(len, sizeof(char));
+    if (new_buffer == NULL)
     {
 	errx(4, "can't allocate sufficient memory");
     }
+    if (buffer != NULL)
+    {
+	old_len = strlen(buffer);
+	memcpy(new_buffer, buffer, old_len < len - 1 ? old_len : len - 1);
+	free(buffer);
+    }
 
-    return buffer;
+    return new_buffer;
 }

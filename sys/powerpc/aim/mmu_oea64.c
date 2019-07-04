@@ -118,10 +118,22 @@ uintptr_t moea64_get_unique_vsid(void);
  *
  */
 
-#define PV_LOCK_COUNT	PA_LOCK_COUNT*3
+#define PV_LOCK_PER_DOM	PA_LOCK_COUNT*3
+#define PV_LOCK_COUNT	PV_LOCK_PER_DOM*MAXMEMDOM
 static struct mtx_padalign pv_lock[PV_LOCK_COUNT];
  
-#define PV_LOCKPTR(pa)	((struct mtx *)(&pv_lock[pa_index(pa) % PV_LOCK_COUNT]))
+/*
+ * Cheap NUMA-izing of the pv locks, to reduce contention across domains.
+ * NUMA domains on POWER9 appear to be indexed as sparse memory spaces, with the
+ * index at (N << 45).
+ */
+#ifdef __powerpc64__
+#define PV_LOCK_IDX(pa)	(pa_index(pa) % PV_LOCK_PER_DOM + \
+			(((pa) >> 45) % MAXMEMDOM) * PV_LOCK_PER_DOM)
+#else
+#define PV_LOCK_IDX(pa)	(pa_index(pa) % PV_LOCK_COUNT)
+#endif
+#define PV_LOCKPTR(pa)	((struct mtx *)(&pv_lock[PV_LOCK_IDX(pa)]))
 #define PV_LOCK(pa)		mtx_lock(PV_LOCKPTR(pa))
 #define PV_UNLOCK(pa)		mtx_unlock(PV_LOCKPTR(pa))
 #define PV_LOCKASSERT(pa) 	mtx_assert(PV_LOCKPTR(pa), MA_OWNED)
@@ -146,8 +158,9 @@ extern void *slbtrap, *slbtrapend;
  */
 static struct	mem_region *regions;
 static struct	mem_region *pregions;
+static struct	numa_mem_region *numa_pregions;
 static u_int	phys_avail_count;
-static int	regions_sz, pregions_sz;
+static int	regions_sz, pregions_sz, numapregions_sz;
 
 extern void bs_remap_earlyboot(void);
 
@@ -625,7 +638,7 @@ moea64_setup_direct_map(mmu_t mmup, vm_offset_t kernelstart,
 {
 	struct pvo_entry *pvo;
 	register_t msr;
-	vm_paddr_t pa;
+	vm_paddr_t pa, pkernelstart, pkernelend;
 	vm_offset_t size, off;
 	uint64_t pte_lo;
 	int i;
@@ -671,11 +684,21 @@ moea64_setup_direct_map(mmu_t mmup, vm_offset_t kernelstart,
 	 * without a direct map or on which the kernel is not already executing
 	 * out of the direct-mapped region.
 	 */
-
-	if (!hw_direct_map || kernelstart < DMAP_BASE_ADDRESS) {
+	if (kernelstart < DMAP_BASE_ADDRESS) {
+		/*
+		 * For pre-dmap execution, we need to use identity mapping
+		 * because we will be operating with the mmu on but in the
+		 * wrong address configuration until we __restartkernel().
+		 */
 		for (pa = kernelstart & ~PAGE_MASK; pa < kernelend;
 		    pa += PAGE_SIZE)
 			moea64_kenter(mmup, pa, pa);
+	} else if (!hw_direct_map) {
+		pkernelstart = kernelstart & ~DMAP_BASE_ADDRESS;
+		pkernelend = kernelend & ~DMAP_BASE_ADDRESS;
+		for (pa = pkernelstart & ~PAGE_MASK; pa < pkernelend;
+		    pa += PAGE_SIZE)
+			moea64_kenter(mmup, pa | DMAP_BASE_ADDRESS, pa);
 	}
 
 	if (!hw_direct_map) {
@@ -683,6 +706,10 @@ moea64_setup_direct_map(mmu_t mmup, vm_offset_t kernelstart,
 		off = (vm_offset_t)(moea64_bpvo_pool);
 		for (pa = off; pa < off + size; pa += PAGE_SIZE)
 			moea64_kenter(mmup, pa, pa);
+
+		/* Map exception vectors */
+		for (pa = EXC_RSVD; pa < EXC_LAST; pa += PAGE_SIZE)
+			moea64_kenter(mmup, pa | DMAP_BASE_ADDRESS, pa);
 	}
 	ENABLE_TRANS(msr);
 
@@ -749,7 +776,7 @@ moea64_early_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelen
 	mem_regions(&pregions, &pregions_sz, &regions, &regions_sz);
 	CTR0(KTR_PMAP, "moea64_bootstrap: physical memory");
 
-	if (sizeof(phys_avail)/sizeof(phys_avail[0]) < regions_sz)
+	if (nitems(phys_avail) < regions_sz)
 		panic("moea64_bootstrap: phys_avail too small");
 
 	phys_avail_count = 0;
@@ -862,7 +889,7 @@ moea64_mid_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
 	 * Initialise the bootstrap pvo pool.
 	 */
 	moea64_bpvo_pool = (struct pvo_entry *)moea64_bootstrap_alloc(
-		moea64_bpvo_pool_size*sizeof(struct pvo_entry), 0);
+		moea64_bpvo_pool_size*sizeof(struct pvo_entry), PAGE_SIZE);
 	moea64_bpvo_pool_index = 0;
 
 	/* Place at address usable through the direct map */
@@ -1048,6 +1075,8 @@ moea64_late_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend
 			PMAP_UNLOCK(kernel_pmap);
 		}
 	}
+
+	numa_mem_regions(&numa_pregions, &numapregions_sz);
 }
 
 static void
@@ -1154,15 +1183,19 @@ moea64_unwire(mmu_t mmu, pmap_t pm, vm_offset_t sva, vm_offset_t eva)
  */
 
 static __inline
-void moea64_set_scratchpage_pa(mmu_t mmup, int which, vm_paddr_t pa) {
+void moea64_set_scratchpage_pa(mmu_t mmup, int which, vm_paddr_t pa)
+{
+	struct pvo_entry *pvo;
 
 	KASSERT(!hw_direct_map, ("Using OEA64 scratchpage with a direct map!"));
 	mtx_assert(&moea64_scratchpage_mtx, MA_OWNED);
 
-	moea64_scratchpage_pvo[which]->pvo_pte.pa =
+	pvo = moea64_scratchpage_pvo[which];
+	PMAP_LOCK(pvo->pvo_pmap);
+	pvo->pvo_pte.pa =
 	    moea64_calc_wimg(pa, VM_MEMATTR_DEFAULT) | (uint64_t)pa;
-	MOEA64_PTE_REPLACE(mmup, moea64_scratchpage_pvo[which],
-	    MOEA64_PTE_INVALIDATE);
+	MOEA64_PTE_REPLACE(mmup, pvo, MOEA64_PTE_INVALIDATE);
+	PMAP_UNLOCK(pvo->pvo_pmap);
 	isync();
 }
 

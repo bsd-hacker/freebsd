@@ -64,6 +64,9 @@ __FBSDID("$FreeBSD$");
 #include <cam/cam_ccb.h>
 #include <cam/cam_periph.h>
 #include <cam/cam_xpt_periph.h>
+#ifdef _KERNEL
+#include <cam/cam_xpt_internal.h>
+#endif /* _KERNEL */
 #include <cam/cam_sim.h>
 #include <cam/cam_iosched.h>
 
@@ -344,6 +347,7 @@ struct da_softc {
 	da_delete_func_t	*delete_func;
 	int			unmappedio;
 	int			rotating;
+	int			p_type;
 	struct	 disk_params params;
 	struct	 disk *disk;
 	union	 ccb saved_ccb;
@@ -865,11 +869,12 @@ static struct da_quirk_entry da_quirk_table[] =
 	},
 	{
 		/*
-		 * 16GB SLC CHIPFANCIER
-		 * PR: usb/234503
+		 * SLC CHIPFANCIER USB drives
+		 * PR: usb/234503 (RC10 right, RC16 wrong)
+		 * 16GB, 32GB and 128GB confirmed to have same issue
 		 */
-		{T_DIRECT, SIP_MEDIA_REMOVABLE, "16G SLC", "CHIPFANCIER",
-		 "1.00"}, /*quirks*/ DA_Q_NO_RC16
+		{T_DIRECT, SIP_MEDIA_REMOVABLE, "*SLC", "CHIPFANCIER",
+		 "*"}, /*quirks*/ DA_Q_NO_RC16
        },
 	/* ATA/SATA devices over SAS/USB/... */
 	{
@@ -2291,7 +2296,7 @@ dasysctlinit(void *context, int pending)
 		       CTLFLAG_RD,
 		       &softc->unmappedio,
 		       0,
-		       "Unmapped I/O leaf");
+		       "Unmapped I/O support");
 
 	SYSCTL_ADD_INT(&softc->sysctl_ctx,
 		       SYSCTL_CHILDREN(softc->sysctl_tree),
@@ -2301,6 +2306,15 @@ dasysctlinit(void *context, int pending)
 		       &softc->rotating,
 		       0,
 		       "Rotating media");
+
+	SYSCTL_ADD_INT(&softc->sysctl_ctx,
+		       SYSCTL_CHILDREN(softc->sysctl_tree),
+		       OID_AUTO,
+		       "p_type",
+		       CTLFLAG_RD,
+		       &softc->p_type,
+		       0,
+		       "DIF protection type");
 
 #ifdef CAM_TEST_FAILURE
 	SYSCTL_ADD_PROC(&softc->sysctl_ctx, SYSCTL_CHILDREN(softc->sysctl_tree),
@@ -3602,15 +3616,7 @@ out:
 			break;
 		}
 
-		ata_params = (struct ata_params*)
-			malloc(sizeof(*ata_params), M_SCSIDA,M_NOWAIT|M_ZERO);
-
-		if (ata_params == NULL) {
-			xpt_print(periph->path, "Couldn't malloc ata_params "
-			    "data\n");
-			/* da_free_periph??? */
-			break;
-		}
+		ata_params = &periph->path->device->ident_data;
 
 		scsi_ata_identify(&start_ccb->csio,
 				  /*retries*/da_retry_count,
@@ -4648,7 +4654,7 @@ dadone_proberc(struct cam_periph *periph, union ccb *done_ccb)
 	da_ccb_state state;
 	char *announce_buf;
 	u_int32_t  priority;
-	int lbp;
+	int lbp, n;
 
 	CAM_DEBUG(periph->path, CAM_DEBUG_TRACE, ("dadone_proberc\n"));
 
@@ -4730,11 +4736,17 @@ dadone_proberc(struct cam_periph *periph, union ccb *done_ccb)
 				  rcaplong, sizeof(*rcaplong));
 			lbp = (lalba & SRC16_LBPME_A);
 			dp = &softc->params;
-			snprintf(announce_buf, DA_ANNOUNCETMP_SZ,
-			    "%juMB (%ju %u byte sectors)",
+			n = snprintf(announce_buf, DA_ANNOUNCETMP_SZ,
+			    "%juMB (%ju %u byte sectors",
 			    ((uintmax_t)dp->secsize * dp->sectors) /
 			     (1024 * 1024),
 			    (uintmax_t)dp->sectors, dp->secsize);
+			if (softc->p_type != 0) {
+				n += snprintf(announce_buf + n,
+				    DA_ANNOUNCETMP_SZ - n,
+				    ", DIF type %d", softc->p_type);
+			}
+			snprintf(announce_buf + n, DA_ANNOUNCETMP_SZ - n, ")");
 		}
 	} else {
 		int error;
@@ -5175,7 +5187,7 @@ dadone_probeata(struct cam_periph *periph, union ccb *done_ccb)
 	struct da_softc *softc;
 	u_int32_t  priority;
 	int continue_probe;
-	int error, i;
+	int error;
 	int16_t *ptr;
 
 	CAM_DEBUG(periph->path, CAM_DEBUG_TRACE, ("dadone_probeata\n"));
@@ -5193,8 +5205,7 @@ dadone_probeata(struct cam_periph *periph, union ccb *done_ccb)
 	if ((csio->ccb_h.status & CAM_STATUS_MASK) == CAM_REQ_CMP) {
 		uint16_t old_rate;
 
-		for (i = 0; i < sizeof(*ata_params) / 2; i++)
-			ptr[i] = le16toh(ptr[i]);
+		ata_param_fixup(ata_params);
 		if (ata_params->support_dsm & ATA_SUPPORT_DSM_TRIM &&
 		    (softc->quirks & DA_Q_NO_UNMAP) == 0) {
 			dadeleteflag(softc, DA_DELETE_ATA_TRIM, 1);
@@ -5278,7 +5289,6 @@ dadone_probeata(struct cam_periph *periph, union ccb *done_ccb)
 		}
 	}
 
-	free(ata_params, M_SCSIDA);
 	if ((softc->zone_mode == DA_ZONE_HOST_AWARE)
 	 || (softc->zone_mode == DA_ZONE_HOST_MANAGED)) {
 		/*
@@ -5982,9 +5992,15 @@ dasetgeom(struct cam_periph *periph, uint32_t block_len, uint64_t maxsector,
 		lbppbe = rcaplong->prot_lbppbe & SRC16_LBPPBE;
 		lalba = scsi_2btoul(rcaplong->lalba_lbp);
 		lalba &= SRC16_LALBA_A;
+		if (rcaplong->prot & SRC16_PROT_EN)
+			softc->p_type = ((rcaplong->prot & SRC16_P_TYPE) >>
+			    SRC16_P_TYPE_SHIFT) + 1;
+		else
+			softc->p_type = 0;
 	} else {
 		lbppbe = 0;
 		lalba = 0;
+		softc->p_type = 0;
 	}
 
 	if (lbppbe > 0) {

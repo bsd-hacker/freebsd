@@ -4,10 +4,11 @@
 
 LIB=		egacy
 SRC=
-INCSGROUPS=	INCS SYSINCS
+INCSGROUPS=	INCS SYSINCS CASPERINC
 INCS=
 
 SYSINCSDIR=	${INCLUDEDIR}/sys
+CASPERINCDIR=	${INCLUDEDIR}/casper
 
 BOOTSTRAPPING?=	0
 
@@ -58,6 +59,8 @@ INCS+=		capsicum_helpers.h
 INCS+=		libcasper.h
 .endif
 
+CASPERINC+=	${SRCTOP}/lib/libcasper/services/cap_fileargs/cap_fileargs.h
+
 .if empty(SRCS)
 SRCS=		dummy.c
 .endif
@@ -67,7 +70,8 @@ SUBDIR=		cross-build
 .endif
 
 # Needed to build config (since it uses libnv)
-SYSINCS+=	${SRCTOP}/sys/sys/nv.h ${SRCTOP}/sys/sys/cnv.h
+SYSINCS+=	${SRCTOP}/sys/sys/nv.h ${SRCTOP}/sys/sys/cnv.h \
+		${SRCTOP}/sys/sys/dnv.h
 
 # We want to run the build with only ${WORLDTMP} in $PATH to ensure we don't
 # accidentally run tools that are incompatible but happen to be in $PATH.
@@ -116,7 +120,7 @@ host-symlinks:
 # and cross-tools stages. We do this here using mkdir since mtree may not exist
 # yet (this happens if we are crossbuilding from Linux/Mac).
 installdirs:
-.for _dir in bin usr/lib usr/include lib/geom lib/casper
+.for _dir in bin usr/lib usr/include usr/include/casper lib/geom lib/casper
 	mkdir -p "${DESTDIR}/${_dir}"
 .endfor
 # Link usr/bin, sbin, and usr/sbin to bin so that it doesn't matter whether a

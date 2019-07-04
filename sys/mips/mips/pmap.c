@@ -854,6 +854,44 @@ pmap_kenter(vm_offset_t va, vm_paddr_t pa)
 	pmap_kenter_attr(va, pa, VM_MEMATTR_DEFAULT);
 }
 
+void
+pmap_kenter_device(vm_offset_t va, vm_size_t size, vm_paddr_t pa)
+{
+
+	KASSERT((size & PAGE_MASK) == 0,
+	    ("%s: device mapping not page-sized", __func__));
+
+	for (; size > 0; size -= PAGE_SIZE) {
+		/*
+		 * XXXCEM: this is somewhat inefficient on SMP systems in that
+		 * every single page is individually TLB-invalidated via
+		 * rendezvous (pmap_update_page()), instead of invalidating the
+		 * entire range via a single rendezvous.
+		 */
+		pmap_kenter_attr(va, pa, VM_MEMATTR_UNCACHEABLE);
+		va += PAGE_SIZE;
+		pa += PAGE_SIZE;
+	}
+}
+
+void
+pmap_kremove_device(vm_offset_t va, vm_size_t size)
+{
+
+	KASSERT((size & PAGE_MASK) == 0,
+	    ("%s: device mapping not page-sized", __func__));
+
+	/*
+	 * XXXCEM: Similar to pmap_kenter_device, this is inefficient on SMP,
+	 * in that pages are invalidated individually instead of a single range
+	 * rendezvous.
+	 */
+	for (; size > 0; size -= PAGE_SIZE) {
+		pmap_kremove(va);
+		va += PAGE_SIZE;
+	}
+}
+
 /*
  * remove a page from the kernel pagetables
  */
@@ -1553,7 +1591,7 @@ free_pv_chunk(struct pv_chunk *pc)
 	/* entire chunk is free, return it */
 	m = PHYS_TO_VM_PAGE(MIPS_DIRECT_TO_PHYS((vm_offset_t)pc));
 	dump_drop_page(m->phys_addr);
-	vm_page_unwire(m, PQ_NONE);
+	vm_page_unwire_noq(m);
 	vm_page_free(m);
 }
 

@@ -250,7 +250,8 @@ __start:
 	ori	%r4, %r4, (MAS3_SX | MAS3_SW | MAS3_SR)@l
 	mtspr	SPR_MAS3, %r4		/* Set RPN and protection */
 	isync
-	bl	zero_mas7
+	li	%r4, 0
+	mtspr	SPR_MAS7, %r4
 	bl	zero_mas8
 	isync
 	tlbwe
@@ -303,7 +304,8 @@ done_mapping:
 	subf    %r31,%r31,%r2	/* Subtract from real TOC base to get base */
 
 	/* Set up the stack pointer */
-	ld	%r1,TOC_REF(tmpstack)(%r2)
+	addis	%r1,%r2,TOC_REF(tmpstack)@ha
+	ld	%r1,TOC_REF(tmpstack)@l(%r1)
 	addi	%r1,%r1,TMPSTACKSZ-96
 	add	%r1,%r1,%r31
 	bl	1f
@@ -504,7 +506,8 @@ bp_kernload:
 	ori	%r3, %r3, (MAS3_SX | MAS3_SW | MAS3_SR)@l
 	mtspr	SPR_MAS3, %r3
 	isync
-	bl	zero_mas7
+	li	%r4, 0
+	mtspr	SPR_MAS7, %r4
 	bl	zero_mas8
 	isync
 	tlbwe
@@ -552,7 +555,8 @@ bp_kernload:
 	mtspr	SPR_SPRG8, %r2
 
 	/* Set up the stack pointer */
-	ld	%r1,TOC_REF(tmpstack)(%r2)
+	addis	%r1,%r2,TOC_REF(tmpstack)@ha
+	ld	%r1,TOC_REF(tmpstack)@l(%r1)
 	addi	%r1,%r1,TMPSTACKSZ-96
 #else
 /*
@@ -694,7 +698,8 @@ tlb1_temp_mapping_as1:
 	mtspr	SPR_MAS1, %r5
 	isync
 	mflr	%r3
-	bl	zero_mas7
+	li	%r4, 0
+	mtspr	SPR_MAS7, %r4
 	bl	zero_mas8
 	mtlr	%r3
 	isync
@@ -734,20 +739,8 @@ tlb1_inval_all_but_current:
 	blr
 
 /*
- * MAS7 and MAS8 conditional zeroing.
+ * MAS8 conditional zeroing.
  */
-.globl zero_mas7
-zero_mas7:
-	mfpvr	%r20
-	rlwinm	%r20, %r20, 16, 16, 31
-	cmpli	0, 0, %r20, FSL_E500v1
-	beq	1f
-
-	li	%r20, 0
-	mtspr	SPR_MAS7, %r20
-1:
-	blr
-
 .globl zero_mas8
 zero_mas8:
 	mfpvr	%r20

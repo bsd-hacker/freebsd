@@ -632,9 +632,10 @@ bwn_attach(device_t dev)
 		goto fail;
 
 	bhnd_format_chip_id(chip_name, sizeof(chip_name), sc->sc_cid.chip_id);
-	device_printf(sc->sc_dev, "WLAN (%s rev %u) "
+	device_printf(sc->sc_dev, "WLAN (%s rev %u sromrev %u) "
 	    "PHY (analog %d type %d rev %d) RADIO (manuf %#x ver %#x rev %d)\n",
-	    chip_name, bhnd_get_hwrev(sc->sc_dev), mac->mac_phy.analog,
+	    chip_name, bhnd_get_hwrev(sc->sc_dev),
+	    sc->sc_board_info.board_srom_rev, mac->mac_phy.analog,
 	    mac->mac_phy.type, mac->mac_phy.rev, mac->mac_phy.rf_manuf,
 	    mac->mac_phy.rf_ver, mac->mac_phy.rf_rev);
 	if (mac->mac_flags & BWN_MAC_FLAG_DMA)
@@ -2001,14 +2002,6 @@ bwn_set_channel(struct ieee80211com *ic)
 	bwn_mac_enable(mac);
 
 fail:
-	/*
-	 * Setup radio tap channel freq and flags
-	 */
-	sc->sc_tx_th.wt_chan_freq = sc->sc_rx_th.wr_chan_freq =
-		htole16(ic->ic_curchan->ic_freq);
-	sc->sc_tx_th.wt_chan_flags = sc->sc_rx_th.wr_chan_flags =
-		htole16(ic->ic_curchan->ic_flags & 0xffff);
-
 	BWN_UNLOCK(sc);
 }
 

@@ -46,10 +46,6 @@ CONFS=	DAEMON \
 	hostname \
 	iovctl \
 	ip6addrctl \
-	ipfilter \
-	ipfs \
-	ipmon \
-	ipnat \
 	ipsec \
 	${_kadmind} \
 	${_kdc} \
@@ -215,6 +211,14 @@ HASTPACKAGE=	hast
 CONFS+=		inetd
 .endif
 
+.if ${MK_IPFILTER} != "no"
+CONFS+=	ipfilter \
+	ipfs \
+	ipmon \
+	ipnat \
+	ippool
+.endif
+
 .if ${MK_IPFW} != "no"
 CONFS+=		ipfw
 .if ${MK_NETGRAPH} != "no"
@@ -323,9 +327,6 @@ ZFS+=		zfsbe
 ZFS+=		zfsd
 ZFS+=		zvol
 ZFSPACKAGE=	zfs
-DIRS+=	ETC_ZFS
-ETC_ZFS=	/etc/zfs
-ETC_ZFSPACKAGE=	zfs
 .endif
 
 .for fg in ${CONFGROUPS}

@@ -140,23 +140,12 @@ efiblk_get_pdinfo(struct devdesc *dev)
 pdinfo_t *
 efiblk_get_pdinfo_by_device_path(EFI_DEVICE_PATH *path)
 {
-	unsigned i;
-	EFI_DEVICE_PATH *media, *devpath;
 	EFI_HANDLE h;
 
-	media = efi_devpath_to_media_path(path);
-	if (media == NULL)
+	h = efi_devpath_to_handle(path, efipart_handles, efipart_nhandles);
+	if (h == NULL)
 		return (NULL);
-	for (i = 0; i < efipart_nhandles; i++) {
-		h = efipart_handles[i];
-		devpath = efi_lookup_devpath(h);
-		if (devpath == NULL)
-			continue;
-		if (!efi_devpath_match_node(media, efi_devpath_to_media_path(devpath)))
-			continue;
-		return (efiblk_get_pdinfo_by_handle(h));
-	}
-	return (NULL);
+	return (efiblk_get_pdinfo_by_handle(h));
 }
 
 static bool
@@ -813,8 +802,8 @@ efipart_print_common(struct devsw *dev, pdinfo_list_t *pdlist, int verbose)
 			pd->pd_blkio = blkio;
 			pd_dev.dd.d_dev = dev;
 			pd_dev.dd.d_unit = pd->pd_unit;
-			pd_dev.d_slice = -1;
-			pd_dev.d_partition = -1;
+			pd_dev.d_slice = D_SLICENONE;
+			pd_dev.d_partition = D_PARTNONE;
 			ret = disk_open(&pd_dev, blkio->Media->BlockSize *
 			    (blkio->Media->LastBlock + 1),
 			    blkio->Media->BlockSize);

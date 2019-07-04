@@ -1,7 +1,196 @@
 ----------------------------------------
-15 February 2019. Summary of changes for version 20190215:
+09 May 2019. Summary of changes for version 20190509:
 
-This release is available at https://acpica.org/downloads
+
+1) ACPICA kernel-resident subsystem:
+
+Revert commit  6c43e1a ("ACPICA: Clear status of GPEs before enabling 
+them") that causes problems with Thunderbolt controllers to occur if a 
+dock device is connected at init time (the xhci_hcd and thunderbolt 
+modules crash which prevents peripherals connected through them from 
+working). Commit 6c43e1a effectively causes commit ecc1165b8b74 ("ACPICA: 
+Dispatch active GPEs at init time") to get undone, so the problem 
+addressed by commit ecc1165b8b74 appears again as a result of it.
+
+
+2) iASL Compiler/Disassembler and ACPICA tools:
+
+Reverted iASL: Additional forward reference detection. This change 
+reverts forward reference detection for field declarations. The feature 
+unintentionally emitted AML bytecode with incorrect package lengths for 
+some ASL code related to Fields and OperationRegions. This malformed AML 
+can cause systems to crash
+during boot. The malformed AML bytecode is emitted in iASL version 
+20190329 and 20190405.
+
+iASL: improve forward reference detection. This change improves forward 
+reference detection for named objects inside of scopes. If a parse object 
+has the OP_NOT_FOUND_DURING_LOAD set, it means that Op is a reference to 
+a named object that is declared later in the AML bytecode. This is 
+allowed if the reference is inside of a method and the declaration is 
+outside of a method like so:
+
+DefinitionBlock(...)
+{
+    Method (TEST)
+    {
+        Return (NUM0)
+    }
+    Name (NUM0,0)
+}
+
+However, if the declaration and reference are both in the same method or 
+outside any methods, this is a forward reference and should be marked as 
+an error because it would result in runtime errors.
+
+DefinitionBlock(...)
+{
+    Name (BUFF, Buffer (NUM0) {}) // Forward reference
+    Name (NUM0, 0x0)
+
+    Method (TEST)
+    {
+        Local0 = NUM1
+        Name (NUM1, 0x1) // Forward reference
+        return (Local0)
+    }
+}
+
+iASL: Implemented additional buffer overflow analysis for BufferField 
+declarations. Check if a buffer index argument to a create buffer field 
+operation is beyond the end of the target buffer.
+
+This affects these AML operators:
+ 
+   AML_CREATE_FIELD_OP
+   AML_CREATE_BIT_FIELD_OP
+   AML_CREATE_BYTE_FIELD_OP
+   AML_CREATE_WORD_FIELD_OP
+   AML_CREATE_DWORD_FIELD_OP
+   AML_CREATE_QWORD_FIELD_OP
+
+ There are three conditions that must be satisfied in order to allow this 
+validation at compile time:
+ 
+   1) The length of the target buffer must be an integer constant
+   2) The index specified in the create* must be an integer constant
+   3) For CreateField, the bit length argument must be non-zero.
+
+Example:
+    Name (BUF1, Buffer() {1,2})
+    CreateField (BUF1, 7, 9, CF03)  // 3: ERR
+
+dsdt.asl     14:     CreateField (BUF1, 7, 9, CF03)  // 3: ERR
+Error    6165 -                           ^ Buffer index beyond end of 
+target buffer
+
+
+----------------------------------------
+05 April 2019. Summary of changes for version 20190405:
+
+
+1) ACPICA kernel-resident subsystem:
+
+Event Manager: History: Commit 18996f2db918 ("ACPICA: Events: Stop 
+unconditionally clearing ACPI IRQs during suspend/resume") was added 
+earlier to stop clearing of event status bits unconditionally on suspend 
+and resume paths. Though this change fixed an issue on suspend path, it 
+introduced regressions on several resume paths. In the case of S0ix, 
+events are enabled as part of device suspend path. If status bits for the 
+events are set when they are enabled, it could result in premature wake 
+from S0ix. If status is cleared for any event that is being enabled so 
+that any stale events are cleared out. In case of S0ix, events are 
+enabled as part of device suspend path. If status bits for the events are 
+set when they are enabled, it could result in premature wake from S0ix.
+
+This change ensures that status is cleared for any event that is being 
+enabled so that any stale events are cleared out.
+
+
+2) iASL Compiler/Disassembler and ACPICA tools:
+
+iASL: Implemented an enhanced multiple file compilation that combines 
+named objects from all input files to a single namespace. With this 
+feature, any unresolved external declarations as well as duplicate named 
+object declarations can be detected during compilation rather than 
+generating errors much later at runtime. The following commands are 
+examples that utilize this feature:
+    iasl dsdt.asl ssdt.asl
+    iasl dsdt.asl ssdt1.asl ssdt2.asl
+    iasl dsdt.asl ssdt*.asl
+
+----------------------------------------
+29 March 2019. Summary of changes for version 20190329:
+
+
+1) ACPICA kernel-resident subsystem:
+
+Namespace support: Remove the address nodes from global list after method 
+termination. The global address list contains pointers to namespace nodes 
+that represent Operation Regions. This change properly removes Operation 
+Region namespace nodes that are declared dynamically during method 
+execution.
+
+Linux: Use a different debug default than ACPICA. There was a divergence 
+between Linux and the ACPICA codebases. In order to resolve this 
+divergence, Linux now declares its own debug default in aclinux.h
+
+Renamed some internal macros to improve code understanding and 
+maintenance. The macros below all operate on single 4-character ACPI 
+NameSegs, not generic strings (old -> new):
+    ACPI_NAME_SIZE    -> ACPI_NAMESEG_SIZE
+    ACPI_COMPARE_NAME -> ACPI_COMPARE_NAMESEG
+    ACPI_MOVE_NAME    -> ACPI_COPY_NAMESEG
+
+Fix for missing comma in array declaration for the AcpiGbl_GenericNotify 
+table.
+
+Test suite: Update makefiles, add PCC operation region support
+
+
+2) iASL Compiler/Disassembler and Tools:
+
+iASL: Implemented additional illegal forward reference detection. Now 
+detect and emit an error upon detection of a forward reference from a 
+Field to an Operation Region. This will fail at runtime if allowed to 
+pass the compiler.
+
+AcpiExec: Add an address list check for dynamic Operation Regions. This 
+feature performs a sanity test for each node the global address list. 
+This is done in order to ensure that all dynamic operation regions are 
+properly removed from the global address list and no dangling pointers 
+are left behind.
+
+Disassembler: Improved generation of resource pathnames. This change 
+improves the code that generates resource descriptor and resource tag 
+pathnames. The original code used a bunch of str* C library functions 
+that caused warnings on some compilers.
+
+iASL: Removed some uses of strncpy and replaced with memmove. The strncpy 
+function can overwrite buffers if the calling code is not very careful. 
+In the case of generating a module/table header, use of memmove is a 
+better implementation.
+
+
+3) Status of new features that have not been completed at this time:
+
+iASL: Implementing an enhanced multiple file compilation into a single 
+namespace feature (Status): This feature will be released soon, and 
+allows multiple ASL files to be compiled into the same single namespace. 
+By doing so, any unresolved external declarations as well as duplicate 
+named object declarations can be detected during compilation (rather than 
+later during runtime). The following commands are examples that utilize 
+this feature:
+    iasl dsdt.asl ssdt.asl
+    iasl dsdt.asl ssdt1.asl ssdt2.asl
+    iasl dsdt.asl ssdt*.asl
+
+ASL tutorial status: Feedback is being gathered internally and the 
+current plan is to publish this tutorial on the ACPICA website after a 
+final review by a tech writer.
+
+----------------------------------------
+15 February 2019. Summary of changes for version 20190215:
 
 
 0) Support for ACPI specification version 6.3:

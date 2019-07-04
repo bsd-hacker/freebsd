@@ -54,7 +54,6 @@ device		cpufreq
 # Standard busses
 device		agp
 
-device		bm		# Apple BMAC (Big Mac Ethernet)
 device		glc		# Sony Playstation 3 Ethernet
 device		kiic		# Apple Keywest I2C Controller
 device		ofwd		# Open Firmware disks
@@ -80,6 +79,8 @@ nodevice	ccr
 nodevice	cxgbe		# XXX: builds on powerpc64 only.
 nodevice	cxgbev
 nodevice	fdc
+nodevice	mpr		# no 64-bit atomics
+nodevice	mps		# no 64-bit atomics
 nodevice	ppc
 nodevice	splash
 # when splash works enable *_saver

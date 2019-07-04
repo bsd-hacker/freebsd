@@ -66,7 +66,8 @@ struct ata_params {
 /*023*/ u_int8_t        revision[8];            /* firmware revision */
 /*027*/ u_int8_t        model[40];              /* model name */
 /*047*/ u_int16_t       sectors_intr;           /* sectors per interrupt */
-/*048*/ u_int16_t       usedmovsd;              /* double word read/write? */
+/*048*/ u_int16_t       tcg;                    /* Trusted Computing Group */
+#define ATA_SUPPORT_TCG                 0x0001
 /*049*/ u_int16_t       capabilities1;
 #define ATA_SUPPORT_DMA                 0x0100
 #define ATA_SUPPORT_LBA                 0x0200
@@ -92,6 +93,10 @@ struct ata_params {
 /*057*/ u_int16_t       current_size_1;
 /*058*/ u_int16_t       current_size_2;
 /*059*/ u_int16_t       multi;
+#define ATA_SUPPORT_BLOCK_ERASE_EXT     0x8000
+#define ATA_SUPPORT_OVERWRITE_EXT       0x4000
+#define ATA_SUPPORT_CRYPTO_SCRAMBLE_EXT 0x2000
+#define ATA_SUPPORT_SANITIZE            0x1000
 #define ATA_MULTI_VALID                 0x0100
 
 /*060*/ u_int16_t       lba_size_1;
@@ -107,6 +112,7 @@ struct ata_params {
 /*069*/ u_int16_t       support3;
 #define ATA_SUPPORT_RZAT                0x0020
 #define ATA_SUPPORT_DRAT                0x4000
+#define ATA_ENCRYPTS_ALL_USER_DATA      0x0010  /* Self-encrypting drive */
 #define	ATA_SUPPORT_ZONE_MASK		0x0003
 #define	ATA_SUPPORT_ZONE_NR		0x0000
 #define	ATA_SUPPORT_ZONE_HOST_AWARE	0x0001
@@ -259,7 +265,19 @@ struct ata_params {
 /*162*/ u_int16_t       cfa_kms_support;
 /*163*/ u_int16_t       cfa_trueide_modes;
 /*164*/ u_int16_t       cfa_memory_modes;
-	u_int16_t       reserved165[4];
+	u_int16_t       reserved165[3];
+/*168*/ u_int16_t       form_factor;
+#define ATA_FORM_FACTOR_MASK		0x000f
+#define ATA_FORM_FACTOR_NOT_REPORTED	0x0000
+#define ATA_FORM_FACTOR_5_25		0x0001
+#define ATA_FORM_FACTOR_3_5		0x0002
+#define ATA_FORM_FACTOR_2_5		0x0003
+#define ATA_FORM_FACTOR_1_8		0x0004
+#define ATA_FORM_FACTOR_SUB_1_8		0x0005
+#define ATA_FORM_FACTOR_MSATA		0x0006
+#define ATA_FORM_FACTOR_M_2		0x0007
+#define ATA_FORM_FACTOR_MICRO_SSD	0x0008
+#define ATA_FORM_FACTOR_C_FAST		0x0009
 /*169*/	u_int16_t       support_dsm;
 #define ATA_SUPPORT_DSM_TRIM		0x0001
 	u_int16_t       reserved170[6];
@@ -393,6 +411,12 @@ struct ata_params {
 #define ATA_READ_LOG_DMA_EXT            0x47    /* read log DMA ext - PIO Data-In */
 #define	ATA_ZAC_MANAGEMENT_IN		0x4a	/* ZAC management in */
 #define		ATA_ZM_REPORT_ZONES	0x00	/* report zones */
+#define	ATA_WRITE_LOG_DMA_EXT		0x57	/* WRITE LOG DMA EXT */
+#define	ATA_TRUSTED_NON_DATA		0x5b	/* TRUSTED NON-DATA */
+#define	ATA_TRUSTED_RECEIVE		0x5c	/* TRUSTED RECEIVE */
+#define	ATA_TRUSTED_RECEIVE_DMA		0x5d	/* TRUSTED RECEIVE DMA */
+#define	ATA_TRUSTED_SEND		0x5e	/* TRUSTED SEND */
+#define	ATA_TRUSTED_SEND_DMA		0x5f	/* TRUSTED SEND DMA */
 #define ATA_READ_FPDMA_QUEUED           0x60    /* read DMA NCQ */
 #define ATA_WRITE_FPDMA_QUEUED          0x61    /* write DMA NCQ */
 #define ATA_NCQ_NON_DATA		0x63	/* NCQ non-data command */
@@ -417,6 +441,8 @@ struct ata_params {
 #define		ATA_ZM_FINISH_ZONE	0x02	/* finish zone */
 #define		ATA_ZM_OPEN_ZONE	0x03	/* open zone */
 #define		ATA_ZM_RWP		0x04	/* reset write pointer */
+#define	ATA_DOWNLOAD_MICROCODE		0x92	/* DOWNLOAD MICROCODE */
+#define	ATA_DOWNLOAD_MICROCODE_DMA	0x93	/* DOWNLOAD MICROCODE DMA */
 #define ATA_PACKET_CMD                  0xa0    /* packet command */
 #define ATA_ATAPI_IDENTIFY              0xa1    /* get ATAPI params*/
 #define ATA_SERVICE                     0xa2    /* service command */
@@ -439,8 +465,11 @@ struct ata_params {
 #define ATA_CHECK_POWER_MODE            0xe5    /* device power mode */
 #define ATA_SLEEP                       0xe6    /* sleep */
 #define ATA_FLUSHCACHE                  0xe7    /* flush cache to disk */
+#define	ATA_WRITE_BUFFER		0xe8    /* write buffer */
 #define ATA_WRITE_PM                    0xe8    /* write portmultiplier */
+#define	ATA_READ_BUFFER_DMA		0xe9    /* read buffer DMA */
 #define ATA_FLUSHCACHE48                0xea    /* flush cache to disk */
+#define	ATA_WRITE_BUFFER_DMA		0xeb    /* write buffer DMA */
 #define ATA_ATA_IDENTIFY                0xec    /* get ATA params */
 #define ATA_SETFEATURES                 0xef    /* features command */
 #define         ATA_SF_ENAB_WCACHE      0x02    /* enable write cache */

@@ -68,6 +68,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/capsicum.h>
+#include <sys/gsb_crc32.h>
 #include <sys/systm.h>
 #include <sys/bio.h>
 #include <sys/buf.h>
@@ -492,8 +493,10 @@ static int maxclustersearch = 10;
 SYSCTL_INT(_vfs_ffs, OID_AUTO, maxclustersearch, CTLFLAG_RW, &maxclustersearch,
 0, "max number of cylinder group to search for contigous blocks");
 
-#ifdef DEBUG
-static volatile int prtrealloc = 0;
+#ifdef DIAGNOSTIC
+static int prtrealloc = 0;
+SYSCTL_INT(_debug, OID_AUTO, ffs_prtrealloc, CTLFLAG_RW, &prtrealloc, 0,
+	"print out FFS filesystem block reallocation operations");
 #endif
 
 int
@@ -684,7 +687,7 @@ ffs_reallocblks_ufs1(ap)
 	 * block pointers in the inode and indirect blocks associated
 	 * with the file.
 	 */
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 	if (prtrealloc)
 		printf("realloc: ino %ju, lbns %jd-%jd\n\told:",
 		    (uintmax_t)ip->i_number,
@@ -703,7 +706,7 @@ ffs_reallocblks_ufs1(ap)
 		if (dbtofsb(fs, buflist->bs_children[i]->b_blkno) != *bap)
 			panic("ffs_reallocblks: alloc mismatch");
 #endif
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (prtrealloc)
 			printf(" %d,", *bap);
 #endif
@@ -752,7 +755,7 @@ ffs_reallocblks_ufs1(ap)
 	/*
 	 * Last, free the old blocks and assign the new blocks to the buffers.
 	 */
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 	if (prtrealloc)
 		printf("\n\tnew:");
 #endif
@@ -783,12 +786,12 @@ ffs_reallocblks_ufs1(ap)
 		if (!ffs_checkblk(ip, dbtofsb(fs, bp->b_blkno), fs->fs_bsize))
 			panic("ffs_reallocblks: unallocated block 3");
 #endif
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (prtrealloc)
 			printf(" %d,", blkno);
 #endif
 	}
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 	if (prtrealloc) {
 		prtrealloc--;
 		printf("\n");
@@ -949,7 +952,7 @@ ffs_reallocblks_ufs2(ap)
 	 * block pointers in the inode and indirect blocks associated
 	 * with the file.
 	 */
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 	if (prtrealloc)
 		printf("realloc: ino %ju, lbns %jd-%jd\n\told:", (uintmax_t)ip->i_number,
 		    (intmax_t)start_lbn, (intmax_t)end_lbn);
@@ -967,7 +970,7 @@ ffs_reallocblks_ufs2(ap)
 		if (dbtofsb(fs, buflist->bs_children[i]->b_blkno) != *bap)
 			panic("ffs_reallocblks: alloc mismatch");
 #endif
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (prtrealloc)
 			printf(" %jd,", (intmax_t)*bap);
 #endif
@@ -1016,7 +1019,7 @@ ffs_reallocblks_ufs2(ap)
 	/*
 	 * Last, free the old blocks and assign the new blocks to the buffers.
 	 */
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 	if (prtrealloc)
 		printf("\n\tnew:");
 #endif
@@ -1047,12 +1050,12 @@ ffs_reallocblks_ufs2(ap)
 		if (!ffs_checkblk(ip, dbtofsb(fs, bp->b_blkno), fs->fs_bsize))
 			panic("ffs_reallocblks: unallocated block 3");
 #endif
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (prtrealloc)
 			printf(" %jd,", (intmax_t)blkno);
 #endif
 	}
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 	if (prtrealloc) {
 		prtrealloc--;
 		printf("\n");
@@ -3125,11 +3128,11 @@ static SYSCTL_NODE(_vfs_ffs, FFS_SET_INODE, setinode, CTLFLAG_WR,
 static SYSCTL_NODE(_vfs_ffs, FFS_SET_BUFOUTPUT, setbufoutput, CTLFLAG_WR,
 	sysctl_ffs_fsck, "Set Buffered Writing for Descriptor");
 
-#define DEBUG 1
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 static int fsckcmds = 0;
-SYSCTL_INT(_debug, OID_AUTO, fsckcmds, CTLFLAG_RW, &fsckcmds, 0, "");
-#endif /* DEBUG */
+SYSCTL_INT(_debug, OID_AUTO, ffs_fsckcmds, CTLFLAG_RW, &fsckcmds, 0,
+	"print out fsck_ffs-based filesystem update commands");
+#endif /* DIAGNOSTIC */
 
 static int buffered_write(struct file *, struct uio *, struct ucred *,
 	int, struct thread *);
@@ -3186,11 +3189,11 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 	switch (oidp->oid_number) {
 
 	case FFS_SET_FLAGS:
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (fsckcmds)
 			printf("%s: %s flags\n", mp->mnt_stat.f_mntonname,
 			    cmd.size > 0 ? "set" : "clear");
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 		if (cmd.size > 0)
 			fs->fs_flags |= (long)cmd.value;
 		else
@@ -3198,13 +3201,13 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 		break;
 
 	case FFS_ADJ_REFCNT:
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (fsckcmds) {
 			printf("%s: adjust inode %jd link count by %jd\n",
 			    mp->mnt_stat.f_mntonname, (intmax_t)cmd.value,
 			    (intmax_t)cmd.size);
 		}
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 		if ((error = ffs_vget(mp, (ino_t)cmd.value, LK_EXCLUSIVE, &vp)))
 			break;
 		ip = VTOI(vp);
@@ -3219,13 +3222,13 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 		break;
 
 	case FFS_ADJ_BLKCNT:
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (fsckcmds) {
 			printf("%s: adjust inode %jd block count by %jd\n",
 			    mp->mnt_stat.f_mntonname, (intmax_t)cmd.value,
 			    (intmax_t)cmd.size);
 		}
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 		if ((error = ffs_vget(mp, (ino_t)cmd.value, LK_EXCLUSIVE, &vp)))
 			break;
 		ip = VTOI(vp);
@@ -3236,13 +3239,13 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 		break;
 
 	case FFS_SET_SIZE:
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (fsckcmds) {
 			printf("%s: set inode %jd size to %jd\n",
 			    mp->mnt_stat.f_mntonname, (intmax_t)cmd.value,
 			    (intmax_t)cmd.size);
 		}
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 		if ((error = ffs_vget(mp, (ino_t)cmd.value, LK_EXCLUSIVE, &vp)))
 			break;
 		ip = VTOI(vp);
@@ -3257,7 +3260,7 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 		/* fall through */
 
 	case FFS_FILE_FREE:
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (fsckcmds) {
 			if (cmd.size == 1)
 				printf("%s: free %s inode %ju\n",
@@ -3271,7 +3274,7 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 				    (uintmax_t)cmd.value,
 				    (uintmax_t)(cmd.value + cmd.size - 1));
 		}
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 		while (cmd.size > 0) {
 			if ((error = ffs_freefile(ump, fs, ump->um_devvp,
 			    cmd.value, filetype, NULL)))
@@ -3282,7 +3285,7 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 		break;
 
 	case FFS_BLK_FREE:
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (fsckcmds) {
 			if (cmd.size == 1)
 				printf("%s: free block %jd\n",
@@ -3294,7 +3297,7 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 				    (intmax_t)cmd.value,
 				    (intmax_t)cmd.value + cmd.size - 1);
 		}
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 		blkno = cmd.value;
 		blkcnt = cmd.size;
 		blksize = fs->fs_frag - (blkno % fs->fs_frag);
@@ -3317,62 +3320,62 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 	 * submit deltas when necessary.
 	 */
 	case FFS_ADJ_NDIR:
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (fsckcmds) {
 			printf("%s: adjust number of directories by %jd\n",
 			    mp->mnt_stat.f_mntonname, (intmax_t)cmd.value);
 		}
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 		fs->fs_cstotal.cs_ndir += cmd.value;
 		break;
 
 	case FFS_ADJ_NBFREE:
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (fsckcmds) {
 			printf("%s: adjust number of free blocks by %+jd\n",
 			    mp->mnt_stat.f_mntonname, (intmax_t)cmd.value);
 		}
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 		fs->fs_cstotal.cs_nbfree += cmd.value;
 		break;
 
 	case FFS_ADJ_NIFREE:
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (fsckcmds) {
 			printf("%s: adjust number of free inodes by %+jd\n",
 			    mp->mnt_stat.f_mntonname, (intmax_t)cmd.value);
 		}
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 		fs->fs_cstotal.cs_nifree += cmd.value;
 		break;
 
 	case FFS_ADJ_NFFREE:
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (fsckcmds) {
 			printf("%s: adjust number of free frags by %+jd\n",
 			    mp->mnt_stat.f_mntonname, (intmax_t)cmd.value);
 		}
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 		fs->fs_cstotal.cs_nffree += cmd.value;
 		break;
 
 	case FFS_ADJ_NUMCLUSTERS:
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (fsckcmds) {
 			printf("%s: adjust number of free clusters by %+jd\n",
 			    mp->mnt_stat.f_mntonname, (intmax_t)cmd.value);
 		}
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 		fs->fs_cstotal.cs_numclusters += cmd.value;
 		break;
 
 	case FFS_SET_CWD:
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (fsckcmds) {
 			printf("%s: set current directory to inode %jd\n",
 			    mp->mnt_stat.f_mntonname, (intmax_t)cmd.value);
 		}
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 		if ((error = ffs_vget(mp, (ino_t)cmd.value, LK_SHARED, &vp)))
 			break;
 		AUDIT_ARG_VNODE1(vp);
@@ -3385,13 +3388,13 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 		break;
 
 	case FFS_SET_DOTDOT:
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (fsckcmds) {
 			printf("%s: change .. in cwd from %jd to %jd\n",
 			    mp->mnt_stat.f_mntonname, (intmax_t)cmd.value,
 			    (intmax_t)cmd.size);
 		}
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 		/*
 		 * First we have to get and lock the parent directory
 		 * to which ".." points.
@@ -3420,7 +3423,7 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 		break;
 
 	case FFS_UNLINK:
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (fsckcmds) {
 			char buf[32];
 
@@ -3429,16 +3432,17 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 			printf("%s: unlink %s (inode %jd)\n",
 			    mp->mnt_stat.f_mntonname, buf, (intmax_t)cmd.size);
 		}
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 		/*
-		 * kern_unlinkat will do its own start/finish writes and
+		 * kern_funlinkat will do its own start/finish writes and
 		 * they do not nest, so drop ours here. Setting mp == NULL
 		 * indicates that vn_finished_write is not needed down below.
 		 */
 		vn_finished_write(mp);
 		mp = NULL;
-		error = kern_unlinkat(td, AT_FDCWD, (char *)(intptr_t)cmd.value,
-		    UIO_USERSPACE, 0, (ino_t)cmd.size);
+		error = kern_funlinkat(td, AT_FDCWD,
+		    (char *)(intptr_t)cmd.value, FD_NONE, UIO_USERSPACE,
+		    0, (ino_t)cmd.size);
 		break;
 
 	case FFS_SET_INODE:
@@ -3446,12 +3450,12 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 			error = EPERM;
 			break;
 		}
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (fsckcmds) {
 			printf("%s: update inode %jd\n",
 			    mp->mnt_stat.f_mntonname, (intmax_t)cmd.value);
 		}
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 		if ((error = ffs_vget(mp, (ino_t)cmd.value, LK_EXCLUSIVE, &vp)))
 			break;
 		AUDIT_ARG_VNODE1(vp);
@@ -3480,14 +3484,14 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 			error = EINVAL;
 			break;
 		}
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (fsckcmds) {
 			printf("%s: %s buffered output for descriptor %jd\n",
 			    mp->mnt_stat.f_mntonname,
 			    cmd.size == 1 ? "enable" : "disable",
 			    (intmax_t)cmd.value);
 		}
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 		if ((error = getvnode(td, cmd.value,
 		    cap_rights_init(&rights, CAP_FSCK), &vfp)) != 0)
 			break;
@@ -3512,12 +3516,12 @@ sysctl_ffs_fsck(SYSCTL_HANDLER_ARGS)
 		break;
 
 	default:
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 		if (fsckcmds) {
 			printf("Invalid request %d from fsck\n",
 			    oidp->oid_number);
 		}
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 		error = EINVAL;
 		break;
 
@@ -3581,12 +3585,12 @@ buffered_write(fp, uio, active_cred, flags, td)
 	vput(vp);
 	foffset_lock_uio(fp, uio, flags);
 	vn_lock(devvp, LK_EXCLUSIVE | LK_RETRY);
-#ifdef DEBUG
+#ifdef DIAGNOSTIC
 	if (fsckcmds) {
 		printf("%s: buffered write for block %jd\n",
 		    fs->fs_fsmnt, (intmax_t)btodb(uio->uio_offset));
 	}
-#endif /* DEBUG */
+#endif /* DIAGNOSTIC */
 	/*
 	 * All I/O must be contained within a filesystem block, start on
 	 * a fragment boundary, and be a multiple of fragments in length.
