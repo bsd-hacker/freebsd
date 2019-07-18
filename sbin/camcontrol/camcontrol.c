@@ -46,10 +46,8 @@ __FBSDID("$FreeBSD$");
 #include <ctype.h>
 #include <err.h>
 #include <libutil.h>
-#ifndef MINIMALISTIC
 #include <limits.h>
 #include <inttypes.h>
-#endif
 
 #include <cam/cam.h>
 #include <cam/cam_debug.h>
@@ -111,6 +109,7 @@ typedef enum {
 	CAM_CMD_TIMESTAMP	= 0x00000028,
 	CAM_CMD_MMCSD_CMD	= 0x00000029,
 	CAM_CMD_POWER_MODE	= 0x0000002a,
+	CAM_CMD_DEVTYPE		= 0x0000002b,
 } cam_cmdmask;
 
 typedef enum {
@@ -153,7 +152,6 @@ struct camcontrol_opts {
 	const char	*subopt;
 };
 
-#ifndef MINIMALISTIC
 struct ata_res_pass16 {
 	u_int16_t reserved[5];
 	u_int8_t flags;
@@ -192,10 +190,8 @@ static const char smprg_opts[] = "l";
 static const char smppc_opts[] = "a:A:d:lm:M:o:p:s:S:T:";
 static const char smpphylist_opts[] = "lq";
 static char pwd_opt;
-#endif
 
 static struct camcontrol_opts option_table[] = {
-#ifndef MINIMALISTIC
 	{"tur", CAM_CMD_TUR, CAM_ARG_NONE, NULL},
 	{"inquiry", CAM_CMD_INQUIRY, CAM_ARG_NONE, "DSR"},
 	{"identify", CAM_CMD_IDENTIFY, CAM_ARG_NONE, NULL},
@@ -206,10 +202,8 @@ static struct camcontrol_opts option_table[] = {
 	{"reportluns", CAM_CMD_REPORTLUNS, CAM_ARG_NONE, "clr:"},
 	{"readcapacity", CAM_CMD_READCAP, CAM_ARG_NONE, "bhHlNqs"},
 	{"reprobe", CAM_CMD_REPROBE, CAM_ARG_NONE, NULL},
-#endif /* MINIMALISTIC */
 	{"rescan", CAM_CMD_RESCAN, CAM_ARG_NONE, NULL},
 	{"reset", CAM_CMD_RESET, CAM_ARG_NONE, NULL},
-#ifndef MINIMALISTIC
 	{"cmd", CAM_CMD_SCSI_CMD, CAM_ARG_NONE, scsicmd_opts},
 	{"mmcsdcmd", CAM_CMD_MMCSD_CMD, CAM_ARG_NONE, "c:a:f:Wb:l:41S:I"},
 	{"command", CAM_CMD_SCSI_CMD, CAM_ARG_NONE, scsicmd_opts},
@@ -223,9 +217,8 @@ static struct camcontrol_opts option_table[] = {
 	{"smpmaninfo", CAM_CMD_SMP_MANINFO, CAM_ARG_NONE, "l"},
 	{"defects", CAM_CMD_READ_DEFECTS, CAM_ARG_NONE, readdefect_opts},
 	{"defectlist", CAM_CMD_READ_DEFECTS, CAM_ARG_NONE, readdefect_opts},
-#endif /* MINIMALISTIC */
 	{"devlist", CAM_CMD_DEVTREE, CAM_ARG_NONE, "-b"},
-#ifndef MINIMALISTIC
+	{"devtype", CAM_CMD_DEVTYPE, CAM_ARG_NONE, ""},
 	{"periphlist", CAM_CMD_DEVLIST, CAM_ARG_NONE, NULL},
 	{"modepage", CAM_CMD_MODE_PAGE, CAM_ARG_NONE, "bdelm:P:"},
 	{"tags", CAM_CMD_TAG, CAM_ARG_NONE, "N:q"},
@@ -249,7 +242,6 @@ static struct camcontrol_opts option_table[] = {
 	{"zone", CAM_CMD_ZONE, CAM_ARG_NONE, "ac:l:No:P:"},
 	{"epc", CAM_CMD_EPC, CAM_ARG_NONE, "c:dDeHp:Pr:sS:T:"},
 	{"timestamp", CAM_CMD_TIMESTAMP, CAM_ARG_NONE, "f:mrsUT:"},
-#endif /* MINIMALISTIC */
 	{"help", CAM_CMD_USAGE, CAM_ARG_NONE, NULL},
 	{"-?", CAM_CMD_USAGE, CAM_ARG_NONE, NULL},
 	{"-h", CAM_CMD_USAGE, CAM_ARG_NONE, NULL},
@@ -273,13 +265,22 @@ struct cam_devlist {
 static cam_cmdmask cmdlist;
 static cam_argmask arglist;
 
+static const char *devtype_names[] = {
+	"none",
+	"scsi",
+	"satl",
+	"ata",
+	"nvme",
+	"mmcsd",
+	"unknown",
+};
+
 camcontrol_optret getoption(struct camcontrol_opts *table, char *arg,
 			    uint32_t *cmdnum, cam_argmask *argnum,
 			    const char **subopt);
-#ifndef MINIMALISTIC
 static int getdevlist(struct cam_device *device);
-#endif /* MINIMALISTIC */
 static int getdevtree(int argc, char **argv, char *combinedopt);
+static int getdevtype(struct cam_device *device);
 static int print_dev_scsi(struct device_match_result *dev_result, char *tmpstr);
 static int print_dev_ata(struct device_match_result *dev_result, char *tmpstr);
 static int print_dev_semb(struct device_match_result *dev_result, char *tmpstr);
@@ -288,7 +289,6 @@ static int print_dev_mmcsd(struct device_match_result *dev_result,
 #ifdef WITH_NVME
 static int print_dev_nvme(struct device_match_result *dev_result, char *tmpstr);
 #endif
-#ifndef MINIMALISTIC
 static int testunitready(struct cam_device *device, int task_attr,
 			 int retry_count, int timeout, int quiet);
 static int scsistart(struct cam_device *device, int startstop, int loadeject,
@@ -297,14 +297,12 @@ static int scsiinquiry(struct cam_device *device, int task_attr,
 		       int retry_count, int timeout);
 static int scsiserial(struct cam_device *device, int task_attr,
 		      int retry_count, int timeout);
-#endif /* MINIMALISTIC */
 static int parse_btl(char *tstr, path_id_t *bus, target_id_t *target,
 		     lun_id_t *lun, cam_argmask *arglst);
 static int dorescan_or_reset(int argc, char **argv, int rescan);
 static int rescan_or_reset_bus(path_id_t bus, int rescan);
 static int scanlun_or_reset_dev(path_id_t bus, target_id_t target,
     lun_id_t lun, int scan);
-#ifndef MINIMALISTIC
 static int readdefects(struct cam_device *device, int argc, char **argv,
 		       char *combinedopt, int task_attr, int retry_count,
 		       int timeout);
@@ -371,7 +369,6 @@ static int scsiopcodes(struct cam_device *device, int argc, char **argv,
 		       int timeout, int verbose);
 static int scsireprobe(struct cam_device *device);
 
-#endif /* MINIMALISTIC */
 #ifndef min
 #define min(a,b) (((a)<(b))?(a):(b))
 #endif
@@ -403,7 +400,6 @@ getoption(struct camcontrol_opts *table, char *arg, uint32_t *cmdnum,
 		return (CC_OR_NOT_FOUND);
 }
 
-#ifndef MINIMALISTIC
 static int
 getdevlist(struct cam_device *device)
 {
@@ -462,7 +458,6 @@ getdevlist(struct cam_device *device)
 
 	return (error);
 }
-#endif /* MINIMALISTIC */
 
 static int
 getdevtree(int argc, char **argv, char *combinedopt)
@@ -672,6 +667,24 @@ getdevtree(int argc, char **argv, char *combinedopt)
 }
 
 static int
+getdevtype(struct cam_device *cam_dev)
+{
+	camcontrol_devtype dt;
+	int error;
+
+	/*
+	 * Get the device type and report it, request no I/O be done to do this.
+	 */
+	error = get_device_type(cam_dev, -1, 0, 0, &dt);
+	if (error != 0 || (unsigned)dt > CC_DT_UNKNOWN) {
+		fprintf(stdout, "illegal\n");
+		return (1);
+	}
+	fprintf(stdout, "%s\n", devtype_names[dt]);
+	return (0);
+}
+
+static int
 print_dev_scsi(struct device_match_result *dev_result, char *tmpstr)
 {
 	char vendor[16], product[48], revision[16];
@@ -835,7 +848,6 @@ print_dev_nvme(struct device_match_result *dev_result, char *tmpstr)
 }
 #endif
 
-#ifndef MINIMALISTIC
 static int
 testunitready(struct cam_device *device, int task_attr, int retry_count,
 	      int timeout, int quiet)
@@ -2059,7 +2071,7 @@ ata_read_native_max(struct cam_device *device, int retry_count,
 			   /*sector_count*/0,
 			   /*data_ptr*/NULL,
 			   /*dxfer_len*/0,
-			   timeout ? timeout : 1000,
+			   timeout ? timeout : 5000,
 			   is48bit);
 
 	if (error)
@@ -2326,9 +2338,11 @@ ata_do_identify(struct cam_device *device, int retry_count, int timeout,
 		}
 	}
 
+	ident_buf = (struct ata_params *)ptr;
+	ata_param_fixup(ident_buf);
+
 	error = 1;
 	for (i = 0; i < sizeof(struct ata_params) / 2; i++) {
-		ptr[i] = le16toh(ptr[i]);
 		if (ptr[i] != 0)
 			error = 0;
 	}
@@ -2345,26 +2359,6 @@ ata_do_identify(struct cam_device *device, int retry_count, int timeout,
 		free(ptr);
 		return (error);
 	}
-
-	ident_buf = (struct ata_params *)ptr;
-	if (strncmp(ident_buf->model, "FX", 2) &&
-	    strncmp(ident_buf->model, "NEC", 3) &&
-	    strncmp(ident_buf->model, "Pioneer", 7) &&
-	    strncmp(ident_buf->model, "SHARP", 5)) {
-		ata_bswap(ident_buf->model, sizeof(ident_buf->model));
-		ata_bswap(ident_buf->revision, sizeof(ident_buf->revision));
-		ata_bswap(ident_buf->serial, sizeof(ident_buf->serial));
-		ata_bswap(ident_buf->media_serial, sizeof(ident_buf->media_serial));
-	}
-	ata_btrim(ident_buf->model, sizeof(ident_buf->model));
-	ata_bpack(ident_buf->model, ident_buf->model, sizeof(ident_buf->model));
-	ata_btrim(ident_buf->revision, sizeof(ident_buf->revision));
-	ata_bpack(ident_buf->revision, ident_buf->revision, sizeof(ident_buf->revision));
-	ata_btrim(ident_buf->serial, sizeof(ident_buf->serial));
-	ata_bpack(ident_buf->serial, ident_buf->serial, sizeof(ident_buf->serial));
-	ata_btrim(ident_buf->media_serial, sizeof(ident_buf->media_serial));
-	ata_bpack(ident_buf->media_serial, ident_buf->media_serial,
-	    sizeof(ident_buf->media_serial));
 
 	*ident_bufp = ident_buf;
 
@@ -2442,10 +2436,8 @@ identify(struct cam_device *device, int retry_count, int timeout)
 #endif
 	return (ataidentify(device, retry_count, timeout));
 }
-#endif /* MINIMALISTIC */
 
 
-#ifndef MINIMALISTIC
 enum {
 	ATA_SECURITY_ACTION_PRINT,
 	ATA_SECURITY_ACTION_FREEZE,
@@ -3278,7 +3270,6 @@ atasecurity(struct cam_device *device, int retry_count, int timeout,
 
 	return (error);
 }
-#endif /* MINIMALISTIC */
 
 /*
  * Parse out a bus, or a bus, target and lun in the following
@@ -3726,7 +3717,6 @@ scanlun_or_reset_dev(path_id_t bus, target_id_t target, lun_id_t lun, int scan)
 	}
 }
 
-#ifndef MINIMALISTIC
 
 static struct scsi_nv defect_list_type_map[] = {
 	{ "block", SRDD10_BLOCK_FORMAT },
@@ -4302,7 +4292,6 @@ defect_bailout:
 
 	return (error);
 }
-#endif /* MINIMALISTIC */
 
 #if 0
 void
@@ -4316,7 +4305,6 @@ reassignblocks(struct cam_device *device, u_int32_t *blocks, int num_blocks)
 }
 #endif
 
-#ifndef MINIMALISTIC
 void
 mode_sense(struct cam_device *device, int dbd, int pc, int page, int subpage,
 	   int task_attr, int retry_count, int timeout, u_int8_t *data,
@@ -5394,7 +5382,7 @@ get_device_type(struct cam_device *dev, int retry_count, int timeout,
 		    int verbosemode, camcontrol_devtype *devtype)
 {
 	struct ccb_getdev cgd;
-	int retval = 0;
+	int retval;
 
 	retval = get_cgd(dev, &cgd);
 	if (retval != 0)
@@ -5409,27 +5397,48 @@ get_device_type(struct cam_device *dev, int retry_count, int timeout,
 		*devtype = CC_DT_ATA;
 		goto bailout;
 		break; /*NOTREACHED*/
+	case PROTO_NVME:
+		*devtype = CC_DT_NVME;
+		goto bailout;
+		break; /*NOTREACHED*/
+	case PROTO_MMCSD:
+		*devtype = CC_DT_MMCSD;
+		goto bailout;
+		break; /*NOTREACHED*/
 	default:
 		*devtype = CC_DT_UNKNOWN;
 		goto bailout;
 		break; /*NOTREACHED*/
 	}
 
-	/*
-	 * Check for the ATA Information VPD page (0x89).  If this is an
-	 * ATA device behind a SCSI to ATA translation layer, this VPD page
-	 * should be present.
-	 *
-	 * If that VPD page isn't present, or we get an error back from the
-	 * INQUIRY command, we'll just treat it as a normal SCSI device.
-	 */
-	retval = dev_has_vpd_page(dev, SVPD_ATA_INFORMATION, retry_count,
-				  timeout, verbosemode);
-	if (retval == 1)
-		*devtype = CC_DT_ATA_BEHIND_SCSI;
-	else
-		*devtype = CC_DT_SCSI;
-
+	if (retry_count == -1) {
+		/*
+		 * For a retry count of -1, used only the cached data to avoid
+		 * I/O to the drive. Sending the identify command to the drive
+		 * can cause issues for SATL attachaed drives since identify is
+		 * not an NCQ command.
+		 */
+		if (cgd.ident_data.config != 0)
+			*devtype = CC_DT_SATL;
+		else
+			*devtype = CC_DT_SCSI;
+	} else {
+		/*
+		 * Check for the ATA Information VPD page (0x89).  If this is an
+		 * ATA device behind a SCSI to ATA translation layer (SATL),
+		 * this VPD page should be present.
+		 *
+		 * If that VPD page isn't present, or we get an error back from
+		 * the INQUIRY command, we'll just treat it as a normal SCSI
+		 * device.
+		 */
+		retval = dev_has_vpd_page(dev, SVPD_ATA_INFORMATION, retry_count,
+		    timeout, verbosemode);
+		if (retval == 1)
+			*devtype = CC_DT_SATL;
+		else
+			*devtype = CC_DT_SCSI;
+	}
 	retval = 0;
 
 bailout:
@@ -9540,7 +9549,6 @@ bailout:
 	return (retval);
 }
 
-#endif /* MINIMALISTIC */
 
 static int
 scsireprobe(struct cam_device *device)
@@ -9584,7 +9592,6 @@ usage(int printlong)
 	fprintf(printlong ? stdout : stderr,
 "usage:  camcontrol <command>  [device id][generic args][command args]\n"
 "        camcontrol devlist    [-b] [-v]\n"
-#ifndef MINIMALISTIC
 "        camcontrol periphlist [dev_id][-n dev_name] [-u unit]\n"
 "        camcontrol tur        [dev_id][generic args]\n"
 "        camcontrol inquiry    [dev_id][generic args] [-D] [-S] [-R]\n"
@@ -9597,10 +9604,8 @@ usage(int printlong)
 "        camcontrol load       [dev_id][generic args]\n"
 "        camcontrol eject      [dev_id][generic args]\n"
 "        camcontrol reprobe    [dev_id][generic args]\n"
-#endif /* MINIMALISTIC */
 "        camcontrol rescan     <all | bus[:target:lun] | dev_id>\n"
 "        camcontrol reset      <all | bus[:target:lun] | dev_id>\n"
-#ifndef MINIMALISTIC
 "        camcontrol defects    [dev_id][generic args] <-f format> [-P][-G]\n"
 "                              [-q][-s][-S offset][-X]\n"
 "        camcontrol modepage   [dev_id][generic args] <-m page | -l>\n"
@@ -9659,12 +9664,11 @@ usage(int printlong)
 "                              [-S power_src] [-T timer]\n"
 "        camcontrol timestamp  [dev_id][generic_args] <-r [-f format|-m|-U]>|\n"
 "                              <-s <-f format -T time | -U >>\n"
+"        camcontrol devtype    [dev_id]\n"
 "                              \n"
-#endif /* MINIMALISTIC */
 "        camcontrol help\n");
 	if (!printlong)
 		return;
-#ifndef MINIMALISTIC
 	fprintf(stdout,
 "Specify one of the following options:\n"
 "devlist     list all CAM devices\n"
@@ -9706,6 +9710,7 @@ usage(int printlong)
 "zone        manage Zoned Block (Shingled) devices\n"
 "epc         send ATA Extended Power Conditions commands\n"
 "timestamp   report or set the device's timestamp\n"
+"devtype     report the type of device\n"
 "help        this message\n"
 "Device Identifiers:\n"
 "bus:target        specify the bus and target, lun defaults to 0\n"
@@ -9910,7 +9915,6 @@ usage(int printlong)
 "-T time           the time value passed into strptime(3)\n"
 "-U                set the timestamp of the device to UTC time\n"
 );
-#endif /* MINIMALISTIC */
 }
 
 int
@@ -9929,11 +9933,9 @@ main(int argc, char **argv)
 	int error = 0, optstart = 2;
 	int task_attr = MSG_SIMPLE_Q_TAG;
 	int devopen = 1;
-#ifndef MINIMALISTIC
 	path_id_t bus;
 	target_id_t target;
 	lun_id_t lun;
-#endif /* MINIMALISTIC */
 
 	cmdlist = CAM_CMD_NONE;
 	arglist = CAM_ARG_NONE;
@@ -10021,7 +10023,6 @@ main(int argc, char **argv)
 	 || (cmdlist == CAM_CMD_DEBUG))
 		devopen = 0;
 
-#ifndef MINIMALISTIC
 	if ((devopen == 1)
 	 && (argc > 2 && argv[2][0] != '-')) {
 		char name[30];
@@ -10049,7 +10050,6 @@ main(int argc, char **argv)
 			optstart++;
 		}
 	}
-#endif /* MINIMALISTIC */
 	/*
 	 * Start getopt processing at argv[2/3], since we've already
 	 * accepted argv[1..2] as the command name, and as a possible
@@ -10135,7 +10135,6 @@ main(int argc, char **argv)
 		}
 	}
 
-#ifndef MINIMALISTIC
 	/*
 	 * For most commands we'll want to open the passthrough device
 	 * associated with the specified device.  In the case of the rescan
@@ -10156,7 +10155,6 @@ main(int argc, char **argv)
 		     == NULL)
 			errx(1,"%s", cam_errbuf);
 	}
-#endif /* MINIMALISTIC */
 
 	/*
 	 * Reset optind to 2, and reset getopt, so these routines can parse
@@ -10166,7 +10164,6 @@ main(int argc, char **argv)
 	optreset = 1;
 
 	switch(cmdlist) {
-#ifndef MINIMALISTIC
 	case CAM_CMD_DEVLIST:
 		error = getdevlist(cam_dev);
 		break;
@@ -10174,11 +10171,12 @@ main(int argc, char **argv)
 		error = atahpa(cam_dev, retry_count, timeout,
 			       argc, argv, combinedopt);
 		break;
-#endif /* MINIMALISTIC */
 	case CAM_CMD_DEVTREE:
 		error = getdevtree(argc, argv, combinedopt);
 		break;
-#ifndef MINIMALISTIC
+	case CAM_CMD_DEVTYPE:
+		error = getdevtype(cam_dev);
+		break;
 	case CAM_CMD_TUR:
 		error = testunitready(cam_dev, task_attr, retry_count,
 		    timeout, 0);
@@ -10195,14 +10193,12 @@ main(int argc, char **argv)
 				  arglist & CAM_ARG_EJECT, task_attr,
 				  retry_count, timeout);
 		break;
-#endif /* MINIMALISTIC */
 	case CAM_CMD_RESCAN:
 		error = dorescan_or_reset(argc, argv, 1);
 		break;
 	case CAM_CMD_RESET:
 		error = dorescan_or_reset(argc, argv, 0);
 		break;
-#ifndef MINIMALISTIC
 	case CAM_CMD_READ_DEFECTS:
 		error = readdefects(cam_dev, argc, argv, combinedopt,
 				    task_attr, retry_count, timeout);
@@ -10325,7 +10321,6 @@ main(int argc, char **argv)
 		    task_attr, retry_count, timeout,
 		    arglist & CAM_ARG_VERBOSE);
 		break;
-#endif /* MINIMALISTIC */
 	case CAM_CMD_USAGE:
 		usage(1);
 		break;

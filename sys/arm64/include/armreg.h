@@ -36,12 +36,12 @@
 #define	INSN_SIZE		4
 
 #define	READ_SPECIALREG(reg)						\
-({	uint64_t val;							\
-	__asm __volatile("mrs	%0, " __STRING(reg) : "=&r" (val));	\
-	val;								\
+({	uint64_t _val;							\
+	__asm __volatile("mrs	%0, " __STRING(reg) : "=&r" (_val));	\
+	_val;								\
 })
-#define	WRITE_SPECIALREG(reg, val)					\
-	__asm __volatile("msr	" __STRING(reg) ", %0" : : "r"((uint64_t)val))
+#define	WRITE_SPECIALREG(reg, _val)					\
+	__asm __volatile("msr	" __STRING(reg) ", %0" : : "r"((uint64_t)_val))
 
 /* CNTHCTL_EL2 - Counter-timer Hypervisor Control register */
 #define	CNTHCTL_EVNTI_MASK	(0xf << 4) /* Bit to trigger event stream */
@@ -91,10 +91,10 @@
 #define	 ISS_DATA_SF		(0x01 << 15)
 #define	 ISS_DATA_AR		(0x01 << 14)
 #define	 ISS_DATA_FnV		(0x01 << 10)
-#define	 ISS_DATa_EA		(0x01 << 9)
-#define	 ISS_DATa_CM		(0x01 << 8)
-#define	 ISS_INSN_S1PTW		(0x01 << 7)
-#define	 ISS_DATa_WnR		(0x01 << 6)
+#define	 ISS_DATA_EA		(0x01 << 9)
+#define	 ISS_DATA_CM		(0x01 << 8)
+#define	 ISS_DATA_S1PTW		(0x01 << 7)
+#define	 ISS_DATA_WnR		(0x01 << 6)
 #define	 ISS_DATA_DFSC_MASK	(0x3f << 0)
 #define	 ISS_DATA_DFSC_ASF_L0	(0x00 << 0)
 #define	 ISS_DATA_DFSC_ASF_L1	(0x01 << 0)

@@ -25,9 +25,7 @@
 # SUCH DAMAGE.
 #
 
-S=     ${SRCTOP}/sys
-
-.PATH: $S/dev/usb $S/dev/usb/controller
+.PATH: ${SRCTOP}/sys/dev/usb ${SRCTOP}/sys/dev/usb/controller
 
 KMOD=	usb
 SRCS=	bus_if.h device_if.h usb_if.h usb_if.c vnode_if.h \

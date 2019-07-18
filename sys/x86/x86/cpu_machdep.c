@@ -939,7 +939,6 @@ int hw_mds_disable;
  * architectural state except possibly %rflags. Also, it is always
  * called with interrupts disabled.
  */
-void (*mds_handler)(void);
 void mds_handler_void(void);
 void mds_handler_verw(void);
 void mds_handler_ivb(void);
@@ -948,6 +947,7 @@ void mds_handler_skl_sse(void);
 void mds_handler_skl_avx(void);
 void mds_handler_skl_avx512(void);
 void mds_handler_silvermont(void);
+void (*mds_handler)(void) = mds_handler_void;
 
 static int
 sysctl_hw_mds_disable_state_handler(SYSCTL_HANDLER_ARGS)
@@ -1105,6 +1105,14 @@ hw_mds_recalculate(void)
 		mds_handler = mds_handler_void;
 	}
 }
+
+static void
+hw_mds_recalculate_boot(void *arg __unused)
+{
+
+	hw_mds_recalculate();
+}
+SYSINIT(mds_recalc, SI_SUB_SMP, SI_ORDER_ANY, hw_mds_recalculate_boot, NULL);
 
 static int
 sysctl_mds_disable_handler(SYSCTL_HANDLER_ARGS)

@@ -67,11 +67,11 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
 #include "opt_inet6.h"
-#include "opt_ratelimit.h"
 #include "opt_ipsec.h"
-#include "opt_sctp.h"
+#include "opt_ratelimit.h"
 #include "opt_route.h"
 #include "opt_rss.h"
+#include "opt_sctp.h"
 
 #include <sys/param.h>
 #include <sys/kernel.h>
@@ -274,6 +274,51 @@ ip6_fragment(struct ifnet *ifp, struct mbuf *m0, int hlen, u_char nextproto,
 	}
 
 	return (0);
+}
+
+static int
+ip6_output_send(struct inpcb *inp, struct ifnet *ifp, struct ifnet *origifp,
+    struct mbuf *m, struct sockaddr_in6 *dst, struct route_in6 *ro)
+{
+	struct m_snd_tag *mst;
+	int error;
+
+	MPASS((m->m_pkthdr.csum_flags & CSUM_SND_TAG) == 0);
+	mst = NULL;
+
+#ifdef RATELIMIT
+	if (inp != NULL) {
+		if ((inp->inp_flags2 & INP_RATE_LIMIT_CHANGED) != 0 ||
+		    (inp->inp_snd_tag != NULL &&
+		    inp->inp_snd_tag->ifp != ifp))
+			in_pcboutput_txrtlmt(inp, ifp, m);
+
+		if (inp->inp_snd_tag != NULL)
+			mst = inp->inp_snd_tag;
+	}
+#endif
+	if (mst != NULL) {
+		KASSERT(m->m_pkthdr.rcvif == NULL,
+		    ("trying to add a send tag to a forwarded packet"));
+		if (mst->ifp != ifp) {
+			error = EAGAIN;
+			goto done;
+		}
+
+		/* stamp send tag on mbuf */
+		m->m_pkthdr.snd_tag = m_snd_tag_ref(mst);
+		m->m_pkthdr.csum_flags |= CSUM_SND_TAG;
+	}
+
+	error = nd6_output_ifp(ifp, origifp, m, dst, (struct route *)ro);
+
+done:
+	/* Check for route change invalidating send tags. */
+#ifdef RATELIMIT
+	if (error == EAGAIN)
+		in_pcboutput_eagain(inp);
+#endif
+	return (error);
 }
 
 /*
@@ -918,11 +963,30 @@ passout:
 	 */
 	if (sw_csum & CSUM_DELAY_DATA_IPV6) {
 		sw_csum &= ~CSUM_DELAY_DATA_IPV6;
+		m = mb_unmapped_to_ext(m);
+		if (m == NULL) {
+			error = ENOBUFS;
+			IP6STAT_INC(ip6s_odropped);
+			goto bad;
+		}
 		in6_delayed_cksum(m, plen, sizeof(struct ip6_hdr));
+	} else if ((ifp->if_capenable & IFCAP_NOMAP) == 0) {
+		m = mb_unmapped_to_ext(m);
+		if (m == NULL) {
+			error = ENOBUFS;
+			IP6STAT_INC(ip6s_odropped);
+			goto bad;
+		}
 	}
 #ifdef SCTP
 	if (sw_csum & CSUM_SCTP_IPV6) {
 		sw_csum &= ~CSUM_SCTP_IPV6;
+		m = mb_unmapped_to_ext(m);
+		if (m == NULL) {
+			error = ENOBUFS;
+			IP6STAT_INC(ip6s_odropped);
+			goto bad;
+		}
 		sctp_delayed_cksum(m, sizeof(struct ip6_hdr));
 	}
 #endif
@@ -968,23 +1032,7 @@ passout:
 			    m->m_pkthdr.len);
 			ifa_free(&ia6->ia_ifa);
 		}
-#ifdef RATELIMIT
-		if (inp != NULL) {
-			if (inp->inp_flags2 & INP_RATE_LIMIT_CHANGED)
-				in_pcboutput_txrtlmt(inp, ifp, m);
-			/* stamp send tag on mbuf */
-			m->m_pkthdr.snd_tag = inp->inp_snd_tag;
-		} else {
-			m->m_pkthdr.snd_tag = NULL;
-		}
-#endif
-		error = nd6_output_ifp(ifp, origifp, m, dst,
-		    (struct route *)ro);
-#ifdef RATELIMIT
-		/* check for route change */
-		if (error == EAGAIN)
-			in_pcboutput_eagain(inp);
-#endif
+		error = ip6_output_send(inp, ifp, origifp, m, dst, ro);
 		goto done;
 	}
 
@@ -1026,11 +1074,23 @@ passout:
 		 * XXX-BZ handle the hw offloading case.  Need flags.
 		 */
 		if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA_IPV6) {
+			m = mb_unmapped_to_ext(m);
+			if (m == NULL) {
+				in6_ifstat_inc(ifp, ifs6_out_fragfail);
+				error = ENOBUFS;
+				goto bad;
+			}
 			in6_delayed_cksum(m, plen, hlen);
 			m->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA_IPV6;
 		}
 #ifdef SCTP
 		if (m->m_pkthdr.csum_flags & CSUM_SCTP_IPV6) {
+			m = mb_unmapped_to_ext(m);
+			if (m == NULL) {
+				in6_ifstat_inc(ifp, ifs6_out_fragfail);
+				error = ENOBUFS;
+				goto bad;
+			}
 			sctp_delayed_cksum(m, hlen);
 			m->m_pkthdr.csum_flags &= ~CSUM_SCTP_IPV6;
 		}
@@ -1083,23 +1143,7 @@ sendorfree:
 				counter_u64_add(ia->ia_ifa.ifa_obytes,
 				    m->m_pkthdr.len);
 			}
-#ifdef RATELIMIT
-			if (inp != NULL) {
-				if (inp->inp_flags2 & INP_RATE_LIMIT_CHANGED)
-					in_pcboutput_txrtlmt(inp, ifp, m);
-				/* stamp send tag on mbuf */
-				m->m_pkthdr.snd_tag = inp->inp_snd_tag;
-			} else {
-				m->m_pkthdr.snd_tag = NULL;
-			}
-#endif
-			error = nd6_output_ifp(ifp, origifp, m, dst,
-			    (struct route *)ro);
-#ifdef RATELIMIT
-			/* check for route change */
-			if (error == EAGAIN)
-				in_pcboutput_eagain(inp);
-#endif
+			error = ip6_output_send(inp, ifp, origifp, m, dst, ro);
 		} else
 			m_freem(m);
 	}

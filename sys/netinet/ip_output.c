@@ -35,13 +35,13 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
-#include "opt_ratelimit.h"
 #include "opt_ipsec.h"
 #include "opt_mbuf_stress_test.h"
 #include "opt_mpath.h"
+#include "opt_ratelimit.h"
 #include "opt_route.h"
-#include "opt_sctp.h"
 #include "opt_rss.h"
+#include "opt_sctp.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -109,20 +109,24 @@ extern int in_mcast_loop;
 extern	struct protosw inetsw[];
 
 static inline int
-ip_output_pfil(struct mbuf **mp, struct ifnet *ifp, struct inpcb *inp,
-    struct sockaddr_in *dst, int *fibnum, int *error)
+ip_output_pfil(struct mbuf **mp, struct ifnet *ifp, int flags,
+    struct inpcb *inp, struct sockaddr_in *dst, int *fibnum, int *error)
 {
 	struct m_tag *fwd_tag = NULL;
 	struct mbuf *m;
 	struct in_addr odst;
 	struct ip *ip;
+	int pflags = PFIL_OUT;
+
+	if (flags & IP_FORWARDING)
+		pflags |= PFIL_FWD;
 
 	m = *mp;
 	ip = mtod(m, struct ip *);
 
 	/* Run through list of hooks for output packets. */
 	odst.s_addr = ip->ip_dst.s_addr;
-	switch (pfil_run_hooks(V_inet_pfil_head, mp, ifp, PFIL_OUT, inp)) {
+	switch (pfil_run_hooks(V_inet_pfil_head, mp, ifp, pflags, inp)) {
 	case PFIL_DROPPED:
 		*error = EPERM;
 		/* FALLTHROUGH */
@@ -204,6 +208,51 @@ ip_output_pfil(struct mbuf **mp, struct ifnet *ifp, struct inpcb *inp,
 	return 0;
 }
 
+static int
+ip_output_send(struct inpcb *inp, struct ifnet *ifp, struct mbuf *m,
+    const struct sockaddr_in *gw, struct route *ro)
+{
+	struct m_snd_tag *mst;
+	int error;
+
+	MPASS((m->m_pkthdr.csum_flags & CSUM_SND_TAG) == 0);
+	mst = NULL;
+
+#ifdef RATELIMIT
+	if (inp != NULL) {
+		if ((inp->inp_flags2 & INP_RATE_LIMIT_CHANGED) != 0 ||
+		    (inp->inp_snd_tag != NULL &&
+		    inp->inp_snd_tag->ifp != ifp))
+			in_pcboutput_txrtlmt(inp, ifp, m);
+
+		if (inp->inp_snd_tag != NULL)
+			mst = inp->inp_snd_tag;
+	}
+#endif
+	if (mst != NULL) {
+		KASSERT(m->m_pkthdr.rcvif == NULL,
+		    ("trying to add a send tag to a forwarded packet"));
+		if (mst->ifp != ifp) {
+			error = EAGAIN;
+			goto done;
+		}
+
+		/* stamp send tag on mbuf */
+		m->m_pkthdr.snd_tag = m_snd_tag_ref(mst);
+		m->m_pkthdr.csum_flags |= CSUM_SND_TAG;
+	}
+
+	error = (*ifp->if_output)(ifp, m, (const struct sockaddr *)gw, ro);
+
+done:
+	/* Check for route change invalidating send tags. */
+#ifdef RATELIMIT
+	if (error == EAGAIN)
+		in_pcboutput_eagain(inp);
+#endif
+	return (error);
+}
+
 /*
  * IP output.  The packet in mbuf chain m contains a skeletal IP
  * header (with len, off, ttl, proto, tos, src, dst).
@@ -238,6 +287,7 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 #if defined(IPSEC) || defined(IPSEC_SUPPORT)
 	int no_route_but_check_spd = 0;
 #endif
+
 	M_ASSERTPKTHDR(m);
 
 	if (inp != NULL) {
@@ -607,7 +657,8 @@ sendit:
 
 	/* Jump over all PFIL processing if hooks are not active. */
 	if (PFIL_HOOKED_OUT(V_inet_pfil_head)) {
-		switch (ip_output_pfil(&m, ifp, inp, dst, &fibnum, &error)) {
+		switch (ip_output_pfil(&m, ifp, flags, inp, dst, &fibnum,
+		    &error)) {
 		case 1: /* Finished */
 			goto done;
 
@@ -640,11 +691,30 @@ sendit:
 
 	m->m_pkthdr.csum_flags |= CSUM_IP;
 	if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA & ~ifp->if_hwassist) {
+		m = mb_unmapped_to_ext(m);
+		if (m == NULL) {
+			IPSTAT_INC(ips_odropped);
+			error = ENOBUFS;
+			goto bad;
+		}
 		in_delayed_cksum(m);
 		m->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
+	} else if ((ifp->if_capenable & IFCAP_NOMAP) == 0) {
+		m = mb_unmapped_to_ext(m);
+		if (m == NULL) {
+			IPSTAT_INC(ips_odropped);
+			error = ENOBUFS;
+			goto bad;
+		}
 	}
 #ifdef SCTP
 	if (m->m_pkthdr.csum_flags & CSUM_SCTP & ~ifp->if_hwassist) {
+		m = mb_unmapped_to_ext(m);
+		if (m == NULL) {
+			IPSTAT_INC(ips_odropped);
+			error = ENOBUFS;
+			goto bad;
+		}
 		sctp_delayed_cksum(m, (uint32_t)(ip->ip_hl << 2));
 		m->m_pkthdr.csum_flags &= ~CSUM_SCTP;
 	}
@@ -687,23 +757,7 @@ sendit:
 		 */
 		m_clrprotoflags(m);
 		IP_PROBE(send, NULL, NULL, ip, ifp, ip, NULL);
-#ifdef RATELIMIT
-		if (inp != NULL) {
-			if (inp->inp_flags2 & INP_RATE_LIMIT_CHANGED)
-				in_pcboutput_txrtlmt(inp, ifp, m);
-			/* stamp send tag on mbuf */
-			m->m_pkthdr.snd_tag = inp->inp_snd_tag;
-		} else {
-			m->m_pkthdr.snd_tag = NULL;
-		}
-#endif
-		error = (*ifp->if_output)(ifp, m,
-		    (const struct sockaddr *)gw, ro);
-#ifdef RATELIMIT
-		/* check for route change */
-		if (error == EAGAIN)
-			in_pcboutput_eagain(inp);
-#endif
+		error = ip_output_send(inp, ifp, m, gw, ro);
 		goto done;
 	}
 
@@ -739,23 +793,7 @@ sendit:
 
 			IP_PROBE(send, NULL, NULL, mtod(m, struct ip *), ifp,
 			    mtod(m, struct ip *), NULL);
-#ifdef RATELIMIT
-			if (inp != NULL) {
-				if (inp->inp_flags2 & INP_RATE_LIMIT_CHANGED)
-					in_pcboutput_txrtlmt(inp, ifp, m);
-				/* stamp send tag on mbuf */
-				m->m_pkthdr.snd_tag = inp->inp_snd_tag;
-			} else {
-				m->m_pkthdr.snd_tag = NULL;
-			}
-#endif
-			error = (*ifp->if_output)(ifp, m,
-			    (const struct sockaddr *)gw, ro);
-#ifdef RATELIMIT
-			/* check for route change */
-			if (error == EAGAIN)
-				in_pcboutput_eagain(inp);
-#endif
+			error = ip_output_send(inp, ifp, m, gw, ro);
 		} else
 			m_freem(m);
 	}
@@ -812,11 +850,23 @@ ip_fragment(struct ip *ip, struct mbuf **m_frag, int mtu,
 	 * fragmented packets, then do it here.
 	 */
 	if (m0->m_pkthdr.csum_flags & CSUM_DELAY_DATA) {
+		m0 = mb_unmapped_to_ext(m0);
+		if (m0 == NULL) {
+			error = ENOBUFS;
+			IPSTAT_INC(ips_odropped);
+			goto done;
+		}
 		in_delayed_cksum(m0);
 		m0->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
 	}
 #ifdef SCTP
 	if (m0->m_pkthdr.csum_flags & CSUM_SCTP) {
+		m0 = mb_unmapped_to_ext(m0);
+		if (m0 == NULL) {
+			error = ENOBUFS;
+			IPSTAT_INC(ips_odropped);
+			goto done;
+		}
 		sctp_delayed_cksum(m0, hlen);
 		m0->m_pkthdr.csum_flags &= ~CSUM_SCTP;
 	}

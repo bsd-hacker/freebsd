@@ -720,7 +720,7 @@ vm_object_terminate_pages(vm_object_t object)
 			 */
 			vm_page_change_lock(p, &mtx);
 		p->object = NULL;
-		if (p->wire_count != 0)
+		if (vm_page_wired(p))
 			continue;
 		VM_CNT_INC(v_pfree);
 		vm_page_free(p);
@@ -1212,7 +1212,7 @@ next_page:
 		if (tm->valid != VM_PAGE_BITS_ALL)
 			goto next_pindex;
 		vm_page_lock(tm);
-		if (vm_page_held(tm)) {
+		if (vm_page_wired(tm)) {
 			vm_page_unlock(tm);
 			goto next_pindex;
 		}
@@ -1595,10 +1595,8 @@ vm_object_collapse_scan(vm_object_t object, int op)
 			vm_page_lock(p);
 			KASSERT(!pmap_page_is_mapped(p),
 			    ("freeing mapped page %p", p));
-			if (p->wire_count == 0)
+			if (vm_page_remove(p))
 				vm_page_free(p);
-			else
-				vm_page_remove(p);
 			vm_page_unlock(p);
 			continue;
 		}
@@ -1639,10 +1637,8 @@ vm_object_collapse_scan(vm_object_t object, int op)
 			vm_page_lock(p);
 			KASSERT(!pmap_page_is_mapped(p),
 			    ("freeing mapped page %p", p));
-			if (p->wire_count == 0)
+			if (vm_page_remove(p))
 				vm_page_free(p);
-			else
-				vm_page_remove(p);
 			vm_page_unlock(p);
 			continue;
 		}
@@ -1944,7 +1940,7 @@ again:
 			VM_OBJECT_WLOCK(object);
 			goto again;
 		}
-		if (p->wire_count != 0) {
+		if (vm_page_wired(p)) {
 			if ((options & OBJPR_NOTMAPPED) == 0 &&
 			    object->ref_count != 0)
 				pmap_remove_all(p);

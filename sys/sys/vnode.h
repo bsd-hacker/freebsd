@@ -658,8 +658,7 @@ void	vgone(struct vnode *vp);
 void	_vhold(struct vnode *, bool);
 void	vinactive(struct vnode *, struct thread *);
 int	vinvalbuf(struct vnode *vp, int save, int slpflag, int slptimeo);
-int	vtruncbuf(struct vnode *vp, struct ucred *cred, off_t length,
-	    int blksize);
+int	vtruncbuf(struct vnode *vp, off_t length, int blksize);
 void	vunref(struct vnode *);
 void	vn_printf(struct vnode *vp, const char *fmt, ...) __printflike(2,3);
 int	vrecycle(struct vnode *vp);
@@ -696,6 +695,8 @@ int	vn_stat(struct vnode *vp, struct stat *sb, struct ucred *active_cred,
 int	vn_start_write(struct vnode *vp, struct mount **mpp, int flags);
 int	vn_start_secondary_write(struct vnode *vp, struct mount **mpp,
 	    int flags);
+int	vn_truncate_locked(struct vnode *vp, off_t length, bool sync,
+	    struct ucred *cred);
 int	vn_writechk(struct vnode *vp);
 int	vn_extattr_get(struct vnode *vp, int ioflg, int attrnamespace,
 	    const char *attrname, int *buflen, char *buf, struct thread *td);
@@ -721,8 +722,12 @@ int	vn_io_fault_pgmove(vm_page_t ma[], vm_offset_t offset, int xfersize,
 	    VI_MTX(vp))
 #define	vn_rangelock_rlock(vp, start, end)				\
 	rangelock_rlock(&(vp)->v_rl, (start), (end), VI_MTX(vp))
+#define	vn_rangelock_tryrlock(vp, start, end)				\
+	rangelock_tryrlock(&(vp)->v_rl, (start), (end), VI_MTX(vp))
 #define	vn_rangelock_wlock(vp, start, end)				\
 	rangelock_wlock(&(vp)->v_rl, (start), (end), VI_MTX(vp))
+#define	vn_rangelock_trywlock(vp, start, end)				\
+	rangelock_trywlock(&(vp)->v_rl, (start), (end), VI_MTX(vp))
 
 int	vfs_cache_lookup(struct vop_lookup_args *ap);
 void	vfs_timestamp(struct timespec *);

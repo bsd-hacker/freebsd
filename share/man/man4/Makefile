@@ -303,8 +303,6 @@ MAN=	aac.4 \
 	mx25l.4 \
 	mxge.4 \
 	my.4 \
-	nand.4 \
-	nandsim.4 \
 	${_ndis.4} \
 	net80211.4 \
 	netdump.4 \
@@ -418,6 +416,7 @@ MAN=	aac.4 \
 	pts.4 \
 	pty.4 \
 	puc.4 \
+	pwmc.4 \
 	${_qlxge.4} \
 	${_qlxgb.4} \
 	${_qlxgbe.4} \
@@ -619,7 +618,9 @@ MLINKS+=cxgbev.4 if_cxgbev.4 \
 MLINKS+=dc.4 if_dc.4
 MLINKS+=disc.4 if_disc.4
 MLINKS+=edsc.4 if_edsc.4
-MLINKS+=em.4 if_em.4
+MLINKS+=em.4 if_em.4 \
+	em.4 igb.4 \
+	em.4 if_igb.4
 MLINKS+=enc.4 if_enc.4
 MLINKS+=epair.4 if_epair.4
 MLINKS+=et.4 if_et.4

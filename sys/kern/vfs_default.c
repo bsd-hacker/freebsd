@@ -603,7 +603,13 @@ vop_stdgetwritemount(ap)
 	return (0);
 }
 
-/* XXX Needs good comment and VOP_BMAP(9) manpage */
+/*
+ * If the file system doesn't implement VOP_BMAP, then return sensible defaults:
+ * - Return the vnode's bufobj instead of any underlying device's bufobj
+ * - Calculate the physical block number as if there were equal size
+ *   consecutive blocks, but
+ * - Report no contiguous runs of blocks.
+ */
 int
 vop_stdbmap(ap)
 	struct vop_bmap_args /* {
@@ -1113,7 +1119,7 @@ vop_stdadd_writecount(struct vop_add_writecount_args *ap)
 	int error;
 
 	vp = ap->a_vp;
-	VI_LOCK(vp);
+	VI_LOCK_FLAGS(vp, MTX_DUPOK);
 	if (vp->v_writecount < 0) {
 		error = ETXTBSY;
 	} else {

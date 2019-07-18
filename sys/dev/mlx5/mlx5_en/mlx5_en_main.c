@@ -1247,7 +1247,7 @@ mlx5e_create_rq(struct mlx5e_channel *c,
 
 	wq_sz = mlx5_wq_ll_get_size(&rq->wq);
 
-	err = -tcp_lro_init_args(&rq->lro, c->tag.m_snd_tag.ifp, TCP_LRO_ENTRIES, wq_sz);
+	err = -tcp_lro_init_args(&rq->lro, priv->ifp, TCP_LRO_ENTRIES, wq_sz);
 	if (err)
 		goto err_rq_wq_destroy;
 
@@ -1288,7 +1288,7 @@ mlx5e_create_rq(struct mlx5e_channel *c,
 		}
 	}
 
-	rq->ifp = c->tag.m_snd_tag.ifp;
+	rq->ifp = priv->ifp;
 	rq->channel = c;
 	rq->ix = c->ix;
 
@@ -1331,6 +1331,7 @@ mlx5e_destroy_rq(struct mlx5e_rq *rq)
 	}
 	free(rq->mbuf, M_MLX5EN);
 	mlx5_wq_destroy(&rq->wq_ctrl);
+	bus_dma_tag_destroy(rq->dma_tag);
 }
 
 static int
@@ -1655,6 +1656,7 @@ mlx5e_destroy_sq(struct mlx5e_sq *sq)
 	mlx5e_free_sq_db(sq);
 	mlx5_wq_destroy(&sq->wq_ctrl);
 	mlx5_unmap_free_uar(sq->priv->mdev, &sq->uar);
+	bus_dma_tag_destroy(sq->dma_tag);
 }
 
 int
@@ -2145,7 +2147,6 @@ mlx5e_open_channel(struct mlx5e_priv *priv, int ix,
 	c->priv = priv;
 	c->ix = ix;
 	/* setup send tag */
-	c->tag.m_snd_tag.ifp = priv->ifp;
 	c->tag.type = IF_SND_TAG_TYPE_UNLIMITED;
 	c->mkey_be = cpu_to_be32(priv->mr.key);
 	c->num_tc = priv->num_tc;
@@ -3280,6 +3281,8 @@ mlx5e_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 				    "tso6 disabled due to -txcsum6.\n");
 			}
 		}
+		if (mask & IFCAP_NOMAP)
+			ifp->if_capenable ^= IFCAP_NOMAP;
 		if (mask & IFCAP_RXCSUM)
 			ifp->if_capenable ^= IFCAP_RXCSUM;
 		if (mask & IFCAP_RXCSUM_IPV6)
@@ -3987,6 +3990,8 @@ mlx5e_ul_snd_tag_alloc(struct ifnet *ifp,
 		if (unlikely(pch->sq[0].running == 0))
 			return (ENXIO);
 		mlx5e_ref_channel(priv);
+		MPASS(pch->tag.m_snd_tag.refcount == 0);
+		m_snd_tag_init(&pch->tag.m_snd_tag, ifp);
 		*ppmt = &pch->tag.m_snd_tag;
 		return (0);
 	}
@@ -4144,6 +4149,7 @@ mlx5e_create_ifp(struct mlx5_core_dev *mdev)
 	ifp->if_capabilities |= IFCAP_LRO;
 	ifp->if_capabilities |= IFCAP_TSO | IFCAP_VLAN_HWTSO;
 	ifp->if_capabilities |= IFCAP_HWSTATS | IFCAP_HWRXTSTMP;
+	ifp->if_capabilities |= IFCAP_NOMAP;
 	ifp->if_capabilities |= IFCAP_TXRTLMT;
 	ifp->if_snd_tag_alloc = mlx5e_snd_tag_alloc;
 	ifp->if_snd_tag_free = mlx5e_snd_tag_free;
