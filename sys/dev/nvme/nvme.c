@@ -55,6 +55,7 @@ struct nvme_consumer nvme_consumer[NVME_MAX_CONSUMERS];
 uma_zone_t	nvme_request_zone;
 int32_t		nvme_retry_count;
 
+
 MALLOC_DEFINE(M_NVME, "nvme", "nvme(4) memory allocations");
 
 static int    nvme_probe(device_t);
