@@ -4888,15 +4888,23 @@ pmap_advise(pmap_t pmap, vm_offset_t sva, vm_offset_t eva, int advice)
 			/*
 			 * Unless the page mappings are wired, remove the
 			 * mapping to a single page so that a subsequent
-			 * access may repromote.  Since the underlying page
-			 * table page is fully populated, this removal never
-			 * frees a page table page.
+			 * access may repromote.  Choosing the last page
+			 * within the address range [sva, min(va_next, eva))
+			 * generally results in more repromotions.  Since the
+			 * underlying page table page is fully populated, this
+			 * removal never frees a page table page.
 			 */
 			if ((oldl2 & ATTR_SW_WIRED) == 0) {
-				l3 = pmap_l2_to_l3(l2, sva);
+				va = eva;
+				if (va > va_next)
+					va = va_next;
+				va -= PAGE_SIZE;
+				KASSERT(va >= sva,
+				    ("pmap_advise: no address gap"));
+				l3 = pmap_l2_to_l3(l2, va);
 				KASSERT(pmap_load(l3) != 0,
 				    ("pmap_advise: invalid PTE"));
-				pmap_remove_l3(pmap, l3, sva, pmap_load(l2),
+				pmap_remove_l3(pmap, l3, va, pmap_load(l2),
 				    NULL, &lock);
 			}
 			if (lock != NULL)
@@ -5743,7 +5751,7 @@ pmap_sync_icache(pmap_t pmap, vm_offset_t va, vm_size_t sz)
 int
 pmap_fault(pmap_t pmap, uint64_t esr, uint64_t far)
 {
-	pt_entry_t *pte;
+	pt_entry_t pte, *ptep;
 	register_t intr;
 	uint64_t ec, par;
 	int lvl, rv;
@@ -5767,9 +5775,9 @@ pmap_fault(pmap_t pmap, uint64_t esr, uint64_t far)
 	case ISS_DATA_DFSC_AFF_L2:
 	case ISS_DATA_DFSC_AFF_L3:
 		PMAP_LOCK(pmap);
-		pte = pmap_pte(pmap, far, &lvl);
-		if (pte != NULL) {
-			pmap_set_bits(pte, ATTR_AF);
+		ptep = pmap_pte(pmap, far, &lvl);
+		if (ptep != NULL) {
+			pmap_set_bits(ptep, ATTR_AF);
 			rv = KERN_SUCCESS;
 			/*
 			 * XXXMJ as an optimization we could mark the entry
@@ -5785,12 +5793,13 @@ pmap_fault(pmap_t pmap, uint64_t esr, uint64_t far)
 		    (esr & ISS_DATA_WnR) == 0)
 			return (rv);
 		PMAP_LOCK(pmap);
-		pte = pmap_pte(pmap, far, &lvl);
-		if (pte != NULL &&
-		    (pmap_load(pte) & (ATTR_AP_RW_BIT | ATTR_SW_DBM)) ==
-		    (ATTR_AP(ATTR_AP_RO) | ATTR_SW_DBM)) {
-			pmap_clear_bits(pte, ATTR_AP_RW_BIT);
-			pmap_invalidate_page(pmap, trunc_page(far));
+		ptep = pmap_pte(pmap, far, &lvl);
+		if (ptep != NULL &&
+		    ((pte = pmap_load(ptep)) & ATTR_SW_DBM) != 0) {
+			if ((pte & ATTR_AP_RW_BIT) == ATTR_AP(ATTR_AP_RO)) {
+				pmap_clear_bits(ptep, ATTR_AP_RW_BIT);
+				pmap_invalidate_page(pmap, far);
+			}
 			rv = KERN_SUCCESS;
 		}
 		PMAP_UNLOCK(pmap);
