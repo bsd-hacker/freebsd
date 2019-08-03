@@ -77,6 +77,7 @@ static struct nvme_opcode_string admin_opcode[] = {
 	{ NVME_OPC_SECURITY_SEND, "SECURITY SEND" },
 	{ NVME_OPC_SECURITY_RECEIVE, "SECURITY RECEIVE" },
 	{ NVME_OPC_SANITIZE, "SANITIZE" },
+	{ NVME_OPC_GET_LBA_STATUS, "GET LBA STATUS" },
 	{ 0xFFFF, "ADMIN COMMAND" }
 };
 
@@ -88,6 +89,7 @@ static struct nvme_opcode_string io_opcode[] = {
 	{ NVME_OPC_COMPARE, "COMPARE" },
 	{ NVME_OPC_WRITE_ZEROES, "WRITE ZEROES" },
 	{ NVME_OPC_DATASET_MANAGEMENT, "DATASET MANAGEMENT" },
+	{ NVME_OPC_VERIFY, "VERIFY" },
 	{ NVME_OPC_RESERVATION_REGISTER, "RESERVATION REGISTER" },
 	{ NVME_OPC_RESERVATION_REPORT, "RESERVATION REPORT" },
 	{ NVME_OPC_RESERVATION_ACQUIRE, "RESERVATION ACQUIRE" },
@@ -148,6 +150,7 @@ nvme_io_qpair_print_command(struct nvme_qpair *qpair,
 	case NVME_OPC_WRITE_UNCORRECTABLE:
 	case NVME_OPC_COMPARE:
 	case NVME_OPC_WRITE_ZEROES:
+	case NVME_OPC_VERIFY:
 		nvme_printf(qpair->ctrlr, "%s sqid:%d cid:%d nsid:%d "
 		    "lba:%llu len:%d\n",
 		    get_io_opcode_string(cmd->opc), qpair->id, cmd->cid, le32toh(cmd->nsid),
@@ -178,6 +181,16 @@ nvme_qpair_print_command(struct nvme_qpair *qpair, struct nvme_command *cmd)
 		nvme_admin_qpair_print_command(qpair, cmd);
 	else
 		nvme_io_qpair_print_command(qpair, cmd);
+	if (nvme_verbose_cmd_dump) {
+		nvme_printf(qpair->ctrlr,
+		    "nsid:%#x rsvd2:%#x rsvd3:%#x mptr:%#jx prp1:%#jx prp2:%#jx\n",
+		    cmd->nsid, cmd->rsvd2, cmd->rsvd3, (uintmax_t)cmd->mptr,
+		    (uintmax_t)cmd->prp1, (uintmax_t)cmd->prp2);
+		nvme_printf(qpair->ctrlr,
+		    "cdw10: %#x cdw11:%#x cdw12:%#x cdw13:%#x cdw14:%#x cdw15:%#x\n",
+		    cmd->cdw10, cmd->cdw11, cmd->cdw12, cmd->cdw13, cmd->cdw14,
+		    cmd->cdw15);
+	}
 }
 
 struct nvme_status_string {
@@ -218,6 +231,9 @@ static struct nvme_status_string generic_status[] = {
 	{ NVME_SC_SANITIZE_IN_PROGRESS, "SANITIZE IN PROGRESS" },
 	{ NVME_SC_SGL_DATA_BLOCK_GRAN_INVALID, "SGL_DATA_BLOCK_GRANULARITY_INVALID" },
 	{ NVME_SC_NOT_SUPPORTED_IN_CMB, "COMMAND NOT SUPPORTED FOR QUEUE IN CMB" },
+	{ NVME_SC_NAMESPACE_IS_WRITE_PROTECTED, "NAMESPACE IS WRITE PROTECTED" },
+	{ NVME_SC_COMMAND_INTERRUPTED, "COMMAND INTERRUPTED" },
+	{ NVME_SC_TRANSIENT_TRANSPORT_ERROR, "TRANSIENT TRANSPORT ERROR" },
 
 	{ NVME_SC_LBA_OUT_OF_RANGE, "LBA OUT OF RANGE" },
 	{ NVME_SC_CAPACITY_EXCEEDED, "CAPACITY EXCEEDED" },
@@ -261,6 +277,9 @@ static struct nvme_status_string command_specific_status[] = {
 	{ NVME_SC_INVALID_SEC_CTRLR_STATE, "INVALID SECONDARY CONTROLLER STATE" },
 	{ NVME_SC_INVALID_NUM_OF_CTRLR_RESRC, "INVALID NUMBER OF CONTROLLER RESOURCES" },
 	{ NVME_SC_INVALID_RESOURCE_ID, "INVALID RESOURCE IDENTIFIER" },
+	{ NVME_SC_SANITIZE_PROHIBITED_WPMRE, "SANITIZE PROHIBITED WRITE PERSISTENT MEMORY REGION ENABLED" },
+	{ NVME_SC_ANA_GROUP_ID_INVALID, "ANA GROUP IDENTIFIED INVALID" },
+	{ NVME_SC_ANA_ATTACH_FAILED, "ANA ATTACH FAILED" },
 
 	{ NVME_SC_CONFLICTING_ATTRIBUTES, "CONFLICTING ATTRIBUTES" },
 	{ NVME_SC_INVALID_PROTECTION_INFO, "INVALID PROTECTION INFO" },
@@ -280,6 +299,17 @@ static struct nvme_status_string media_error_status[] = {
 	{ 0xFFFF, "MEDIA ERROR" }
 };
 
+static struct nvme_status_string path_related_status[] = {
+	{ NVME_SC_INTERNAL_PATH_ERROR, "INTERNAL PATH ERROR" },
+	{ NVME_SC_ASYMMETRIC_ACCESS_PERSISTENT_LOSS, "ASYMMETRIC ACCESS PERSISTENT LOSS" },
+	{ NVME_SC_ASYMMETRIC_ACCESS_INACCESSIBLE, "ASYMMETRIC ACCESS INACCESSIBLE" },
+	{ NVME_SC_ASYMMETRIC_ACCESS_TRANSITION, "ASYMMETRIC ACCESS TRANSITION" },
+	{ NVME_SC_CONTROLLER_PATHING_ERROR, "CONTROLLER PATHING ERROR" },
+	{ NVME_SC_HOST_PATHING_ERROR, "HOST PATHING ERROR" },
+	{ NVME_SC_COMMAND_ABOTHED_BY_HOST, "COMMAND ABOTHED BY HOST" },
+	{ 0xFFFF, "PATH RELATED" },
+};
+
 static const char *
 get_status_string(uint16_t sct, uint16_t sc)
 {
@@ -294,6 +324,9 @@ get_status_string(uint16_t sct, uint16_t sc)
 		break;
 	case NVME_SCT_MEDIA_ERROR:
 		entry = media_error_status;
+		break;
+	case NVME_SCT_PATH_RELATED:
+		entry = path_related_status;
 		break;
 	case NVME_SCT_VENDOR_SPECIFIC:
 		return ("VENDOR SPECIFIC");
@@ -366,6 +399,17 @@ nvme_completion_is_retry(const struct nvme_completion *cpl)
 		}
 	case NVME_SCT_COMMAND_SPECIFIC:
 	case NVME_SCT_MEDIA_ERROR:
+		return (0);
+	case NVME_SCT_PATH_RELATED:
+		switch (sc) {
+		case NVME_SC_INTERNAL_PATH_ERROR:
+			if (dnr)
+				return (0);
+			else
+				return (1);
+		default:
+			return (0);
+		}
 	case NVME_SCT_VENDOR_SPECIFIC:
 	default:
 		return (0);
@@ -377,12 +421,16 @@ nvme_qpair_complete_tracker(struct nvme_qpair *qpair, struct nvme_tracker *tr,
     struct nvme_completion *cpl, error_print_t print_on_error)
 {
 	struct nvme_request	*req;
-	boolean_t		retry, error;
+	boolean_t		retry, error, retriable;
 
 	req = tr->req;
 	error = nvme_completion_is_error(cpl);
-	retry = error && nvme_completion_is_retry(cpl) &&
-	   req->retries < nvme_retry_count;
+	retriable = nvme_completion_is_retry(cpl);
+	retry = error && retriable && req->retries < nvme_retry_count;
+	if (retry)
+		qpair->num_retries++;
+	if (error && req->retries >= nvme_retry_count && retriable)
+		qpair->num_failures++;
 
 	if (error && (print_on_error == ERROR_PRINT_ALL ||
 		(!retry && print_on_error == ERROR_PRINT_NO_RETRY))) {
@@ -674,6 +722,8 @@ nvme_qpair_construct(struct nvme_qpair *qpair, uint32_t id,
 
 	qpair->num_cmds = 0;
 	qpair->num_intr_handler_calls = 0;
+	qpair->num_retries = 0;
+	qpair->num_failures = 0;
 	qpair->cmd = (struct nvme_command *)queuemem;
 	qpair->cpl = (struct nvme_completion *)(queuemem + cmdsz);
 	prpmem = (uint8_t *)(queuemem + cmdsz + cplsz);

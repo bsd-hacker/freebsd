@@ -168,9 +168,9 @@ static int vm_page_reclaim_run(int req_class, int domain, u_long npages,
     vm_page_t m_run, vm_paddr_t high);
 static int vm_domain_alloc_fail(struct vm_domain *vmd, vm_object_t object,
     int req);
-static int vm_page_import(void *arg, void **store, int cnt, int domain,
+static int vm_page_zone_import(void *arg, void **store, int cnt, int domain,
     int flags);
-static void vm_page_release(void *arg, void **store, int cnt);
+static void vm_page_zone_release(void *arg, void **store, int cnt);
 
 SYSINIT(vm_page, SI_SUB_VM, SI_ORDER_SECOND, vm_page_init, NULL);
 
@@ -210,7 +210,7 @@ vm_page_init_cache_zones(void *dummy __unused)
 			pgcache->pool = pool;
 			pgcache->zone = uma_zcache_create("vm pgcache",
 			    sizeof(struct vm_page), NULL, NULL, NULL, NULL,
-			    vm_page_import, vm_page_release, pgcache,
+			    vm_page_zone_import, vm_page_zone_release, pgcache,
 			    UMA_ZONE_MAXBUCKET | UMA_ZONE_VM);
 			(void)uma_zone_set_maxcache(pgcache->zone, 0);
 		}
@@ -2208,7 +2208,7 @@ again:
 }
 
 static int
-vm_page_import(void *arg, void **store, int cnt, int domain, int flags)
+vm_page_zone_import(void *arg, void **store, int cnt, int domain, int flags)
 {
 	struct vm_domain *vmd;
 	struct vm_pgcache *pgcache;
@@ -2231,7 +2231,7 @@ vm_page_import(void *arg, void **store, int cnt, int domain, int flags)
 }
 
 static void
-vm_page_release(void *arg, void **store, int cnt)
+vm_page_zone_release(void *arg, void **store, int cnt)
 {
 	struct vm_domain *vmd;
 	struct vm_pgcache *pgcache;
@@ -3747,29 +3747,92 @@ vm_page_unswappable(vm_page_t m)
 	vm_page_enqueue(m, PQ_UNSWAPPABLE);
 }
 
-/*
- * Attempt to free the page.  If it cannot be freed, do nothing.  Returns true
- * if the page is freed and false otherwise.
- *
- * The page must be managed.  The page and its containing object must be
- * locked.
- */
-bool
-vm_page_try_to_free(vm_page_t m)
+static void
+vm_page_release_toq(vm_page_t m, int flags)
 {
 
-	vm_page_assert_locked(m);
-	VM_OBJECT_ASSERT_WLOCKED(m->object);
-	KASSERT((m->oflags & VPO_UNMANAGED) == 0, ("page %p is unmanaged", m));
-	if (m->dirty != 0 || vm_page_wired(m) || vm_page_busied(m))
-		return (false);
-	if (m->object->ref_count != 0) {
-		pmap_remove_all(m);
-		if (m->dirty != 0)
-			return (false);
+	/*
+	 * Use a check of the valid bits to determine whether we should
+	 * accelerate reclamation of the page.  The object lock might not be
+	 * held here, in which case the check is racy.  At worst we will either
+	 * accelerate reclamation of a valid page and violate LRU, or
+	 * unnecessarily defer reclamation of an invalid page.
+	 *
+	 * If we were asked to not cache the page, place it near the head of the
+	 * inactive queue so that is reclaimed sooner.
+	 */
+	if ((flags & (VPR_TRYFREE | VPR_NOREUSE)) != 0 || m->valid == 0)
+		vm_page_deactivate_noreuse(m);
+	else if (vm_page_active(m))
+		vm_page_reference(m);
+	else
+		vm_page_deactivate(m);
+}
+
+/*
+ * Unwire a page and either attempt to free it or re-add it to the page queues.
+ */
+void
+vm_page_release(vm_page_t m, int flags)
+{
+	vm_object_t object;
+	bool freed;
+
+	KASSERT((m->oflags & VPO_UNMANAGED) == 0,
+	    ("vm_page_release: page %p is unmanaged", m));
+
+	vm_page_lock(m);
+	if (m->object != NULL)
+		VM_OBJECT_ASSERT_UNLOCKED(m->object);
+	if (vm_page_unwire_noq(m)) {
+		if ((object = m->object) == NULL) {
+			vm_page_free(m);
+		} else {
+			freed = false;
+			if ((flags & VPR_TRYFREE) != 0 && !vm_page_busied(m) &&
+			    /* Depends on type stability. */
+			    VM_OBJECT_TRYWLOCK(object)) {
+				/*
+				 * Only free unmapped pages.  The busy test from
+				 * before the object was locked cannot be relied
+				 * upon.
+				 */
+				if ((object->ref_count == 0 ||
+				    !pmap_page_is_mapped(m)) && m->dirty == 0 &&
+				    !vm_page_busied(m)) {
+					vm_page_free(m);
+					freed = true;
+				}
+				VM_OBJECT_WUNLOCK(object);
+			}
+
+			if (!freed)
+				vm_page_release_toq(m, flags);
+		}
 	}
-	vm_page_free(m);
-	return (true);
+	vm_page_unlock(m);
+}
+
+/* See vm_page_release(). */
+void
+vm_page_release_locked(vm_page_t m, int flags)
+{
+
+	VM_OBJECT_ASSERT_WLOCKED(m->object);
+	KASSERT((m->oflags & VPO_UNMANAGED) == 0,
+	    ("vm_page_release_locked: page %p is unmanaged", m));
+
+	vm_page_lock(m);
+	if (vm_page_unwire_noq(m)) {
+		if ((flags & VPR_TRYFREE) != 0 &&
+		    (m->object->ref_count == 0 || !pmap_page_is_mapped(m)) &&
+		    m->dirty == 0 && !vm_page_busied(m)) {
+			vm_page_free(m);
+		} else {
+			vm_page_release_toq(m, flags);
+		}
+	}
+	vm_page_unlock(m);
 }
 
 /*

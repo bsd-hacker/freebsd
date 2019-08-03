@@ -156,6 +156,12 @@ SYSCTL_INT(ASLR_NODE_OID, OID_AUTO, honor_sbrk, CTLFLAG_RW,
     &__elfN(aslr_honor_sbrk), 0,
     __XSTRING(__CONCAT(ELF, __ELF_WORD_SIZE)) ": assume sbrk is used");
 
+static int __elfN(aslr_stack_gap) = 3;
+SYSCTL_INT(ASLR_NODE_OID, OID_AUTO, stack_gap, CTLFLAG_RW,
+    &__elfN(aslr_stack_gap), 0,
+    __XSTRING(__CONCAT(ELF, __ELF_WORD_SIZE))
+    ": maximum percentage of main stack to waste on a random gap");
+
 static Elf_Brandinfo *elf_brand_list[MAX_BRANDS];
 
 #define	aligned(a, t)	(rounddown2((u_long)(a), sizeof(t)) == (u_long)(a))
@@ -550,7 +556,7 @@ __elfN(load_section)(struct image_params *imgp, vm_ooffset_t offset,
 	size_t map_len;
 	vm_map_t map;
 	vm_object_t object;
-	vm_offset_t off, map_addr;
+	vm_offset_t map_addr;
 	int error, rv, cow;
 	size_t copy_len;
 	vm_ooffset_t file_addr;
@@ -629,9 +635,8 @@ __elfN(load_section)(struct image_params *imgp, vm_ooffset_t offset,
 			return (EIO);
 
 		/* send the page fragment to user space */
-		off = trunc_page(offset + filsz) - trunc_page(offset + filsz);
-		error = copyout((caddr_t)sf_buf_kva(sf) + off,
-		    (caddr_t)map_addr, copy_len);
+		error = copyout((caddr_t)sf_buf_kva(sf), (caddr_t)map_addr,
+		    copy_len);
 		vm_imgact_unmap_page(sf);
 		if (error != 0)
 			return (error);
@@ -743,8 +748,8 @@ __elfN(load_file)(struct proc *p, const char *file, u_long *addr,
 	imgp->object = NULL;
 	imgp->execlabel = NULL;
 
-	NDINIT(nd, LOOKUP, FOLLOW | LOCKSHARED | LOCKLEAF, UIO_SYSSPACE, file,
-	    curthread);
+	NDINIT(nd, LOOKUP, ISOPEN | FOLLOW | LOCKSHARED | LOCKLEAF,
+	    UIO_SYSSPACE, file, curthread);
 	if ((error = namei(nd)) != 0) {
 		nd->ni_vp = NULL;
 		goto fail;
@@ -2720,4 +2725,25 @@ __elfN(untrans_prot)(vm_prot_t prot)
 	if (prot & VM_PROT_WRITE)
 		flags |= PF_W;
 	return (flags);
+}
+
+void
+__elfN(stackgap)(struct image_params *imgp, u_long *stack_base)
+{
+	u_long range, rbase, gap;
+	int pct;
+
+	if ((imgp->map_flags & MAP_ASLR) == 0)
+		return;
+	pct = __elfN(aslr_stack_gap);
+	if (pct == 0)
+		return;
+	if (pct > 50)
+		pct = 50;
+	range = imgp->eff_stack_sz * pct / 100;
+	range *= pct;
+	arc4rand(&rbase, sizeof(rbase), 0);
+	gap = rbase % range;
+	gap &= ~(sizeof(u_long) - 1);
+	*stack_base -= gap;
 }

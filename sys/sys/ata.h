@@ -97,6 +97,8 @@ struct ata_params {
 #define ATA_SUPPORT_OVERWRITE_EXT       0x4000
 #define ATA_SUPPORT_CRYPTO_SCRAMBLE_EXT 0x2000
 #define ATA_SUPPORT_SANITIZE            0x1000
+#define	ATA_SUPPORT_SANITIZE_ALLOWED	0x0800
+#define	ATA_SUPPORT_ANTIFREEZE_LOCK_EXT	0x0400
 #define ATA_MULTI_VALID                 0x0100
 
 /*060*/ u_int16_t       lba_size_1;
@@ -141,7 +143,8 @@ struct ata_params {
 /*77*/  u_int16_t       satacapabilities2;
 #define ATA_SATA_CURR_GEN_MASK          0x0006
 #define ATA_SUPPORT_NCQ_STREAM          0x0010
-#define ATA_SUPPORT_NCQ_QMANAGEMENT     0x0020
+#define ATA_SUPPORT_NCQ_NON_DATA        0x0020
+#define ATA_SUPPORT_NCQ_QMANAGEMENT     ATA_SUPPORT_NCQ_NON_DATA
 #define ATA_SUPPORT_RCVSND_FPDMA_QUEUED 0x0040
 /*78*/  u_int16_t       satasupport;
 #define ATA_SUPPORT_NONZERO             0x0002
@@ -150,6 +153,7 @@ struct ata_params {
 #define ATA_SUPPORT_INORDERDATA         0x0010
 #define ATA_SUPPORT_ASYNCNOTIF          0x0020
 #define ATA_SUPPORT_SOFTSETPRESERVE     0x0040
+#define ATA_SUPPORT_NCQ_AUTOSENSE       0x0080
 /*79*/  u_int16_t       sataenabled;
 #define ATA_ENABLED_DAPST               0x0080
 
@@ -242,12 +246,15 @@ struct ata_params {
 #define ATA_SUPPORT_FREEFALL		0x0020
 #define ATA_SUPPORT_SENSE_REPORT	0x0040
 #define ATA_SUPPORT_EPC			0x0080
+#define ATA_SUPPORT_AMAX_ADDR		0x0100
+#define ATA_SUPPORT_DSN			0x0200
 /*120*/ u_int16_t       enabled2;
 #define ATA_ENABLED_WRITEREADVERIFY	0x0002
 #define ATA_ENABLED_WRITEUNCORREXT	0x0004
 #define ATA_ENABLED_FREEFALL		0x0020
 #define ATA_ENABLED_SENSE_REPORT	0x0040
 #define ATA_ENABLED_EPC			0x0080
+#define ATA_ENABLED_DSN			0x0200
 	u_int16_t       reserved121[6];
 /*127*/ u_int16_t       removable_status;
 /*128*/ u_int16_t       security_status;
@@ -280,7 +287,8 @@ struct ata_params {
 #define ATA_FORM_FACTOR_C_FAST		0x0009
 /*169*/	u_int16_t       support_dsm;
 #define ATA_SUPPORT_DSM_TRIM		0x0001
-	u_int16_t       reserved170[6];
+/*170*/ u_int8_t        product_id[8];	/* Additional Product Identifier */
+	u_int16_t       reserved174[2];
 /*176*/ u_int8_t        media_serial[60];
 /*206*/ u_int16_t       sct;
 	u_int16_t       reserved207[2];
@@ -436,6 +444,10 @@ struct ata_params {
 #define		ATA_RFPDMA_ZAC_MGMT_IN	0x02	/* NCQ ZAC mgmt in w/data */
 #define ATA_SEP_ATTN                    0x67    /* SEP request */
 #define ATA_SEEK                        0x70    /* seek */
+#define	ATA_AMAX_ADDR			0x78	/* Accessible Max Address */
+#define		ATA_AMAX_ADDR_GET	0x00	/* GET NATIVE MAX ADDRESS EXT */
+#define		ATA_AMAX_ADDR_SET	0x01	/* SET ACCESSIBLE MAX ADDRESS EXT */
+#define		ATA_AMAX_ADDR_FREEZE	0x02	/* FREEZE ACCESSIBLE MAX ADDRESS EXT */
 #define	ATA_ZAC_MANAGEMENT_OUT		0x9f	/* ZAC management out */
 #define		ATA_ZM_CLOSE_ZONE	0x01	/* close zone */
 #define		ATA_ZM_FINISH_ZONE	0x02	/* finish zone */
@@ -447,6 +459,7 @@ struct ata_params {
 #define ATA_ATAPI_IDENTIFY              0xa1    /* get ATAPI params*/
 #define ATA_SERVICE                     0xa2    /* service command */
 #define ATA_SMART_CMD                   0xb0    /* SMART command */
+#define	ATA_SANITIZE			0xb4	/* sanitize device */
 #define ATA_CFA_ERASE                   0xc0    /* CFA erase */
 #define ATA_READ_MUL                    0xc4    /* read multi */
 #define ATA_WRITE_MUL                   0xc5    /* write multi */

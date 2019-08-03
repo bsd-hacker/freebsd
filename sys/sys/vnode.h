@@ -659,6 +659,8 @@ void	_vhold(struct vnode *, bool);
 void	vinactive(struct vnode *, struct thread *);
 int	vinvalbuf(struct vnode *vp, int save, int slpflag, int slptimeo);
 int	vtruncbuf(struct vnode *vp, off_t length, int blksize);
+void	v_inval_buf_range(struct vnode *vp, daddr_t startlbn, daddr_t endlbn,
+	    int blksize);
 void	vunref(struct vnode *);
 void	vn_printf(struct vnode *vp, const char *fmt, ...) __printflike(2,3);
 int	vrecycle(struct vnode *vp);
@@ -667,9 +669,17 @@ int	vn_bmap_seekhole(struct vnode *vp, u_long cmd, off_t *off,
 	    struct ucred *cred);
 int	vn_close(struct vnode *vp,
 	    int flags, struct ucred *file_cred, struct thread *td);
+int	vn_copy_file_range(struct vnode *invp, off_t *inoffp,
+	    struct vnode *outvp, off_t *outoffp, size_t *lenp,
+	    unsigned int flags, struct ucred *incred, struct ucred *outcred,
+	    struct thread *fsize_td);
 void	vn_finished_write(struct mount *mp);
 void	vn_finished_secondary_write(struct mount *mp);
 int	vn_fsync_buf(struct vnode *vp, int waitfor);
+int	vn_generic_copy_file_range(struct vnode *invp, off_t *inoffp,
+	    struct vnode *outvp, off_t *outoffp, size_t *lenp,
+	    unsigned int flags, struct ucred *incred, struct ucred *outcred,
+	    struct thread *fsize_td);
 int	vn_isdisk(struct vnode *vp, int *errp);
 int	_vn_lock(struct vnode *vp, int flags, char *file, int line);
 #define vn_lock(vp, flags) _vn_lock(vp, flags, __FILE__, __LINE__)
@@ -834,27 +844,30 @@ void	vop_rename_fail(struct vop_rename_args *ap);
 
 #define VOP_LOCK(vp, flags) VOP_LOCK1(vp, flags, __FILE__, __LINE__)
 
-#ifdef	INVARIANTS
+#ifdef INVARIANTS
 #define	VOP_ADD_WRITECOUNT_CHECKED(vp, cnt)				\
 do {									\
 	int error_;							\
 									\
 	error_ = VOP_ADD_WRITECOUNT((vp), (cnt));			\
-	MPASS(error_ == 0);						\
+	VNASSERT(error_ == 0, (vp), ("VOP_ADD_WRITECOUNT returned %d",	\
+	    error_));							\
 } while (0)
 #define	VOP_SET_TEXT_CHECKED(vp)					\
 do {									\
 	int error_;							\
 									\
 	error_ = VOP_SET_TEXT((vp));					\
-	MPASS(error_ == 0);						\
+	VNASSERT(error_ == 0, (vp), ("VOP_SET_TEXT returned %d",	\
+	    error_));							\
 } while (0)
 #define	VOP_UNSET_TEXT_CHECKED(vp)					\
 do {									\
 	int error_;							\
 									\
 	error_ = VOP_UNSET_TEXT((vp));					\
-	MPASS(error_ == 0);						\
+	VNASSERT(error_ == 0, (vp), ("VOP_UNSET_TEXT returned %d",	\
+	    error_));							\
 } while (0)
 #else
 #define	VOP_ADD_WRITECOUNT_CHECKED(vp, cnt)	VOP_ADD_WRITECOUNT((vp), (cnt))
