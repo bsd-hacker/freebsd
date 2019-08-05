@@ -34,7 +34,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd August 1, 2019
+.Dd August 3, 2019
 .Dt NVMECONTROL 8
 .Os
 .Sh NAME
@@ -66,6 +66,9 @@
 .Op Fl x
 .Op Fl v Ar vendor-string
 .Op Fl b
+.Op Fl f Ar LSP
+.Op Fl i Ar LSI
+.Op Fl r
 .Aq device id
 .Aq namespace id
 .Nm
@@ -134,6 +137,16 @@
 .Aq device id
 .Aq namespace id
 .Nm
+.Ic sanitize
+.Aq Fl a Ar sanact
+.Op Fl c Ar owpass
+.Op Fl p Ar ovrpat
+.Op Fl r
+.Op Fl D
+.Op Fl I
+.Op Fl U
+.Aq device id
+.Nm
 .Ic power
 .Op Fl l
 .Op Fl p power_state
@@ -172,6 +185,14 @@ Drive Error Log
 Health/SMART Data
 .It Dv Page 0x03
 Firmware Information
+.It Dv Page 0x04
+Changed Namespace List
+.It Dv Page 0x05
+Commands Supported and Effects
+.It Dv Page 0x80
+Reservation Notification
+.It Dv Page 0x81
+Sanitize Status
 .It Dv Page 0xc1
 Advanced SMART information (WDC/HGST)
 .It Dv Page 0xc1
@@ -185,13 +206,19 @@ Advanced SMART information (Intel)
 .El
 .Pp
 Specifying
-.Fl p
+.Fl v
 .Ic help
 will list all valid vendors and pages.
 .Fl x
 will print the page as hex.
 .Fl b
 will print the binary data for the page.
+.Fl s
+will set Log Specific Field.
+.Fl i
+will set Log Specific Identifier.
+.Fl r
+will set Retain Asynchronous Event.
 .Ss ns
 Various namespace management commands.
 If namespace management is supported by device, allow list, create and delete
@@ -217,6 +244,65 @@ enables User Data Erase during format.
 Option
 .Fl C
 enables Cryptographic Erase during format.
+.Ss sanitize
+Sanitize NVM subsystem of specified controller,
+using specified parameters:
+.Bl -tag -width 6n
+.It Fl a Ar operation
+Specify the sanitize operation to perform.
+.Bl -tag -width 16n
+.It overwrite
+Perform an overwrite operation by writing a user supplied
+data pattern to the device one or more times.
+The pattern is given by the
+.Fl p
+argument.
+The number of times is given by the
+.Fl c
+argument.
+.It block
+Perform a block erase operation.
+All the device's blocks are set to a vendor defined
+value, typically zero.
+.It crypto
+Perform a cryptographic erase operation.
+The encryption keys are changed to prevent the decryption
+of the data.
+.It exitfailure
+Exits a previously failed sanitize operation.
+A failed sanitize operation can only be exited if it was
+run in the unrestricted completion mode, as provided by the
+.Fl U
+argument.
+.El
+.It Fl c Ar passes
+The number of passes when performing an
+.Sq overwrite
+operation.
+Valid values are between 1 and 16.
+The default is 1.
+.It Fl D
+No Deallocate After Sanitize.
+.It Fl I
+When performing an
+.Sq overwrite
+operation, the pattern is inverted between consecutive passes.
+.It Fl p Ar pattern
+32 bits of pattern to use when performing an
+.Sq overwrite
+operation.
+The pattern is repeated as needed to fill each block.
+.It Fl U
+Perform the sanitize in the unrestricted completion mode.
+If the operation fails, it can later be exited with the
+.Sq exitfailure
+operation.
+.It Fl r
+Run in
+.Dq report only
+mode.
+This will report status on a sanitize that is already running on the drive.
+.El
 .Ss wdc
 The various wdc command retrieve log data from the wdc/hgst drives.
 The
