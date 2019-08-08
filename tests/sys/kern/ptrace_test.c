@@ -32,6 +32,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/file.h>
 #include <sys/time.h>
 #include <sys/procctl.h>
+#include <sys/procdesc.h>
 #include <sys/ptrace.h>
 #include <sys/queue.h>
 #include <sys/runq.h>
@@ -258,7 +259,7 @@ ATF_TC_BODY(ptrace__parent_sees_exit_after_child_debugger, tc)
 	int cpipe[2], dpipe[2], status;
 	char c;
 
-	if (atf_tc_get_config_var_as_bool(tc, "ci"))
+	if (atf_tc_get_config_var_as_bool_wd(tc, "ci", false))
 		atf_tc_skip("https://bugs.freebsd.org/239399");
 
 	ATF_REQUIRE(pipe(cpipe) == 0);
@@ -802,7 +803,7 @@ ATF_TC_BODY(ptrace__follow_fork_both_attached_unrelated_debugger, tc)
 	pid_t children[2], fpid, wpid;
 	int cpipe[2], status;
 
-	if (atf_tc_get_config_var_as_bool(tc, "ci"))
+	if (atf_tc_get_config_var_as_bool_wd(tc, "ci", false))
 		atf_tc_skip("https://bugs.freebsd.org/239397");
 
 	ATF_REQUIRE(pipe(cpipe) == 0);
@@ -873,7 +874,7 @@ ATF_TC_BODY(ptrace__follow_fork_child_detached_unrelated_debugger, tc)
 	pid_t children[2], fpid, wpid;
 	int cpipe[2], status;
 
-	if (atf_tc_get_config_var_as_bool(tc, "ci"))
+	if (atf_tc_get_config_var_as_bool_wd(tc, "ci", false))
 		atf_tc_skip("https://bugs.freebsd.org/239292");
 
 	ATF_REQUIRE(pipe(cpipe) == 0);
@@ -939,7 +940,7 @@ ATF_TC_BODY(ptrace__follow_fork_parent_detached_unrelated_debugger, tc)
 	pid_t children[2], fpid, wpid;
 	int cpipe[2], status;
 
-	if (atf_tc_get_config_var_as_bool(tc, "ci"))
+	if (atf_tc_get_config_var_as_bool_wd(tc, "ci", false))
 		atf_tc_skip("https://bugs.freebsd.org/239425");
 
 	ATF_REQUIRE(pipe(cpipe) == 0);
@@ -2088,7 +2089,7 @@ ATF_TC_BODY(ptrace__PT_KILL_competing_stop, tc)
 	struct ptrace_lwpinfo pl;
 	struct sched_param sched_param;
 
-	if (atf_tc_get_config_var_as_bool(tc, "ci"))
+	if (atf_tc_get_config_var_as_bool_wd(tc, "ci", false))
 		atf_tc_skip("https://bugs.freebsd.org/220841");
 
 	ATF_REQUIRE((fpid = fork()) != -1);
@@ -4075,6 +4076,60 @@ ATF_TC_BODY(ptrace__syscall_args, tc)
 	ATF_REQUIRE(errno == ECHILD);
 }
 
+/*
+ * Verify that when the process is traced that it isn't reparent
+ * to the init process when we close all process descriptors.
+ */
+ATF_TC(ptrace__proc_reparent);
+ATF_TC_HEAD(ptrace__proc_reparent, tc)
+{
+
+	atf_tc_set_md_var(tc, "timeout", "2");
+}
+ATF_TC_BODY(ptrace__proc_reparent, tc)
+{
+	pid_t traced, debuger, wpid;
+	int pd, status;
+
+	traced = pdfork(&pd, 0);
+	ATF_REQUIRE(traced >= 0);
+	if (traced == 0) {
+		raise(SIGSTOP);
+		exit(0);
+	}
+	ATF_REQUIRE(pd >= 0);
+
+	debuger = fork();
+	ATF_REQUIRE(debuger >= 0);
+	if (debuger == 0) {
+		/* The traced process is reparented to debuger. */
+		ATF_REQUIRE(ptrace(PT_ATTACH, traced, 0, 0) == 0);
+		wpid = waitpid(traced, &status, 0);
+		ATF_REQUIRE(wpid == traced);
+		ATF_REQUIRE(WIFSTOPPED(status));
+		ATF_REQUIRE(WSTOPSIG(status) == SIGSTOP);
+		ATF_REQUIRE(close(pd) == 0);
+		ATF_REQUIRE(ptrace(PT_DETACH, traced, (caddr_t)1, 0) == 0);
+
+		/* We closed pd so we should not have any child. */
+		wpid = wait(&status);
+		ATF_REQUIRE(wpid == -1);
+		ATF_REQUIRE(errno == ECHILD);
+
+		exit(0);
+	}
+
+	ATF_REQUIRE(close(pd) == 0);
+	wpid = waitpid(debuger, &status, 0);
+	ATF_REQUIRE(wpid == debuger);
+	ATF_REQUIRE(WEXITSTATUS(status) == 0);
+
+	/* Check if we still have any child. */
+	wpid = wait(&status);
+	ATF_REQUIRE(wpid == -1);
+	ATF_REQUIRE(errno == ECHILD);
+}
+
 ATF_TP_ADD_TCS(tp)
 {
 
@@ -4137,6 +4192,7 @@ ATF_TP_ADD_TCS(tp)
 #endif
 	ATF_TP_ADD_TC(tp, ptrace__PT_LWPINFO_stale_siginfo);
 	ATF_TP_ADD_TC(tp, ptrace__syscall_args);
+	ATF_TP_ADD_TC(tp, ptrace__proc_reparent);
 
 	return (atf_no_error());
 }

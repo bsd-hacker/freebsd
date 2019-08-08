@@ -1,7 +1,7 @@
 /*-
- * SPDX-License-Identifier: BSD-3-Clause
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
- * Copyright (c) 2009 Konstantin Belousov <kib@FreeBSD.org>
+ * Copyright (c) 2019 Conrad Meyer <cem@FreeBSD.org>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -11,14 +11,11 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. Neither the name of the University nor the names of its contributors
- *    may be used to endorse or promote products derived from this software
- *    without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
  * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
@@ -27,23 +24,26 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- *	$FreeBSD$
+ * $FreeBSD$
  */
 
-#ifndef _SYS__KSTACK_CACHE_H
-#define	_SYS__KSTACK_CACHE_H
+#pragma once
 
-struct kstack_cache_entry {
-	struct vm_object *ksobj;
-	struct kstack_cache_entry *next_ks_entry;
-};
+#ifdef _KERNEL
 
-extern struct kstack_cache_entry *kstack_cache;
+#define _GEOM_DEBUG(classname, ctrlvar, loglvl, biop, formatstr, ...)	\
+do {									\
+	const int __control = (ctrlvar);				\
+	const int __level = (loglvl);					\
+									\
+	if (__control < __level)					\
+		break;							\
+									\
+	g_dbg_printf((classname), (__control > 0) ? __level : -1,	\
+	    (biop), ": " formatstr, ## __VA_ARGS__);			\
+} while (0)
 
-#ifndef KSTACK_MAX_PAGES
-#define KSTACK_MAX_PAGES 32
-#endif
+void g_dbg_printf(const char *classname, int lvl, struct bio *bp,
+    const char *format, ...) __printflike(4, 5);
 
-#endif
-
-
+#endif /* _KERNEL */
