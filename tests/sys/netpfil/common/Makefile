@@ -7,7 +7,9 @@ TESTSDIR=	${TESTSBASE}/sys/netpfil/common
 
 ATF_TESTS_SH+=	\
 		pass_block \
-		nat
+		nat \
+		tos \
+		fragments
 
 ${PACKAGE}FILES+=	\
 		utils.subr \
