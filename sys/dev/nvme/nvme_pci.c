@@ -62,7 +62,8 @@ static driver_t nvme_pci_driver = {
 };
 
 DRIVER_MODULE(nvme, pci, nvme_pci_driver, nvme_devclass, NULL, 0);
-MODULE_VERSION(nvme_pci, 1);
+MODULE_VERSION(nvme, 1);
+MODULE_DEPEND(nvme, cam, 1, 1, 1);
 
 static struct _pcsid
 {
@@ -215,11 +216,13 @@ static int
 nvme_pci_detach(device_t dev)
 {
 	struct nvme_controller*ctrlr = DEVICE2SOFTC(dev);
+	int rv;
 
+	rv = nvme_detach(dev);
 	if (ctrlr->msix_enabled)
 		pci_release_msi(dev);
 	pci_disable_busmaster(dev);
-	return (nvme_detach(dev));
+	return (rv);
 }
 
 static int
