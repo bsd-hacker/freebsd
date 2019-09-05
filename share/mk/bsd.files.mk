@@ -38,9 +38,13 @@ ${group}MODE?=	${SHAREMODE}
 ${group}DIR?=	BINDIR
 STAGE_SETS+=	${group:C,[/*],_,g}
 
+.if ${group} == "FILES"
+FILESPACKAGE=	${PACKAGE}
+.endif
+
 .if defined(NO_ROOT)
 .if !defined(${group}TAGS) || ! ${${group}TAGS:Mpackage=*}
-${group}TAGS+=		package=${${group}PACKAGE:Uruntime}
+${group}TAGS+=		package=${${group}PACKAGE:Uutilities}
 .endif
 ${group}TAG_ARGS=	-T ${${group}TAGS:[*]:S/ /,/g}
 .endif
