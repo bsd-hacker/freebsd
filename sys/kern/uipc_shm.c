@@ -36,16 +36,10 @@
  * shm_open(2) and shm_unlink(2).  While most of the implementation is
  * here, vm_mmap.c contains mapping logic changes.
  *
- * TODO:
- *
- * (1) Need to export data to a userland tool via a sysctl.  Should ipcs(1)
- *     and ipcrm(1) be expanded or should new tools to manage both POSIX
- *     kernel semaphores and POSIX shared memory be written?
- *
- * (2) Add support for this file type to fstat(1).
- *
- * (3) Resource limits?  Does this need its own resource limits or are the
- *     existing limits in mmap(2) sufficient?
+ * posixshmcontrol(1) allows users to inspect the state of the memory
+ * objects.  Per-uid swap resource limit controls total amount of
+ * memory that user can consume for anonymous objects, including
+ * shared.
  */
 
 #include <sys/cdefs.h>
@@ -63,6 +57,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/filio.h>
 #include <sys/fnv_hash.h>
 #include <sys/kernel.h>
+#include <sys/limits.h>
 #include <sys/uio.h>
 #include <sys/signal.h>
 #include <sys/jail.h>
@@ -76,6 +71,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/refcount.h>
 #include <sys/resourcevar.h>
 #include <sys/rwlock.h>
+#include <sys/sbuf.h>
 #include <sys/stat.h>
 #include <sys/syscallsubr.h>
 #include <sys/sysctl.h>
@@ -192,7 +188,8 @@ uiomove_object_page(vm_object_t obj, size_t len, struct uio *uio)
 	 * lock to page out tobj's pages because tobj is a OBJT_SWAP
 	 * type object.
 	 */
-	m = vm_page_grab(obj, idx, VM_ALLOC_NORMAL | VM_ALLOC_NOBUSY);
+	m = vm_page_grab(obj, idx, VM_ALLOC_NORMAL | VM_ALLOC_NOBUSY |
+	    VM_ALLOC_WIRED);
 	if (m->valid != VM_PAGE_BITS_ALL) {
 		vm_page_xbusy(m);
 		if (vm_pager_has_page(obj, idx, NULL, NULL)) {
@@ -201,9 +198,8 @@ uiomove_object_page(vm_object_t obj, size_t len, struct uio *uio)
 				printf(
 	    "uiomove_object: vm_obj %p idx %jd valid %x pager error %d\n",
 				    obj, idx, m->valid, rv);
-				vm_page_lock(m);
+				vm_page_unwire_noq(m);
 				vm_page_free(m);
-				vm_page_unlock(m);
 				VM_OBJECT_WUNLOCK(obj);
 				return (EIO);
 			}
@@ -211,13 +207,6 @@ uiomove_object_page(vm_object_t obj, size_t len, struct uio *uio)
 			vm_page_zero_invalid(m, TRUE);
 		vm_page_xunbusy(m);
 	}
-	vm_page_lock(m);
-	vm_page_hold(m);
-	if (vm_page_active(m))
-		vm_page_reference(m);
-	else
-		vm_page_activate(m);
-	vm_page_unlock(m);
 	VM_OBJECT_WUNLOCK(obj);
 	error = uiomove_fromphys(&m, offset, tlen, uio);
 	if (uio->uio_rw == UIO_WRITE && error == 0) {
@@ -226,9 +215,7 @@ uiomove_object_page(vm_object_t obj, size_t len, struct uio *uio)
 		vm_pager_page_unswapped(m);
 		VM_OBJECT_WUNLOCK(obj);
 	}
-	vm_page_lock(m);
-	vm_page_unhold(m);
-	vm_page_unlock(m);
+	vm_page_unwire(m, PQ_ACTIVE);
 
 	return (error);
 }
@@ -419,6 +406,7 @@ shm_stat(struct file *fp, struct stat *sb, struct ucred *active_cred,
 	mtx_unlock(&shm_timestamp_lock);
 	sb->st_dev = shm_dev_ino;
 	sb->st_ino = shmfd->shm_ino;
+	sb->st_nlink = shmfd->shm_object->ref_count;
 
 	return (0);
 }
@@ -482,7 +470,6 @@ retry:
 					goto retry;
 				rv = vm_pager_get_pages(object, &m, 1, NULL,
 				    NULL);
-				vm_page_lock(m);
 				if (rv == VM_PAGER_OK) {
 					/*
 					 * Since the page was not resident,
@@ -493,11 +480,9 @@ retry:
 					 * as an access.
 					 */
 					vm_page_launder(m);
-					vm_page_unlock(m);
 					vm_page_xunbusy(m);
 				} else {
 					vm_page_free(m);
-					vm_page_unlock(m);
 					VM_OBJECT_WUNLOCK(object);
 					return (EIO);
 				}
@@ -557,7 +542,7 @@ shm_alloc(struct ucred *ucred, mode_t mode)
 	shmfd->shm_uid = ucred->cr_uid;
 	shmfd->shm_gid = ucred->cr_gid;
 	shmfd->shm_mode = mode;
-	shmfd->shm_object = vm_pager_allocate(OBJT_DEFAULT, NULL,
+	shmfd->shm_object = vm_pager_allocate(OBJT_SWAP, NULL,
 	    shmfd->shm_size, VM_PROT_DEFAULT, 0, ucred);
 	KASSERT(shmfd->shm_object != NULL, ("shm_create: vm_pager_allocate"));
 	shmfd->shm_object->pg_color = 0;
@@ -736,7 +721,14 @@ kern_shm_open(struct thread *td, const char *userpath, int flags, mode_t mode,
 	fdp = td->td_proc->p_fd;
 	cmode = (mode & ~fdp->fd_cmask) & ACCESSPERMS;
 
-	error = falloc_caps(td, &fp, &fd, O_CLOEXEC, fcaps);
+	/*
+	 * shm_open(2) created shm should always have O_CLOEXEC set, as mandated
+	 * by POSIX.  We allow it to be unset here so that an in-kernel
+	 * interface may be written as a thin layer around shm, optionally not
+	 * setting CLOEXEC.  For shm_open(2), O_CLOEXEC is set unconditionally
+	 * in sys_shm_open() to keep this implementation compliant.
+	 */
+	error = falloc_caps(td, &fp, &fd, flags & O_CLOEXEC, fcaps);
 	if (error)
 		return (error);
 
@@ -851,7 +843,8 @@ int
 sys_shm_open(struct thread *td, struct shm_open_args *uap)
 {
 
-	return (kern_shm_open(td, uap->path, uap->flags, uap->mode, NULL));
+	return (kern_shm_open(td, uap->path, uap->flags | O_CLOEXEC, uap->mode,
+	    NULL));
 }
 
 int
@@ -895,6 +888,7 @@ shm_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t objsize,
 	struct shmfd *shmfd;
 	vm_prot_t maxprot;
 	int error;
+	bool writecnt;
 
 	shmfd = fp->f_data;
 	maxprot = VM_PROT_NONE;
@@ -905,10 +899,10 @@ shm_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t objsize,
 	if ((fp->f_flag & FWRITE) != 0)
 		maxprot |= VM_PROT_WRITE;
 
+	writecnt = (flags & MAP_SHARED) != 0 && (prot & VM_PROT_WRITE) != 0;
+
 	/* Don't permit shared writable mappings on read-only descriptors. */
-	if ((flags & MAP_SHARED) != 0 &&
-	    (maxprot & VM_PROT_WRITE) == 0 &&
-	    (prot & VM_PROT_WRITE) != 0)
+	if (writecnt && (maxprot & VM_PROT_WRITE) == 0)
 		return (EACCES);
 	maxprot &= cap_maxprot;
 
@@ -931,10 +925,16 @@ shm_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t objsize,
 	mtx_unlock(&shm_timestamp_lock);
 	vm_object_reference(shmfd->shm_object);
 
+	if (writecnt)
+		vm_pager_update_writecount(shmfd->shm_object, 0, objsize);
 	error = vm_mmap_object(map, addr, objsize, prot, maxprot, flags,
-	    shmfd->shm_object, foff, FALSE, td);
-	if (error != 0)
+	    shmfd->shm_object, foff, writecnt, td);
+	if (error != 0) {
+		if (writecnt)
+			vm_pager_release_writecount(shmfd->shm_object, 0,
+			    objsize);
 		vm_object_deallocate(shmfd->shm_object);
+	}
 	return (error);
 }
 
@@ -1100,34 +1100,89 @@ shm_unmap(struct file *fp, void *mem, size_t size)
 }
 
 static int
-shm_fill_kinfo(struct file *fp, struct kinfo_file *kif, struct filedesc *fdp)
+shm_fill_kinfo_locked(struct shmfd *shmfd, struct kinfo_file *kif, bool list)
 {
 	const char *path, *pr_path;
-	struct shmfd *shmfd;
 	size_t pr_pathlen;
+	bool visible;
 
+	sx_assert(&shm_dict_lock, SA_LOCKED);
 	kif->kf_type = KF_TYPE_SHM;
-	shmfd = fp->f_data;
-
-	mtx_lock(&shm_timestamp_lock);
-	kif->kf_un.kf_file.kf_file_mode = S_IFREG | shmfd->shm_mode;	/* XXX */
-	mtx_unlock(&shm_timestamp_lock);
+	kif->kf_un.kf_file.kf_file_mode = S_IFREG | shmfd->shm_mode;
 	kif->kf_un.kf_file.kf_file_size = shmfd->shm_size;
 	if (shmfd->shm_path != NULL) {
-		sx_slock(&shm_dict_lock);
 		if (shmfd->shm_path != NULL) {
 			path = shmfd->shm_path;
 			pr_path = curthread->td_ucred->cr_prison->pr_path;
 			if (strcmp(pr_path, "/") != 0) {
 				/* Return the jail-rooted pathname. */
 				pr_pathlen = strlen(pr_path);
-				if (strncmp(path, pr_path, pr_pathlen) == 0 &&
-				    path[pr_pathlen] == '/')
+				visible = strncmp(path, pr_path, pr_pathlen)
+				    == 0 && path[pr_pathlen] == '/';
+				if (list && !visible)
+					return (EPERM);
+				if (visible)
 					path += pr_pathlen;
 			}
 			strlcpy(kif->kf_path, path, sizeof(kif->kf_path));
 		}
-		sx_sunlock(&shm_dict_lock);
 	}
 	return (0);
 }
+
+static int
+shm_fill_kinfo(struct file *fp, struct kinfo_file *kif,
+    struct filedesc *fdp __unused)
+{
+	int res;
+
+	sx_slock(&shm_dict_lock);
+	res = shm_fill_kinfo_locked(fp->f_data, kif, false);
+	sx_sunlock(&shm_dict_lock);
+	return (res);
+}
+
+static int
+sysctl_posix_shm_list(SYSCTL_HANDLER_ARGS)
+{
+	struct shm_mapping *shmm;
+	struct sbuf sb;
+	struct kinfo_file kif;
+	u_long i;
+	ssize_t curlen;
+	int error, error2;
+
+	sbuf_new_for_sysctl(&sb, NULL, sizeof(struct kinfo_file) * 5, req);
+	sbuf_clear_flags(&sb, SBUF_INCLUDENUL);
+	curlen = 0;
+	error = 0;
+	sx_slock(&shm_dict_lock);
+	for (i = 0; i < shm_hash + 1; i++) {
+		LIST_FOREACH(shmm, &shm_dictionary[i], sm_link) {
+			error = shm_fill_kinfo_locked(shmm->sm_shmfd,
+			    &kif, true);
+			if (error == EPERM)
+				continue;
+			if (error != 0)
+				break;
+			pack_kinfo(&kif);
+			if (req->oldptr != NULL &&
+			    kif.kf_structsize + curlen > req->oldlen)
+				break;
+			error = sbuf_bcat(&sb, &kif, kif.kf_structsize) == 0 ?
+			    0 : ENOMEM;
+			if (error != 0)
+				break;
+			curlen += kif.kf_structsize;
+		}
+	}
+	sx_sunlock(&shm_dict_lock);
+	error2 = sbuf_finish(&sb);
+	sbuf_delete(&sb);
+	return (error != 0 ? error : error2);
+}
+
+SYSCTL_PROC(_kern_ipc, OID_AUTO, posix_shm_list,
+    CTLFLAG_RD | CTLFLAG_MPSAFE | CTLTYPE_OPAQUE,
+    NULL, 0, sysctl_posix_shm_list, "",
+    "POSIX SHM list");

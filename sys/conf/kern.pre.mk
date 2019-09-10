@@ -93,7 +93,11 @@ CFLAGS.gcc+= -fms-extensions
 .if defined(CFLAGS_ARCH_PARAMS)
 CFLAGS.gcc+=${CFLAGS_ARCH_PARAMS}
 .endif
-WERROR?= -Werror
+.if ${COMPILER_TYPE} == "gcc" && ${COMPILER_VERSION} < 50000
+WERROR?=	-Wno-error
+.else
+WERROR?=	-Werror
+.endif
 
 # XXX LOCORE means "don't declare C stuff" not "for locore.s".
 ASM_CFLAGS= -x assembler-with-cpp -DLOCORE ${CFLAGS} ${ASM_CFLAGS.${.IMPSRC:T}} 
@@ -144,7 +148,7 @@ CFLAGS+=	${GCOV_CFLAGS}
 CFLAGS+=	${CONF_CFLAGS}
 
 .if defined(LINKER_FEATURES) && ${LINKER_FEATURES:Mbuild-id}
-LDFLAGS+=	-Wl,--build-id=sha1
+LDFLAGS+=	--build-id=sha1
 .endif
 
 .if (${MACHINE_CPUARCH} == "aarch64" || ${MACHINE_CPUARCH} == "amd64" || \
@@ -153,11 +157,11 @@ LDFLAGS+=	-Wl,--build-id=sha1
 .error amd64/arm64/i386 kernel requires linker ifunc support
 .endif
 .if ${MACHINE_CPUARCH} == "amd64"
-LDFLAGS+=	-Wl,-z max-page-size=2097152
+LDFLAGS+=	-z max-page-size=2097152
 .if ${LINKER_TYPE} != "lld"
-LDFLAGS+=	-Wl,-z common-page-size=4096
+LDFLAGS+=	-z common-page-size=4096
 .else
-LDFLAGS+=	-Wl,-z -Wl,ifunc-noplt
+LDFLAGS+=	-z notext -z ifunc-noplt
 .endif
 .endif
 
@@ -175,6 +179,14 @@ NORMAL_FWO= ${LD} -b binary --no-warn-mismatch -d -warn-common -r \
 
 # for ZSTD in the kernel (include zstd/lib/freebsd before other CFLAGS)
 ZSTD_C= ${CC} -c -DZSTD_HEAPMODE=1 -I$S/contrib/zstd/lib/freebsd ${CFLAGS} -I$S/contrib/zstd/lib -I$S/contrib/zstd/lib/common ${WERROR} -Wno-inline -Wno-missing-prototypes ${PROF} -U__BMI__ ${.IMPSRC}
+# https://github.com/facebook/zstd/commit/812e8f2a [zstd 1.4.1]
+# "Note that [GCC] autovectorization still does not do a good job on the
+# optimized version, so it's turned off via attribute and flag.  I found
+# that neither attribute nor command-line flag were entirely successful in
+# turning off vectorization, which is why there were both."
+.if ${COMPILER_TYPE} == "gcc"
+ZSTD_DECOMPRESS_BLOCK_FLAGS= -fno-tree-vectorize
+.endif
 
 # Common for dtrace / zfs
 CDDL_CFLAGS=	-DFREEBSD_NAMECACHE -nostdinc -I$S/cddl/compat/opensolaris -I$S/cddl/contrib/opensolaris/uts/common -I$S -I$S/cddl/contrib/opensolaris/common ${CFLAGS} -Wno-unknown-pragmas -Wno-missing-prototypes -Wno-undef -Wno-strict-prototypes -Wno-cast-qual -Wno-parentheses -Wno-redundant-decls -Wno-missing-braces -Wno-uninitialized -Wno-unused -Wno-inline -Wno-switch -Wno-pointer-arith -Wno-unknown-pragmas
@@ -228,6 +240,12 @@ OFEDCFLAGS=	${CFLAGS:N-I*} -DCONFIG_INFINIBAND_USER_MEM \
 		${OFEDINCLUDES} ${CFLAGS:M-I*} ${OFEDNOERR}
 OFED_C_NOIMP=	${CC} -c -o ${.TARGET} ${OFEDCFLAGS} ${WERROR} ${PROF}
 OFED_C=		${OFED_C_NOIMP} ${.IMPSRC}
+
+# mlxfw C flags.
+MLXFW_C=	${OFED_C_NOIMP} \
+		-I${SRCTOP}/sys/contrib/xz-embedded/freebsd \
+		-I${SRCTOP}/sys/contrib/xz-embedded/linux/lib/xz \
+		${.IMPSRC}
 
 GEN_CFILES= $S/$M/$M/genassym.c ${MFILES:T:S/.m$/.c/}
 SYSTEM_CFILES= config.c env.c hints.c vnode_if.c

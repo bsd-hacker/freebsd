@@ -42,6 +42,9 @@
 
 #include <sys/callout.h>		/* For struct callout. */
 #include <sys/event.h>			/* For struct klist. */
+#ifdef _KERNEL
+#include <sys/_eventhandler.h>
+#endif
 #include <sys/condvar.h>
 #ifndef _KERNEL
 #include <sys/filedesc.h>
@@ -300,6 +303,7 @@ struct thread {
 	void		*td_su;		/* (k) FFS SU private */
 	sbintime_t	td_sleeptimo;	/* (t) Sleep timeout. */
 	int		td_rtcgen;	/* (s) rtc_generation of abs. sleep */
+	int		td_errno;	/* (k) Error from last syscall. */
 	size_t		td_vslock_sz;	/* (k) amount of vslock-ed space */
 	struct kcov_info *td_kcov_info;	/* (*) Kernel code coverage data */
 #define	td_endzero td_sigmask
@@ -350,8 +354,6 @@ struct thread {
 	struct kaudit_record	*td_ar;	/* (k) Active audit record, if any. */
 	struct lpohead	td_lprof[2];	/* (a) lock profiling objects. */
 	struct kdtrace_thread	*td_dtrace; /* (*) DTrace-specific data. */
-	int		td_errno;	/* Error returned by last syscall. */
-	/* LP64 hole */
 	struct vnet	*td_vnet;	/* (k) Effective vnet. */
 	const char	*td_vnet_lpush;	/* (k) Debugging vnet push / pop. */
 	struct trapframe *td_intr_frame;/* (k) Frame of the current irq */
@@ -617,7 +619,6 @@ struct proc {
 	struct sigiolst	p_sigiolst;	/* (c) List of sigio sources. */
 	int		p_sigparent;	/* (c) Signal to parent on exit. */
 	int		p_sig;		/* (n) For core dump/debugger XXX. */
-	u_long		p_code;		/* (n) For core dump/debugger XXX. */
 	u_int		p_stops;	/* (c) Stop event bitmask. */
 	u_int		p_stype;	/* (c) Stop event type. */
 	char		p_step;		/* (c) Process is stopped. */
@@ -759,6 +760,10 @@ struct proc {
 #define	P2_ASLR_ENABLE	0x00000040	/* Force enable ASLR. */
 #define	P2_ASLR_DISABLE	0x00000080	/* Force disable ASLR. */
 #define	P2_ASLR_IGNSTART 0x00000100	/* Enable ASLR to consume sbrk area. */
+#define	P2_PROTMAX_ENABLE 0x00000200	/* Force enable implied PROT_MAX. */
+#define	P2_PROTMAX_DISABLE 0x00000400	/* Force disable implied PROT_MAX. */
+#define	P2_STKGAP_DISABLE 0x00000800	/* Disable stack gap for MAP_STACK */
+#define	P2_STKGAP_DISABLE_EXEC 0x00001000 /* Stack gap disabled after exec */
 
 /* Flags protected by proctree_lock, kept in p_treeflags. */
 #define	P_TREE_ORPHANED		0x00000001	/* Reparented, on orphan list */
@@ -964,7 +969,6 @@ extern u_long pgrphash;
 
 extern struct sx allproc_lock;
 extern int allproc_gen;
-extern struct sx zombproc_lock;
 extern struct sx proctree_lock;
 extern struct mtx ppeers_lock;
 extern struct mtx procid_lock;
@@ -982,15 +986,16 @@ LIST_HEAD(proclist, proc);
 TAILQ_HEAD(procqueue, proc);
 TAILQ_HEAD(threadqueue, thread);
 extern struct proclist allproc;		/* List of all processes. */
-extern struct proclist zombproc;	/* List of zombie processes. */
 extern struct proc *initproc, *pageproc; /* Process slots for init, pager. */
 
 extern struct uma_zone *proc_zone;
 
 struct	proc *pfind(pid_t);		/* Find process by id. */
 struct	proc *pfind_any(pid_t);		/* Find (zombie) process by id. */
+struct	proc *pfind_any_locked(pid_t pid); /* Find process by id, locked. */
 struct	pgrp *pgfind(pid_t);		/* Find process group by id. */
-struct	proc *zpfind(pid_t);		/* Find zombie process by id. */
+void	pidhash_slockall(void);		/* Shared lock all pid hash lists. */
+void	pidhash_sunlockall(void);	/* Shared unlock all pid hash lists. */
 
 struct	fork_req {
 	int		fr_flags;
@@ -1063,11 +1068,13 @@ void	proc_linkup(struct proc *p, struct thread *td);
 struct proc *proc_realparent(struct proc *child);
 void	proc_reap(struct thread *td, struct proc *p, int *status, int options);
 void	proc_reparent(struct proc *child, struct proc *newparent, bool set_oppid);
+void	proc_add_orphan(struct proc *child, struct proc *parent);
 void	proc_set_traced(struct proc *p, bool stop);
 void	proc_wkilled(struct proc *p);
 struct	pstats *pstats_alloc(void);
 void	pstats_fork(struct pstats *src, struct pstats *dst);
 void	pstats_free(struct pstats *ps);
+void	proc_clear_orphan(struct proc *p);
 void	reaper_abandon_children(struct proc *p, bool exiting);
 int	securelevel_ge(struct ucred *cr, int level);
 int	securelevel_gt(struct ucred *cr, int level);
@@ -1183,6 +1190,18 @@ td_softdep_cleanup(struct thread *td)
 void	proc_id_set(int type, pid_t id);
 void	proc_id_set_cond(int type, pid_t id);
 void	proc_id_clear(int type, pid_t id);
+
+EVENTHANDLER_LIST_DECLARE(process_ctor);
+EVENTHANDLER_LIST_DECLARE(process_dtor);
+EVENTHANDLER_LIST_DECLARE(process_init);
+EVENTHANDLER_LIST_DECLARE(process_fini);
+EVENTHANDLER_LIST_DECLARE(process_exit);
+EVENTHANDLER_LIST_DECLARE(process_fork);
+EVENTHANDLER_LIST_DECLARE(process_exec);
+
+EVENTHANDLER_LIST_DECLARE(thread_ctor);
+EVENTHANDLER_LIST_DECLARE(thread_dtor);
+EVENTHANDLER_LIST_DECLARE(thread_init);
 
 #endif	/* _KERNEL */
 

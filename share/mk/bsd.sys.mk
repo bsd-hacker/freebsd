@@ -25,17 +25,18 @@ CFLAGS+=	-std=iso9899:1999
 CFLAGS+=	-std=${CSTD}
 .endif # CSTD
 
-.if ${COMPILER_FEATURES:Mc++11}
-CXXSTD?=	c++11
-.elif ${COMPILER_TYPE} == "gcc"
-# Prior versions of g++ support C++98 with GNU extensions by default.
-CXXSTD?=	gnu++98
-.else
-# Assume that the compiler supports at least C++98.
-CXXSTD?=	c++98
-.endif
+.if !empty(CXXSTD)
 CXXFLAGS+=	-std=${CXXSTD}
-# CXXSTD
+.endif
+
+#
+# Turn off -Werror for gcc 4.2.1. The compiler is on the glide path out of the
+# system, and any warnings specific to it are no longer relevant as there are
+# too many false positives.
+#
+.if ${COMPILER_VERSION} <  50000
+NO_WERROR.gcc=	yes
+.endif
 
 # -pedantic is problematic because it also imposes namespace restrictions
 #CFLAGS+=	-pedantic
@@ -194,13 +195,9 @@ FORMAT_EXTENSIONS=	-fformat-extensions
 CWARNFLAGS+=	-Wno-unknown-pragmas
 .endif # IGNORE_PRAGMA
 
-# We need this conditional because many places that use it
-# only enable it for some files with CLFAGS.$FILE+=${CLANG_NO_IAS}.
-# unconditionally, and can't easily use the CFLAGS.clang=
-# mechanism.
-.if ${COMPILER_TYPE} == "clang"
-CLANG_NO_IAS=	 -no-integrated-as
-.endif
+# This warning is utter nonsense
+CFLAGS+=	-Wno-format-zero-length
+
 CLANG_OPT_SMALL= -mstack-alignment=8 -mllvm -inline-threshold=3\
 		 -mllvm -simplifycfg-dup-ret
 .if ${COMPILER_VERSION} >= 30500 && ${COMPILER_VERSION} < 30700
@@ -242,17 +239,35 @@ DEBUG_FILES_CFLAGS?= -g
 .if ${MK_WARNS} != "no"
 CFLAGS+=	${CWARNFLAGS:M*} ${CWARNFLAGS.${COMPILER_TYPE}}
 CFLAGS+=	${CWARNFLAGS.${.IMPSRC:T}}
+CXXFLAGS+=	${CXXWARNFLAGS:M*} ${CXXWARNFLAGS.${COMPILER_TYPE}}
+CXXFLAGS+=	${CXXWARNFLAGS.${.IMPSRC:T}}
 .endif
 
 CFLAGS+=	 ${CFLAGS.${COMPILER_TYPE}}
 CXXFLAGS+=	 ${CXXFLAGS.${COMPILER_TYPE}}
 
 AFLAGS+=	${AFLAGS.${.IMPSRC:T}}
+AFLAGS+=	${AFLAGS.${.TARGET:T}}
 ACFLAGS+=	${ACFLAGS.${.IMPSRC:T}}
+ACFLAGS+=	${ACFLAGS.${.TARGET:T}}
 CFLAGS+=	${CFLAGS.${.IMPSRC:T}}
 CXXFLAGS+=	${CXXFLAGS.${.IMPSRC:T}}
 
 LDFLAGS+=	${LDFLAGS.${LINKER_TYPE}}
+
+# Only allow .TARGET when not using PROGS as it has the same syntax
+# per PROG which is ambiguous with this syntax. This is only needed
+# for PROG_VARS vars.
+.if !defined(_RECURSING_PROGS)
+.if ${MK_WARNS} != "no"
+CFLAGS+=	${CWARNFLAGS.${.TARGET:T}}
+.endif
+CFLAGS+=	${CFLAGS.${.TARGET:T}}
+CXXFLAGS+=	${CXXFLAGS.${.TARGET:T}}
+LDFLAGS+=	${LDFLAGS.${.TARGET:T}}
+LDADD+=		${LDADD.${.TARGET:T}}
+LIBADD+=	${LIBADD.${.TARGET:T}}
+.endif
 
 .if defined(SRCTOP)
 # Prevent rebuilding during install to support read-only objdirs.
@@ -276,7 +291,7 @@ PHONY_NOTMAIN = analyze afterdepend afterinstall all beforedepend beforeinstall 
 .NOTMAIN: ${PHONY_NOTMAIN:Nall}
 
 .if ${MK_STAGING} != "no"
-.if defined(_SKIP_BUILD) || (!make(all) && !make(clean*))
+.if defined(_SKIP_BUILD) || (!make(all) && !make(clean*) && !make(*clean))
 _SKIP_STAGING?= yes
 .endif
 .if ${_SKIP_STAGING:Uno} == "yes"

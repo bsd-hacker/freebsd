@@ -1,6 +1,5 @@
 # $FreeBSD$
 
-PACKAGE=lib${LIB}
 SHLIBDIR?= /lib
 
 .include <bsd.own.mk>
@@ -10,6 +9,7 @@ SRCDIR=	${ELFTCDIR}/libelf
 
 .PATH:	${SRCDIR}
 
+PACKAGE=	runtime
 LIB=	elf
 
 SRCS=	elf.c							\
@@ -78,6 +78,13 @@ INCS=		libelf.h gelf.h
 # part of the tree, e.g. a machine dependent header.
 #
 SRCS+=	sys/elf32.h sys/elf64.h sys/elf_common.h
+
+# Allow bootstrapping elftoolchain on Linux:
+.if defined(BOOTSTRAPPING) && ${.MAKE.OS} == "Linux"
+native-elf-format.h:
+	${ELFTCDIR}/common/native-elf-format > ${.TARGET} || rm ${.TARGET}
+SRCS+=	native-elf-format.h
+.endif
 
 GENSRCS=	libelf_fsize.c libelf_msize.c libelf_convert.c
 CLEANFILES=	${GENSRCS}

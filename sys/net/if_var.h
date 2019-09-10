@@ -73,6 +73,7 @@ struct	netmap_adapter;
 struct	netdump_methods;
 
 #ifdef _KERNEL
+#include <sys/_eventhandler.h>
 #include <sys/mbuf.h>		/* ifqueue only? */
 #include <sys/buf_ring.h>
 #include <net/vnet.h>
@@ -187,11 +188,13 @@ struct if_encap_req {
  * m_snd_tag" comes from the network driver and it is free to allocate
  * as much additional space as it wants for its own use.
  */
+struct ktls_session;
 struct m_snd_tag;
 
 #define	IF_SND_TAG_TYPE_RATE_LIMIT 0
 #define	IF_SND_TAG_TYPE_UNLIMITED 1
-#define	IF_SND_TAG_TYPE_MAX 2
+#define	IF_SND_TAG_TYPE_TLS 2
+#define	IF_SND_TAG_TYPE_MAX 3
 
 struct if_snd_tag_alloc_header {
 	uint32_t type;		/* send tag type, see IF_SND_TAG_XXX */
@@ -202,6 +205,14 @@ struct if_snd_tag_alloc_header {
 struct if_snd_tag_alloc_rate_limit {
 	struct if_snd_tag_alloc_header hdr;
 	uint64_t max_rate;	/* in bytes/s */
+	uint32_t flags;		/* M_NOWAIT or M_WAITOK */
+	uint32_t reserved;	/* alignment */
+};
+
+struct if_snd_tag_alloc_tls {
+	struct if_snd_tag_alloc_header hdr;
+	struct inpcb *inp;
+	const struct ktls_session *tls;
 };
 
 struct if_snd_tag_rate_limit_params {
@@ -209,13 +220,14 @@ struct if_snd_tag_rate_limit_params {
 	uint32_t queue_level;	/* 0 (empty) .. 65535 (full) */
 #define	IF_SND_QUEUE_LEVEL_MIN 0
 #define	IF_SND_QUEUE_LEVEL_MAX 65535
-	uint32_t reserved;	/* padding */
+	uint32_t flags;		/* M_NOWAIT or M_WAITOK */
 };
 
 union if_snd_tag_alloc_params {
 	struct if_snd_tag_alloc_header hdr;
 	struct if_snd_tag_alloc_rate_limit rate_limit;
 	struct if_snd_tag_alloc_rate_limit unlimited;
+	struct if_snd_tag_alloc_tls tls;
 };
 
 union if_snd_tag_modify_params {
@@ -228,11 +240,37 @@ union if_snd_tag_query_params {
 	struct if_snd_tag_rate_limit_params unlimited;
 };
 
+/* Query return flags */
+#define RT_NOSUPPORT	  0x00000000	/* Not supported */
+#define RT_IS_INDIRECT    0x00000001	/*
+					 * Interface like a lagg, select
+					 * the actual interface for
+					 * capabilities.
+					 */
+#define RT_IS_SELECTABLE  0x00000002	/*
+					 * No rate table, you select
+					 * rates and the first
+					 * number_of_rates are created.
+					 */
+#define RT_IS_FIXED_TABLE 0x00000004	/* A fixed table is attached */
+#define RT_IS_UNUSABLE	  0x00000008	/* It is not usable for this */
+
+struct if_ratelimit_query_results {
+	const uint64_t *rate_table;	/* Pointer to table if present */
+	uint32_t flags;			/* Flags indicating results */
+	uint32_t max_flows;		/* Max flows using, 0=unlimited */
+	uint32_t number_of_rates;	/* How many unique rates can be created */
+	uint32_t min_segment_burst;	/* The amount the adapter bursts at each send */
+};
+
 typedef int (if_snd_tag_alloc_t)(struct ifnet *, union if_snd_tag_alloc_params *,
     struct m_snd_tag **);
 typedef int (if_snd_tag_modify_t)(struct m_snd_tag *, union if_snd_tag_modify_params *);
 typedef int (if_snd_tag_query_t)(struct m_snd_tag *, union if_snd_tag_query_params *);
 typedef void (if_snd_tag_free_t)(struct m_snd_tag *);
+typedef void (if_ratelimit_query_t)(struct ifnet *,
+    struct if_ratelimit_query_results *);
+
 
 /*
  * Structure defining a network interface.
@@ -244,7 +282,7 @@ struct ifnet {
 	CK_STAILQ_HEAD(, ifg_list) if_groups; /* linked list of groups per if (CK_) */
 					/* protected by if_addr_lock */
 	u_char	if_alloctype;		/* if_type at time of allocation */
-
+	uint8_t	if_numa_domain;		/* NUMA domain of device */
 	/* Driver and protocol specific information that remains stable. */
 	void	*if_softc;		/* pointer to driver state */
 	void	*if_llsoftc;		/* link layer softc */
@@ -373,6 +411,7 @@ struct ifnet {
 	if_snd_tag_modify_t *if_snd_tag_modify;
 	if_snd_tag_query_t *if_snd_tag_query;
 	if_snd_tag_free_t *if_snd_tag_free;
+	if_ratelimit_query_t *if_ratelimit_query;
 
 	/* Ethernet PCP */
 	uint8_t if_pcp;
@@ -394,6 +433,7 @@ struct ifnet {
 /* for compatibility with other BSDs */
 #define	if_name(ifp)	((ifp)->if_xname)
 
+#define	IF_NODOM	255
 /*
  * Locks for address lists on the network interface.
  */
@@ -420,7 +460,6 @@ void	if_maddr_rlock(if_t ifp);	/* if_multiaddrs */
 void	if_maddr_runlock(if_t ifp);	/* if_multiaddrs */
 
 #ifdef _KERNEL
-#ifdef _SYS_EVENTHANDLER_H_
 /* interface link layer address change event */
 typedef void (*iflladdr_event_handler_t)(void *, struct ifnet *);
 EVENTHANDLER_DECLARE(iflladdr_event, iflladdr_event_handler_t);
@@ -448,7 +487,6 @@ EVENTHANDLER_DECLARE(ifnet_link_event, ifnet_link_event_handler_t);
 
 typedef void (*ifnet_event_fn)(void *, struct ifnet *ifp, int event);
 EVENTHANDLER_DECLARE(ifnet_event, ifnet_event_fn);
-#endif /* _SYS_EVENTHANDLER_H_ */
 
 /*
  * interface groups
@@ -622,6 +660,8 @@ int	if_delgroup(struct ifnet *, const char *);
 int	if_addmulti(struct ifnet *, struct sockaddr *, struct ifmultiaddr **);
 int	if_allmulti(struct ifnet *, int);
 struct	ifnet* if_alloc(u_char);
+struct	ifnet* if_alloc_dev(u_char, device_t dev);
+struct	ifnet* if_alloc_domain(u_char, int numa_domain);
 void	if_attach(struct ifnet *);
 void	if_dead(struct ifnet *);
 int	if_delmulti(struct ifnet *, struct sockaddr *);

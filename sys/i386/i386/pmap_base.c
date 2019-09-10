@@ -288,8 +288,7 @@ pmap_flush_page(vm_page_t m)
 	pmap_methods_ptr->pm_flush_page(m);
 }
 
-DEFINE_IFUNC(, void, pmap_invalidate_cache_range, (vm_offset_t, vm_offset_t),
-    static)
+DEFINE_IFUNC(, void, pmap_invalidate_cache_range, (vm_offset_t, vm_offset_t))
 {
 
 	if ((cpu_feature & CPUID_SS) != 0)
@@ -777,21 +776,23 @@ void *
 pmap_mapdev_attr(vm_paddr_t pa, vm_size_t size, int mode)
 {
 
-	return (pmap_methods_ptr->pm_mapdev_attr(pa, size, mode));
+	return (pmap_methods_ptr->pm_mapdev_attr(pa, size, mode,
+	    MAPDEV_SETATTR));
 }
 
 void *
 pmap_mapdev(vm_paddr_t pa, vm_size_t size)
 {
 
-	return (pmap_methods_ptr->pm_mapdev_attr(pa, size, PAT_UNCACHEABLE));
+	return (pmap_methods_ptr->pm_mapdev_attr(pa, size, PAT_UNCACHEABLE,
+	    MAPDEV_SETATTR));
 }
 
 void *
 pmap_mapbios(vm_paddr_t pa, vm_size_t size)
 {
 
-	return (pmap_methods_ptr->pm_mapdev_attr(pa, size, PAT_WRITE_BACK));
+	return (pmap_methods_ptr->pm_mapdev_attr(pa, size, PAT_WRITE_BACK, 0));
 }
 
 void

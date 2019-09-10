@@ -62,7 +62,6 @@ static void do_rules(FILE *);
 static void do_xxfiles(char *, FILE *);
 static void do_objs(FILE *);
 static void do_before_depend(FILE *);
-static int opteq(const char *, const char *);
 static void read_files(void);
 static void sanitize_envline(char *result, const char *src);
 static bool preprocess(char *line, char *result);
@@ -412,6 +411,7 @@ next:
 	 *      [ dependency "dependency-list"] [ before-depend ]
 	 *	[ clean "file-list"] [ warning "text warning" ]
 	 *	[ obj-prefix "file prefix"]
+	 *	[ nowerror ] [ local ]
 	 */
 	wd = get_word(fp);
 	if (wd == (char *)EOF) {
@@ -565,7 +565,8 @@ next:
 				goto nextparam;
 			}
 		SLIST_FOREACH(op, &opt, op_next)
-			if (op->op_value == 0 && opteq(op->op_name, wd)) {
+			if (op->op_value == 0 &&
+			    strcasecmp(op->op_name, wd) == 0) {
 				if (not)
 					match = 0;
 				goto nextparam;
@@ -628,23 +629,6 @@ read_files(void)
 	}
 }
 
-static int
-opteq(const char *cp, const char *dp)
-{
-	char c, d;
-
-	for (; ; cp++, dp++) {
-		if (*cp != *dp) {
-			c = isupper(*cp) ? tolower(*cp) : *cp;
-			d = isupper(*dp) ? tolower(*dp) : *dp;
-			if (c != d)
-				return (0);
-		}
-		if (*cp == 0)
-			return (1);
-	}
-}
-
 static void
 do_before_depend(FILE *fp)
 {
@@ -655,17 +639,16 @@ do_before_depend(FILE *fp)
 	lpos = 15;
 	STAILQ_FOREACH(tp, &ftab, f_next)
 		if (tp->f_flags & BEFORE_DEPEND) {
-			len = strlen(tp->f_fn);
-			if ((len = 3 + len) + lpos > 72) {
+			len = strlen(tp->f_fn) + strlen(tp->f_srcprefix);
+			if (len + lpos > 72) {
 				lpos = 8;
 				fputs("\\\n\t", fp);
 			}
 			if (tp->f_flags & NO_IMPLCT_RULE)
-				fprintf(fp, "%s ", tp->f_fn);
+				lpos += fprintf(fp, "%s ", tp->f_fn);
 			else
-				fprintf(fp, "%s%s ", tp->f_srcprefix,
+				lpos += fprintf(fp, "%s%s ", tp->f_srcprefix,
 				    tp->f_fn);
-			lpos += len + 1;
 		}
 	if (lpos != 8)
 		putc('\n', fp);
@@ -725,12 +708,11 @@ do_xxfiles(char *tag, FILE *fp)
 				continue;
 			if (strcasecmp(&tp->f_fn[len - slen], suff) != 0)
 				continue;
-			if ((len = 3 + len) + lpos > 72) {
+			if (len + strlen(tp->f_srcprefix) + lpos > 72) {
 				lpos = 8;
 				fputs("\\\n\t", fp);
 			}
-			fprintf(fp, "%s%s ", tp->f_srcprefix, tp->f_fn);
-			lpos += len + 1;
+			lpos += fprintf(fp, "%s%s ", tp->f_srcprefix, tp->f_fn);
 		}
 	free(suff);
 	if (lpos != 8)

@@ -69,6 +69,7 @@ __FBSDID("$FreeBSD$");
 #include "rtld_malloc.h"
 #include "rtld_utrace.h"
 #include "notes.h"
+#include "rtld_libc.h"
 
 /* Types. */
 typedef void (*func_ptr_type)(void);
@@ -78,7 +79,6 @@ typedef void * (*path_enum_proc) (const char *path, size_t len, void *arg);
 /* Variables that cannot be static: */
 extern struct r_debug r_debug; /* For GDB */
 extern int _thread_autoinit_dummy_decl;
-extern char* __progname;
 extern void (*__cleanup)(void);
 
 
@@ -151,6 +151,7 @@ static int rtld_dirname(const char *, char *);
 static int rtld_dirname_abs(const char *, char *);
 static void *rtld_dlopen(const char *name, int fd, int mode);
 static void rtld_exit(void);
+static void rtld_nop_exit(void);
 static char *search_library_path(const char *, const char *, const char *,
     int *);
 static char *search_library_pathfds(const char *, const char *, int *);
@@ -249,7 +250,6 @@ void _rtld_error(const char *, ...) __exported;
 
 /* Only here to fix -Wmissing-prototypes warnings */
 int __getosreldate(void);
-void __pthread_cxa_finalize(struct dl_phdr_info *a);
 func_ptr_type _rtld(Elf_Addr *sp, func_ptr_type *exit_proc, Obj_Entry **objp);
 Elf_Addr _rtld_bind(Obj_Entry *obj, Elf_Size reloff);
 
@@ -294,6 +294,8 @@ const char *ld_path_libmap_conf = _PATH_LIBMAP_CONF;
 const char *ld_path_rtld = _PATH_RTLD;
 const char *ld_standard_library_path = STANDARD_LIBRARY_PATH;
 const char *ld_env_prefix = LD_;
+
+static void (*rtld_exit_ptr)(void);
 
 /*
  * Fill in a DoneList with an allocation large enough to hold all of
@@ -455,7 +457,7 @@ _rtld(Elf_Addr *sp, func_ptr_type *exit_proc, Obj_Entry **objp)
 		 * others x bit is enabled.
 		 * mmap(2) does not allow to mmap with PROT_EXEC if
 		 * binary' file comes from noexec mount.  We cannot
-		 * set VV_TEXT on the binary.
+		 * set a text reference on the binary.
 		 */
 		dir_enable = false;
 		if (st.st_uid == geteuid()) {
@@ -756,6 +758,7 @@ _rtld(Elf_Addr *sp, func_ptr_type *exit_proc, Obj_Entry **objp)
       *ld_bind_now != '\0', SYMLOOK_EARLY, &lockstate) == -1)
 	rtld_die();
 
+    rtld_exit_ptr = rtld_exit;
     if (obj_main->crt_no_init)
 	preinit_main();
     objlist_call_init(&initlist, &lockstate);
@@ -778,7 +781,7 @@ _rtld(Elf_Addr *sp, func_ptr_type *exit_proc, Obj_Entry **objp)
     dbg("transferring control to program entry point = %p", obj_main->entry);
 
     /* Return the exit procedure and the program entry point. */
-    *exit_proc = rtld_exit;
+    *exit_proc = rtld_exit_ptr;
     *objp = obj_main;
     return (func_ptr_type) obj_main->entry;
 }
@@ -1282,10 +1285,16 @@ digest_dynamic1(Obj_Entry *obj, int early, const Elf_Dyn **dyn_rpath,
 		
 #endif
 
+#ifdef __powerpc__
 #ifdef __powerpc64__
 	case DT_PPC64_GLINK:
 		obj->glink = (Elf_Addr)(obj->relocbase + dynp->d_un.d_ptr);
 		break;
+#else
+	case DT_PPC_GOT:
+		obj->gotptr = (Elf_Addr *)(obj->relocbase + dynp->d_un.d_ptr);
+		break;
+#endif
 #endif
 
 	case DT_FLAGS_1:
@@ -2662,6 +2671,7 @@ objlist_call_init(Objlist *list, RtldLockState *lockstate)
     Obj_Entry *obj;
     char *saved_msg;
     Elf_Addr *init_addr;
+    void (*reg)(void (*)(void));
     int index;
 
     /*
@@ -2690,7 +2700,16 @@ objlist_call_init(Objlist *list, RtldLockState *lockstate)
 	 */
 	elm->obj->init_done = true;
 	hold_object(elm->obj);
+	reg = NULL;
+	if (elm->obj == obj_main && obj_main->crt_no_init) {
+		reg = (void (*)(void (*)(void)))get_program_var_addr(
+		    "__libc_atexit", lockstate);
+	}
 	lock_release(rtld_bind_lock, lockstate);
+	if (reg != NULL) {
+		reg(rtld_exit);
+		rtld_exit_ptr = rtld_nop_exit;
+	}
 
         /*
          * It is legal to have both DT_INIT and DT_INIT_ARRAY defined.
@@ -3002,6 +3021,11 @@ rtld_exit(void)
     if (!libmap_disable)
         lm_fini();
     lock_release(rtld_bind_lock, &lockstate);
+}
+
+static void
+rtld_nop_exit(void)
+{
 }
 
 /*
@@ -5622,26 +5646,6 @@ __getosreldate(void)
 		osreldate = osrel;
 	return (osreldate);
 }
-
-void
-exit(int status)
-{
-
-	_exit(status);
-}
-
-void (*__cleanup)(void);
-int __isthreaded = 0;
-int _thread_autoinit_dummy_decl = 1;
-
-/*
- * No unresolved symbols for rtld.
- */
-void
-__pthread_cxa_finalize(struct dl_phdr_info *a __unused)
-{
-}
-
 const char *
 rtld_strerror(int errnum)
 {

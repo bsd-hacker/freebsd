@@ -37,8 +37,6 @@ CWARNEXTRA+=	-Wno-error-shift-negative-value
 .if ${COMPILER_VERSION} >= 40000
 CWARNEXTRA+=	-Wno-address-of-packed-member
 .endif
-
-CLANG_NO_IAS= -no-integrated-as
 .endif
 
 .if ${COMPILER_TYPE} == "gcc"
@@ -75,8 +73,12 @@ CWARNEXTRA?=	-Wno-uninitialized
 # GCC 4.2 doesn't have -Wno-error=cast-qual, so just disable the warning for
 # the few files that are already known to generate cast-qual warnings.
 NO_WCAST_QUAL= -Wno-cast-qual
+NO_WNONNULL=	-Wno-nonnull
 .endif
 .endif
+
+# This warning is utter nonsense
+CWARNFLAGS+=	-Wno-format-zero-length
 
 # External compilers may not support our format extensions.  Allow them
 # to be disabled.  WARNING: format checking is disabled in this case.
@@ -126,8 +128,18 @@ CFLAGS += -ffixed-x18
 INLINE_LIMIT?=	8000
 .endif
 
+#
+# For RISC-V we specify the soft-float ABI (lp64) to avoid the use of floating
+# point registers within the kernel. We also specify the "medium" code model,
+# which generates code suitable for a 2GiB addressing range located at any
+# offset, allowing modules to be located anywhere in the 64-bit address space.
+# Note that clang and GCC refer to this code model as "medium" and "medany"
+# respectively.
+#
 .if ${MACHINE_CPUARCH} == "riscv"
-CFLAGS.gcc+=	-mcmodel=medany -march=rv64imafdc -mabi=lp64
+CFLAGS+=	-march=rv64imafdc -mabi=lp64
+CFLAGS.clang+=	-mcmodel=medium
+CFLAGS.gcc+=	-mcmodel=medany
 INLINE_LIMIT?=	8000
 .endif
 

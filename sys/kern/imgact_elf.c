@@ -156,6 +156,12 @@ SYSCTL_INT(ASLR_NODE_OID, OID_AUTO, honor_sbrk, CTLFLAG_RW,
     &__elfN(aslr_honor_sbrk), 0,
     __XSTRING(__CONCAT(ELF, __ELF_WORD_SIZE)) ": assume sbrk is used");
 
+static int __elfN(aslr_stack_gap) = 3;
+SYSCTL_INT(ASLR_NODE_OID, OID_AUTO, stack_gap, CTLFLAG_RW,
+    &__elfN(aslr_stack_gap), 0,
+    __XSTRING(__CONCAT(ELF, __ELF_WORD_SIZE))
+    ": maximum percentage of main stack to waste on a random gap");
+
 static Elf_Brandinfo *elf_brand_list[MAX_BRANDS];
 
 #define	aligned(a, t)	(rounddown2((u_long)(a), sizeof(t)) == (u_long)(a))
@@ -526,13 +532,17 @@ __elfN(map_insert)(struct image_params *imgp, vm_map_t map, vm_object_t object,
 	} else {
 		vm_object_reference(object);
 		rv = vm_map_fixed(map, object, offset, start, end - start,
-		    prot, VM_PROT_ALL, cow | MAP_CHECK_EXCL);
+		    prot, VM_PROT_ALL, cow | MAP_CHECK_EXCL |
+		    (object != NULL ? MAP_VN_EXEC : 0));
 		if (rv != KERN_SUCCESS) {
 			locked = VOP_ISLOCKED(imgp->vp);
 			VOP_UNLOCK(imgp->vp, 0);
 			vm_object_deallocate(object);
 			vn_lock(imgp->vp, locked | LK_RETRY);
 			return (rv);
+		} else if (object != NULL) {
+			MPASS(imgp->vp->v_object == object);
+			VOP_SET_TEXT_CHECKED(imgp->vp);
 		}
 	}
 	return (KERN_SUCCESS);
@@ -546,7 +556,7 @@ __elfN(load_section)(struct image_params *imgp, vm_ooffset_t offset,
 	size_t map_len;
 	vm_map_t map;
 	vm_object_t object;
-	vm_offset_t off, map_addr;
+	vm_offset_t map_addr;
 	int error, rv, cow;
 	size_t copy_len;
 	vm_ooffset_t file_addr;
@@ -589,13 +599,8 @@ __elfN(load_section)(struct image_params *imgp, vm_ooffset_t offset,
 		cow = MAP_COPY_ON_WRITE | MAP_PREFAULT |
 		    (prot & VM_PROT_WRITE ? 0 : MAP_DISABLE_COREDUMP);
 
-		rv = __elfN(map_insert)(imgp, map,
-				      object,
-				      file_addr,	/* file offset */
-				      map_addr,		/* virtual start */
-				      map_addr + map_len,/* virtual end */
-				      prot,
-				      cow);
+		rv = __elfN(map_insert)(imgp, map, object, file_addr,
+		    map_addr, map_addr + map_len, prot, cow);
 		if (rv != KERN_SUCCESS)
 			return (EINVAL);
 
@@ -630,9 +635,8 @@ __elfN(load_section)(struct image_params *imgp, vm_ooffset_t offset,
 			return (EIO);
 
 		/* send the page fragment to user space */
-		off = trunc_page(offset + filsz) - trunc_page(offset + filsz);
-		error = copyout((caddr_t)sf_buf_kva(sf) + off,
-		    (caddr_t)map_addr, copy_len);
+		error = copyout((caddr_t)sf_buf_kva(sf), (caddr_t)map_addr,
+		    copy_len);
 		vm_imgact_unmap_page(sf);
 		if (error != 0)
 			return (error);
@@ -729,7 +733,7 @@ __elfN(load_file)(struct proc *p, const char *file, u_long *addr,
 		return (ECAPMODE);
 #endif
 
-	tempdata = malloc(sizeof(*tempdata), M_TEMP, M_WAITOK);
+	tempdata = malloc(sizeof(*tempdata), M_TEMP, M_WAITOK | M_ZERO);
 	nd = &tempdata->nd;
 	attr = &tempdata->attr;
 	imgp = &tempdata->image_params;
@@ -739,12 +743,9 @@ __elfN(load_file)(struct proc *p, const char *file, u_long *addr,
 	 */
 	imgp->proc = p;
 	imgp->attr = attr;
-	imgp->firstpage = NULL;
-	imgp->image_header = NULL;
-	imgp->object = NULL;
-	imgp->execlabel = NULL;
 
-	NDINIT(nd, LOOKUP, LOCKLEAF | FOLLOW, UIO_SYSSPACE, file, curthread);
+	NDINIT(nd, LOOKUP, ISOPEN | FOLLOW | LOCKSHARED | LOCKLEAF,
+	    UIO_SYSSPACE, file, curthread);
 	if ((error = namei(nd)) != 0) {
 		nd->ni_vp = NULL;
 		goto fail;
@@ -762,12 +763,6 @@ __elfN(load_file)(struct proc *p, const char *file, u_long *addr,
 	error = exec_map_first_page(imgp);
 	if (error)
 		goto fail;
-
-	/*
-	 * Also make certain that the interpreter stays the same, so set
-	 * its VV_TEXT flag, too.
-	 */
-	VOP_SET_TEXT(nd->ni_vp);
 
 	imgp->object = nd->ni_vp->v_object;
 
@@ -807,9 +802,11 @@ fail:
 	if (imgp->firstpage)
 		exec_unmap_first_page(imgp);
 
-	if (nd->ni_vp)
+	if (nd->ni_vp) {
+		if (imgp->textset)
+			VOP_UNSET_TEXT_CHECKED(nd->ni_vp);
 		vput(nd->ni_vp);
-
+	}
 	free(tempdata, M_TEMP);
 
 	return (error);
@@ -939,9 +936,22 @@ __elfN(get_interp)(struct image_params *imgp, const Elf_Phdr *phdr,
 	interp_name_len = phdr->p_filesz;
 	if (phdr->p_offset > PAGE_SIZE ||
 	    interp_name_len > PAGE_SIZE - phdr->p_offset) {
-		VOP_UNLOCK(imgp->vp, 0);
-		interp = malloc(interp_name_len + 1, M_TEMP, M_WAITOK);
-		vn_lock(imgp->vp, LK_EXCLUSIVE | LK_RETRY);
+		/*
+		 * The vnode lock might be needed by the pagedaemon to
+		 * clean pages owned by the vnode.  Do not allow sleep
+		 * waiting for memory with the vnode locked, instead
+		 * try non-sleepable allocation first, and if it
+		 * fails, go to the slow path were we drop the lock
+		 * and do M_WAITOK.  A text reference prevents
+		 * modifications to the vnode content.
+		 */
+		interp = malloc(interp_name_len + 1, M_TEMP, M_NOWAIT);
+		if (interp == NULL) {
+			VOP_UNLOCK(imgp->vp, 0);
+			interp = malloc(interp_name_len + 1, M_TEMP, M_WAITOK);
+			vn_lock(imgp->vp, LK_SHARED | LK_RETRY);
+		}
+
 		error = vn_rdwr(UIO_READ, imgp->vp, interp,
 		    interp_name_len, phdr->p_offset,
 		    UIO_SYSSPACE, IO_NODELOCKED, td->td_ucred,
@@ -1207,7 +1217,7 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 		    maxv / 2, 1UL << flsl(maxalign));
 	}
 
-	vn_lock(imgp->vp, LK_EXCLUSIVE | LK_RETRY);
+	vn_lock(imgp->vp, LK_SHARED | LK_RETRY);
 	if (error != 0)
 		goto ret;
 
@@ -1251,7 +1261,7 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 		}
 		error = __elfN(load_interp)(imgp, brand_info, interp, &addr,
 		    &imgp->entry_addr);
-		vn_lock(imgp->vp, LK_EXCLUSIVE | LK_RETRY);
+		vn_lock(imgp->vp, LK_SHARED | LK_RETRY);
 		if (error != 0)
 			goto ret;
 	} else
@@ -1260,7 +1270,12 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 	/*
 	 * Construct auxargs table (used by the fixup routine)
 	 */
-	elf_auxargs = malloc(sizeof(Elf_Auxargs), M_TEMP, M_WAITOK);
+	elf_auxargs = malloc(sizeof(Elf_Auxargs), M_TEMP, M_NOWAIT);
+	if (elf_auxargs == NULL) {
+		VOP_UNLOCK(imgp->vp, 0);
+		elf_auxargs = malloc(sizeof(Elf_Auxargs), M_TEMP, M_WAITOK);
+		vn_lock(imgp->vp, LK_SHARED | LK_RETRY);
+	}
 	elf_auxargs->execfd = -1;
 	elf_auxargs->phdr = proghdr + et_dyn_addr;
 	elf_auxargs->phent = hdr->e_phentsize;
@@ -1408,7 +1423,6 @@ static void __elfN(puthdr)(struct thread *, void *, size_t, int, size_t);
 static void __elfN(putnote)(struct note_info *, struct sbuf *);
 static size_t register_note(struct note_info_list *, int, outfunc_t, void *);
 static int sbuf_drain_core_output(void *, const char *, int);
-static int sbuf_drain_count(void *arg, const char *data, int len);
 
 static void __elfN(note_fpregset)(void *, struct sbuf *, size_t *);
 static void __elfN(note_prpsinfo)(void *, struct sbuf *, size_t *);
@@ -1535,19 +1549,6 @@ sbuf_drain_core_output(void *arg, const char *data, int len)
 	if (error != 0)
 		return (-error);
 	p->offset += len;
-	return (len);
-}
-
-/*
- * Drain into a counter.
- */
-static int
-sbuf_drain_count(void *arg, const char *data __unused, int len)
-{
-	size_t *sizep;
-
-	sizep = (size_t *)arg;
-	*sizep += len;
 	return (len);
 }
 
@@ -2327,7 +2328,7 @@ note_procstat_files(void *arg, struct sbuf *sb, size_t *sizep)
 	if (sb == NULL) {
 		size = 0;
 		sb = sbuf_new(NULL, NULL, 128, SBUF_FIXEDLEN);
-		sbuf_set_drain(sb, sbuf_drain_count, &size);
+		sbuf_set_drain(sb, sbuf_count_drain, &size);
 		sbuf_bcat(sb, &structsize, sizeof(structsize));
 		PROC_LOCK(p);
 		kern_proc_filedesc_out(p, sb, -1, filedesc_flags);
@@ -2378,7 +2379,7 @@ note_procstat_vmmap(void *arg, struct sbuf *sb, size_t *sizep)
 	if (sb == NULL) {
 		size = 0;
 		sb = sbuf_new(NULL, NULL, 128, SBUF_FIXEDLEN);
-		sbuf_set_drain(sb, sbuf_drain_count, &size);
+		sbuf_set_drain(sb, sbuf_count_drain, &size);
 		sbuf_bcat(sb, &structsize, sizeof(structsize));
 		PROC_LOCK(p);
 		kern_proc_vmmap_out(p, sb, -1, vmmap_flags);
@@ -2506,7 +2507,7 @@ __elfN(note_procstat_auxv)(void *arg, struct sbuf *sb, size_t *sizep)
 	if (sb == NULL) {
 		size = 0;
 		sb = sbuf_new(NULL, NULL, 128, SBUF_FIXEDLEN);
-		sbuf_set_drain(sb, sbuf_drain_count, &size);
+		sbuf_set_drain(sb, sbuf_count_drain, &size);
 		sbuf_bcat(sb, &structsize, sizeof(structsize));
 		PHOLD(p);
 		proc_getauxv(curthread, p, sb);
@@ -2540,9 +2541,12 @@ __elfN(parse_notes)(struct image_params *imgp, Elf_Note *checknote,
 	ASSERT_VOP_LOCKED(imgp->vp, "parse_notes");
 	if (pnote->p_offset > PAGE_SIZE ||
 	    pnote->p_filesz > PAGE_SIZE - pnote->p_offset) {
-		VOP_UNLOCK(imgp->vp, 0);
-		buf = malloc(pnote->p_filesz, M_TEMP, M_WAITOK);
-		vn_lock(imgp->vp, LK_EXCLUSIVE | LK_RETRY);
+		buf = malloc(pnote->p_filesz, M_TEMP, M_NOWAIT);
+		if (buf == NULL) {
+			VOP_UNLOCK(imgp->vp, 0);
+			buf = malloc(pnote->p_filesz, M_TEMP, M_WAITOK);
+			vn_lock(imgp->vp, LK_SHARED | LK_RETRY);
+		}
 		error = vn_rdwr(UIO_READ, imgp->vp, buf, pnote->p_filesz,
 		    pnote->p_offset, UIO_SYSSPACE, IO_NODELOCKED,
 		    curthread->td_ucred, NOCRED, NULL, curthread);
@@ -2717,4 +2721,24 @@ __elfN(untrans_prot)(vm_prot_t prot)
 	if (prot & VM_PROT_WRITE)
 		flags |= PF_W;
 	return (flags);
+}
+
+void
+__elfN(stackgap)(struct image_params *imgp, u_long *stack_base)
+{
+	u_long range, rbase, gap;
+	int pct;
+
+	if ((imgp->map_flags & MAP_ASLR) == 0)
+		return;
+	pct = __elfN(aslr_stack_gap);
+	if (pct == 0)
+		return;
+	if (pct > 50)
+		pct = 50;
+	range = imgp->eff_stack_sz * pct / 100;
+	arc4rand(&rbase, sizeof(rbase), 0);
+	gap = rbase % range;
+	gap &= ~(sizeof(u_long) - 1);
+	*stack_base -= gap;
 }

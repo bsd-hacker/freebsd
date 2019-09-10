@@ -488,6 +488,8 @@ tmpfs_destroy_vobject(struct vnode *vp, vm_object_t obj)
 	VI_LOCK(vp);
 	vm_object_clear_flag(obj, OBJ_TMPFS);
 	obj->un_pager.swp.swp_tmpfs = NULL;
+	if (vp->v_writecount < 0)
+		vp->v_writecount = 0;
 	VI_UNLOCK(vp);
 	VM_OBJECT_WUNLOCK(obj);
 }
@@ -1416,7 +1418,6 @@ retry:
 					goto retry;
 				rv = vm_pager_get_pages(uobj, &m, 1, NULL,
 				    NULL);
-				vm_page_lock(m);
 				if (rv == VM_PAGER_OK) {
 					/*
 					 * Since the page was not resident,
@@ -1426,12 +1427,12 @@ retry:
 					 * current operation is not regarded
 					 * as an access.
 					 */
+					vm_page_lock(m);
 					vm_page_launder(m);
 					vm_page_unlock(m);
 					vm_page_xunbusy(m);
 				} else {
 					vm_page_free(m);
-					vm_page_unlock(m);
 					if (ignerr)
 						m = NULL;
 					else {

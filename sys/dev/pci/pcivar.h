@@ -33,7 +33,7 @@
 #define	_PCIVAR_H_
 
 #include <sys/queue.h>
-#include <sys/eventhandler.h>
+#include <sys/_eventhandler.h>
 
 /* some PCI bus constants */
 #define	PCI_MAXMAPS_0	6	/* max. no. of memory/port maps */
@@ -692,14 +692,6 @@ bool	pcie_wait_for_pending_transactions(device_t dev, u_int max_delay);
 int	pcie_link_reset(device_t port, int pcie_location);
 
 void	pci_print_faulted_dev(void);
-
-#ifdef BUS_SPACE_MAXADDR
-#if (BUS_SPACE_MAXADDR > 0xFFFFFFFF)
-#define	PCI_DMA_BOUNDARY	0x100000000
-#else
-#define	PCI_DMA_BOUNDARY	0
-#endif
-#endif
 
 #endif	/* _SYS_BUS_H_ */
 

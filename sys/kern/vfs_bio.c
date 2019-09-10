@@ -57,6 +57,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/devicestat.h>
 #include <sys/eventhandler.h>
 #include <sys/fail.h>
+#include <sys/ktr.h>
 #include <sys/limits.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
@@ -2073,7 +2074,10 @@ breada(struct vnode * vp, daddr_t * rablkno, int * rabsize, int cnt,
     struct ucred * cred, int flags, void (*ckhashfunc)(struct buf *))
 {
 	struct buf *rabp;
+	struct thread *td;
 	int i;
+
+	td = curthread;
 
 	for (i = 0; i < cnt; i++, rablkno++, rabsize++) {
 		if (inmem(vp, *rablkno))
@@ -2083,16 +2087,14 @@ breada(struct vnode * vp, daddr_t * rablkno, int * rabsize, int cnt,
 			brelse(rabp);
 			continue;
 		}
-		if (!TD_IS_IDLETHREAD(curthread)) {
 #ifdef RACCT
-			if (racct_enable) {
-				PROC_LOCK(curproc);
-				racct_add_buf(curproc, rabp, 0);
-				PROC_UNLOCK(curproc);
-			}
-#endif /* RACCT */
-			curthread->td_ru.ru_inblock++;
+		if (racct_enable) {
+			PROC_LOCK(curproc);
+			racct_add_buf(curproc, rabp, 0);
+			PROC_UNLOCK(curproc);
 		}
+#endif /* RACCT */
+		td->td_ru.ru_inblock++;
 		rabp->b_flags |= B_ASYNC;
 		rabp->b_flags &= ~B_INVAL;
 		if ((flags & GB_CKHASH) != 0) {
@@ -2148,16 +2150,14 @@ breadn_flags(struct vnode *vp, daddr_t blkno, int size, daddr_t *rablkno,
 	 */
 	readwait = 0;
 	if ((bp->b_flags & B_CACHE) == 0) {
-		if (!TD_IS_IDLETHREAD(td)) {
 #ifdef RACCT
-			if (racct_enable) {
-				PROC_LOCK(td->td_proc);
-				racct_add_buf(td->td_proc, bp, 0);
-				PROC_UNLOCK(td->td_proc);
-			}
-#endif /* RACCT */
-			td->td_ru.ru_inblock++;
+		if (racct_enable) {
+			PROC_LOCK(td->td_proc);
+			racct_add_buf(td->td_proc, bp, 0);
+			PROC_UNLOCK(td->td_proc);
 		}
+#endif /* RACCT */
+		td->td_ru.ru_inblock++;
 		bp->b_iocmd = BIO_READ;
 		bp->b_flags &= ~B_INVAL;
 		if ((flags & GB_CKHASH) != 0) {
@@ -2225,8 +2225,6 @@ bufwrite(struct buf *bp)
 
 	oldflags = bp->b_flags;
 
-	BUF_ASSERT_HELD(bp);
-
 	KASSERT(!(bp->b_vflags & BV_BKGRDINPROG),
 	    ("FFS background buffer should not get here %p", bp));
 
@@ -2258,16 +2256,14 @@ bufwrite(struct buf *bp)
 	bp->b_runningbufspace = bp->b_bufsize;
 	space = atomic_fetchadd_long(&runningbufspace, bp->b_runningbufspace);
 
-	if (!TD_IS_IDLETHREAD(curthread)) {
 #ifdef RACCT
-		if (racct_enable) {
-			PROC_LOCK(curproc);
-			racct_add_buf(curproc, bp, 1);
-			PROC_UNLOCK(curproc);
-		}
-#endif /* RACCT */
-		curthread->td_ru.ru_oublock++;
+	if (racct_enable) {
+		PROC_LOCK(curproc);
+		racct_add_buf(curproc, bp, 1);
+		PROC_UNLOCK(curproc);
 	}
+#endif /* RACCT */
+	curthread->td_ru.ru_oublock++;
 	if (oldflags & B_ASYNC)
 		BUF_KERNPROC(bp);
 	bp->b_iooffset = dbtob(bp->b_blkno);
@@ -2355,7 +2351,6 @@ bdwrite(struct buf *bp)
 	KASSERT(bp->b_bufobj != NULL, ("No b_bufobj %p", bp));
 	KASSERT((bp->b_flags & B_BARRIER) == 0,
 	    ("Barrier request in delayed write %p", bp));
-	BUF_ASSERT_HELD(bp);
 
 	if (bp->b_flags & B_INVAL) {
 		brelse(bp);
@@ -2447,7 +2442,6 @@ bdirty(struct buf *bp)
 	KASSERT(bp->b_bufobj != NULL, ("No b_bufobj %p", bp));
 	KASSERT(bp->b_flags & B_REMFREE || bp->b_qindex == QUEUE_NONE,
 	    ("bdirty: buffer %p still on queue %d", bp, bp->b_qindex));
-	BUF_ASSERT_HELD(bp);
 	bp->b_flags &= ~(B_RELBUF);
 	bp->b_iocmd = BIO_WRITE;
 
@@ -2477,7 +2471,6 @@ bundirty(struct buf *bp)
 	KASSERT(bp->b_bufobj != NULL, ("No b_bufobj %p", bp));
 	KASSERT(bp->b_flags & B_REMFREE || bp->b_qindex == QUEUE_NONE,
 	    ("bundirty: buffer %p still on queue %d", bp, bp->b_qindex));
-	BUF_ASSERT_HELD(bp);
 
 	if (bp->b_flags & B_DELWRI) {
 		bp->b_flags &= ~B_DELWRI;
@@ -2897,47 +2890,6 @@ vfs_vmio_iodone(struct buf *bp)
 }
 
 /*
- * Unwire a page held by a buf and either free it or update the page queues to
- * reflect its recent use.
- */
-static void
-vfs_vmio_unwire(struct buf *bp, vm_page_t m)
-{
-	bool freed;
-
-	vm_page_lock(m);
-	if (vm_page_unwire_noq(m)) {
-		if ((bp->b_flags & B_DIRECT) != 0)
-			freed = vm_page_try_to_free(m);
-		else
-			freed = false;
-		if (!freed) {
-			/*
-			 * Use a racy check of the valid bits to determine
-			 * whether we can accelerate reclamation of the page.
-			 * The valid bits will be stable unless the page is
-			 * being mapped or is referenced by multiple buffers,
-			 * and in those cases we expect races to be rare.  At
-			 * worst we will either accelerate reclamation of a
-			 * valid page and violate LRU, or unnecessarily defer
-			 * reclamation of an invalid page.
-			 *
-			 * The B_NOREUSE flag marks data that is not expected to
-			 * be reused, so accelerate reclamation in that case
-			 * too.  Otherwise, maintain LRU.
-			 */
-			if (m->valid == 0 || (bp->b_flags & B_NOREUSE) != 0)
-				vm_page_deactivate_noreuse(m);
-			else if (vm_page_active(m))
-				vm_page_reference(m);
-			else
-				vm_page_deactivate(m);
-		}
-	}
-	vm_page_unlock(m);
-}
-
-/*
  * Perform page invalidation when a buffer is released.  The fully invalid
  * pages will be reclaimed later in vfs_vmio_truncate().
  */
@@ -2946,7 +2898,7 @@ vfs_vmio_invalidate(struct buf *bp)
 {
 	vm_object_t obj;
 	vm_page_t m;
-	int i, resid, poffset, presid;
+	int flags, i, resid, poffset, presid;
 
 	if (buf_mapped(bp)) {
 		BUF_CHECK_MAPPED(bp);
@@ -2965,6 +2917,7 @@ vfs_vmio_invalidate(struct buf *bp)
 	 *
 	 * See man buf(9) for more information
 	 */
+	flags = (bp->b_flags & B_NOREUSE) != 0 ? VPR_NOREUSE : 0;
 	obj = bp->b_bufobj->bo_object;
 	resid = bp->b_bufsize;
 	poffset = bp->b_offset & PAGE_MASK;
@@ -2986,7 +2939,7 @@ vfs_vmio_invalidate(struct buf *bp)
 		}
 		if (pmap_page_wired_mappings(m) == 0)
 			vm_page_set_invalid(m, poffset, presid);
-		vfs_vmio_unwire(bp, m);
+		vm_page_release_locked(m, flags);
 		resid -= presid;
 		poffset = 0;
 	}
@@ -3002,7 +2955,7 @@ vfs_vmio_truncate(struct buf *bp, int desiredpages)
 {
 	vm_object_t obj;
 	vm_page_t m;
-	int i;
+	int flags, i;
 
 	if (bp->b_npages == desiredpages)
 		return;
@@ -3017,14 +2970,22 @@ vfs_vmio_truncate(struct buf *bp, int desiredpages)
 	/*
 	 * The object lock is needed only if we will attempt to free pages.
 	 */
-	obj = (bp->b_flags & B_DIRECT) != 0 ? bp->b_bufobj->bo_object : NULL;
-	if (obj != NULL)
+	flags = (bp->b_flags & B_NOREUSE) != 0 ? VPR_NOREUSE : 0;
+	if ((bp->b_flags & B_DIRECT) != 0) {
+		flags |= VPR_TRYFREE;
+		obj = bp->b_bufobj->bo_object;
 		VM_OBJECT_WLOCK(obj);
+	} else {
+		obj = NULL;
+	}
 	for (i = desiredpages; i < bp->b_npages; i++) {
 		m = bp->b_pages[i];
 		KASSERT(m != bogus_page, ("allocbuf: bogus page found"));
 		bp->b_pages[i] = NULL;
-		vfs_vmio_unwire(bp, m);
+		if (obj != NULL)
+			vm_page_release_locked(m, flags);
+		else
+			vm_page_release(m, flags);
 	}
 	if (obj != NULL)
 		VM_OBJECT_WUNLOCK(obj);
@@ -4019,9 +3980,6 @@ loop:
 		 */
 		if (flags & GB_NOCREAT)
 			return (EEXIST);
-		if (bdomain[bo->bo_domain].bd_freebuffers == 0 &&
-		    TD_IS_IDLETHREAD(curthread))
-			return (EBUSY);
 
 		bsize = vn_isdisk(vp, NULL) ? DEV_BSIZE : bo->bo_bsize;
 		KASSERT(bsize != 0, ("bsize == 0, check bo->bo_bsize"));
@@ -4127,7 +4085,6 @@ loop:
 		bp->b_flags &= ~B_DONE;
 	}
 	CTR4(KTR_BUF, "getblk(%p, %ld, %d) = %p", vp, (long)blkno, size, bp);
-	BUF_ASSERT_HELD(bp);
 end:
 	buf_track(bp, __func__);
 	KASSERT(bp->b_bufobj == bo,
@@ -4155,7 +4112,6 @@ geteblk(int size, int flags)
 	allocbuf(bp, size);
 	bufspace_release(bufdomain(bp), maxsize);
 	bp->b_flags |= B_INVAL;	/* b_dep cleared by getnewbuf() */
-	BUF_ASSERT_HELD(bp);
 	return (bp);
 }
 
@@ -4251,8 +4207,6 @@ int
 allocbuf(struct buf *bp, int size)
 {
 	int newbsize;
-
-	BUF_ASSERT_HELD(bp);
 
 	if (bp->b_bcount == size)
 		return (1);
@@ -4424,7 +4378,7 @@ bufwait(struct buf *bp)
  *	read error occurred, or if the op was a write.  B_CACHE is never
  *	set if the buffer is invalid or otherwise uncacheable.
  *
- *	biodone does not mess with B_INVAL, allowing the I/O routine or the
+ *	bufdone does not mess with B_INVAL, allowing the I/O routine or the
  *	initiator to leave B_INVAL set to brelse the buffer out of existence
  *	in the biodone routine.
  */
@@ -4439,7 +4393,6 @@ bufdone(struct buf *bp)
 	dropobj = NULL;
 
 	KASSERT(!(bp->b_flags & B_DONE), ("biodone: bp %p already done", bp));
-	BUF_ASSERT_HELD(bp);
 
 	runningbufwakeup(bp);
 	if (bp->b_iocmd == BIO_WRITE)
@@ -4918,10 +4871,9 @@ vm_hold_free_pages(struct buf *bp, int newbsize)
 	for (index = newnpages; index < bp->b_npages; index++) {
 		p = bp->b_pages[index];
 		bp->b_pages[index] = NULL;
-		p->wire_count--;
+		vm_page_unwire_noq(p);
 		vm_page_free(p);
 	}
-	vm_wire_sub(bp->b_npages - newnpages);
 	bp->b_npages = newnpages;
 }
 

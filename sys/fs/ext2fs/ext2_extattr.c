@@ -39,6 +39,7 @@
 #include <sys/endian.h>
 #include <sys/conf.h>
 #include <sys/extattr.h>
+#include <sys/sdt.h>
 
 #include <fs/ext2fs/fs.h>
 #include <fs/ext2fs/ext2fs.h>
@@ -47,6 +48,14 @@
 #include <fs/ext2fs/ext2_mount.h>
 #include <fs/ext2fs/ext2_extattr.h>
 #include <fs/ext2fs/ext2_extern.h>
+
+SDT_PROVIDER_DECLARE(ext2fs);
+/*
+ * ext2fs trace probe:
+ * arg0: verbosity. Higher numbers give more verbose messages
+ * arg1: Textual message
+ */
+SDT_PROBE_DEFINE2(ext2fs, , trace, extattr, "int", "char*");
 
 static int
 ext2_extattr_attrnamespace_to_bsd(int attrnamespace)
@@ -89,9 +98,8 @@ ext2_extattr_name_to_bsd(int attrnamespace, const char *name, int* name_len)
 	 * XXX: Not all linux namespaces are mapped to bsd for now,
 	 * return NULL, which will be converted to ENOTSUP on upper layer.
 	 */
-#ifdef EXT2FS_DEBUG
-	printf("can not convert ext2fs name to bsd: namespace=%d\n", attrnamespace);
-#endif
+	SDT_PROBE2(ext2fs, , trace, extattr, 1,
+	    "can not convert ext2fs name to bsd namespace");
 
 	return (NULL);
 }
@@ -272,7 +280,6 @@ ext2_extattr_block_list(struct inode *ip, int attrnamespace,
 	error = bread(ip->i_devvp, fsbtodb(fs, ip->i_facl),
 	    fs->e2fs_bsize, NOCRED, &bp);
 	if (error) {
-		brelse(bp);
 		return (error);
 	}
 
@@ -413,7 +420,6 @@ ext2_extattr_block_get(struct inode *ip, int attrnamespace,
 	error = bread(ip->i_devvp, fsbtodb(fs, ip->i_facl),
 	    fs->e2fs_bsize, NOCRED, &bp);
 	if (error) {
-		brelse(bp);
 		return (error);
 	}
 
@@ -673,7 +679,6 @@ ext2_extattr_block_delete(struct inode *ip, int attrnamespace, const char *name)
 	error = bread(ip->i_devvp, fsbtodb(fs, ip->i_facl),
 	    fs->e2fs_bsize, NOCRED, &bp);
 	if (error) {
-		brelse(bp);
 		return (error);
 	}
 
@@ -1066,7 +1071,6 @@ ext2_extattr_block_set(struct inode *ip, int attrnamespace,
 		error = bread(ip->i_devvp, fsbtodb(fs, ip->i_facl),
 		    fs->e2fs_bsize, NOCRED, &bp);
 		if (error) {
-			brelse(bp);
 			return (error);
 		}
 
@@ -1213,7 +1217,6 @@ int ext2_extattr_free(struct inode *ip)
 	error = bread(ip->i_devvp, fsbtodb(fs, ip->i_facl),
 	    fs->e2fs_bsize, NOCRED, &bp);
 	if (error) {
-		brelse(bp);
 		return (error);
 	}
 

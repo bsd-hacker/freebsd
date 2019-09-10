@@ -31,7 +31,7 @@
 
 #include <sys/cdefs.h>
 #include <sys/types.h>
-#include <sys/eventhandler.h>
+#include <sys/_eventhandler.h>
 
 /* Check if OPAL is correctly instantiated. Will try to instantiate it. */
 int opal_check(void);
@@ -53,6 +53,7 @@ int opal_call(uint64_t token, ...);
 #define	OPAL_PCI_CONFIG_WRITE_BYTE	16
 #define	OPAL_PCI_CONFIG_WRITE_HALF_WORD	17
 #define	OPAL_PCI_CONFIG_WRITE_WORD	18
+#define	OPAL_PCI_EEH_FREEZE_STATUS	23
 #define	OPAL_PCI_EEH_FREEZE_CLEAR	26
 #define	OPAL_PCI_PHB_MMIO_ENABLE	27
 #define	OPAL_PCI_SET_PHB_MEM_WINDOW	28

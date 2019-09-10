@@ -37,7 +37,7 @@
         aout
         ..
         clang
-            8.0.0
+            8.0.1
                 include
                     sanitizer
                     ..
@@ -303,8 +303,6 @@
             ..
             netgraph
             ..
-            pc-sysinstall
-            ..
             perfmon
             ..
             pf
@@ -428,9 +426,9 @@
         ..
         keys
             pkg
-                revoked
+                revoked tags=package=runtime
                 ..
-                trusted
+                trusted tags=package=runtime
                 ..
             ..
         ..
@@ -1166,20 +1164,6 @@
                 ..
                 man3
                 ..
-            ..
-        ..
-        pc-sysinstall
-            backend
-            ..
-            backend-partmanager
-            ..
-            backend-query
-            ..
-            conf
-                license
-                ..
-            ..
-            doc
             ..
         ..
         security

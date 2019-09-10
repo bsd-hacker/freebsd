@@ -32,6 +32,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/kernel.h>
 #include <sys/kthread.h>
+#include <sys/lock.h>
 #include <sys/module.h>
 #include <sys/mutex.h>
 #include <sys/proc.h>
@@ -69,6 +70,7 @@ struct opalflash_softc {
 	struct proc		*sc_p;
 	struct bio_queue_head	 sc_bio_queue;
 	int		 	 sc_opal_id;
+	bool			 sc_erase; /* Erase is needed before write. */
 };
 
 #define	OPALFLASH_LOCK(sc)		mtx_lock(&(sc)->sc_mtx)
@@ -238,14 +240,16 @@ opalflash_write(struct opalflash_softc *sc, off_t off,
 	int rv, size, token;
 
 	/* Ensure we write aligned to a full block size. */
-	if (off % sc->sc_disk->d_stripesize != 0 ||
-	    count % sc->sc_disk->d_stripesize != 0)
+	if (off % sc->sc_disk->d_sectorsize != 0 ||
+	    count % sc->sc_disk->d_sectorsize != 0)
 		return (EIO);
 
-	/* Erase the full block first, then write in page chunks. */
-	rv = opalflash_erase(sc, off, count);
-	if (rv != 0)
-		return (rv);
+	if (sc->sc_erase) {
+	    /* Erase the full block first, then write in page chunks. */
+	    rv = opalflash_erase(sc, off, count);
+	    if (rv != 0)
+		    return (rv);
+	}
 
 	token = opal_alloc_async_token();
 
@@ -354,6 +358,9 @@ opalflash_attach(device_t dev)
 		device_printf(dev, "Cannot determine flash block size.\n");
 		return (ENXIO);
 	}
+
+	if (!OF_hasprop(node, "no-erase"))
+		sc->sc_erase = true;
 
 	OPALFLASH_LOCK_INIT(sc);
 

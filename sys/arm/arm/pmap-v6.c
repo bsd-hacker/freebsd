@@ -1986,23 +1986,20 @@ pmap_extract(pmap_t pmap, vm_offset_t va)
 vm_page_t
 pmap_extract_and_hold(pmap_t pmap, vm_offset_t va, vm_prot_t prot)
 {
-	vm_paddr_t pa, lockpa;
+	vm_paddr_t pa;
 	pt1_entry_t pte1;
 	pt2_entry_t pte2, *pte2p;
 	vm_page_t m;
 
-	lockpa = 0;
 	m = NULL;
 	PMAP_LOCK(pmap);
-retry:
 	pte1 = pte1_load(pmap_pte1(pmap, va));
 	if (pte1_is_section(pte1)) {
 		if (!(pte1 & PTE1_RO) || !(prot & VM_PROT_WRITE)) {
 			pa = pte1_pa(pte1) | (va & PTE1_OFFSET);
-			if (vm_page_pa_tryrelock(pmap, pa, &lockpa))
-				goto retry;
 			m = PHYS_TO_VM_PAGE(pa);
-			vm_page_hold(m);
+			if (!vm_page_wire_mapped(m))
+				m = NULL;
 		}
 	} else if (pte1_is_link(pte1)) {
 		pte2p = pmap_pte2(pmap, va);
@@ -2011,13 +2008,11 @@ retry:
 		if (pte2_is_valid(pte2) &&
 		    (!(pte2 & PTE2_RO) || !(prot & VM_PROT_WRITE))) {
 			pa = pte2_pa(pte2);
-			if (vm_page_pa_tryrelock(pmap, pa, &lockpa))
-				goto retry;
 			m = PHYS_TO_VM_PAGE(pa);
-			vm_page_hold(m);
+			if (!vm_page_wire_mapped(m))
+				m = NULL;
 		}
 	}
-	PA_UNLOCK_COND(lockpa);
 	PMAP_UNLOCK(pmap);
 	return (m);
 }
@@ -2973,7 +2968,7 @@ free_pv_chunk(struct pv_chunk *pc)
 	/* entire chunk is free, return it */
 	m = PHYS_TO_VM_PAGE(pmap_kextract((vm_offset_t)pc));
 	pmap_qremove((vm_offset_t)pc, 1);
-	vm_page_unwire(m, PQ_NONE);
+	vm_page_unwire_noq(m);
 	vm_page_free(m);
 	pmap_pte2list_free(&pv_vafree, (vm_offset_t)pc);
 }
@@ -6710,10 +6705,9 @@ pmap_pid_dump(int pid)
 
 					pa = pte2_pa(pte2);
 					m = PHYS_TO_VM_PAGE(pa);
-					printf("va: 0x%x, pa: 0x%x, h: %d, w:"
-					    " %d, f: 0x%x", va, pa,
-					    m->hold_count, m->wire_count,
-					    m->flags);
+					printf("va: 0x%x, pa: 0x%x, w: %d, "
+					    "f: 0x%x", va, pa,
+					    m->wire_count, m->flags);
 					npte2++;
 					index++;
 					if (index >= 2) {
@@ -6823,8 +6817,8 @@ dump_link(pmap_t pmap, uint32_t pte1_idx, boolean_t invalid_ok)
 		printf(" 0x%08X: 0x%08X, TEX%d, s:%d, g:%d, m:%p", va , pte2,
 		    pte2_class(pte2), !!(pte2 & PTE2_S), !(pte2 & PTE2_NG), m);
 		if (m != NULL) {
-			printf(" v:%d h:%d w:%d f:0x%04X\n", m->valid,
-			    m->hold_count, m->wire_count, m->flags);
+			printf(" v:%d w:%d f:0x%04X\n", m->valid,
+			    m->wire_count, m->flags);
 		} else {
 			printf("\n");
 		}
@@ -6933,8 +6927,8 @@ dump_pt2tab(pmap_t pmap)
 		printf(" 0x%08X: 0x%08X, TEX%d, s:%d, m:%p", va, pte2,
 		    pte2_class(pte2), !!(pte2 & PTE2_S), m);
 		if (m != NULL)
-			printf(" , h: %d, w: %d, f: 0x%04X pidx: %lld",
-			    m->hold_count, m->wire_count, m->flags, m->pindex);
+			printf(" , w: %d, f: 0x%04X pidx: %lld",
+			    m->wire_count, m->flags, m->pindex);
 		printf("\n");
 	}
 }

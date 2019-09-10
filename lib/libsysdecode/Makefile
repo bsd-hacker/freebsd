@@ -2,7 +2,6 @@
 
 .include <src.opts.mk>
 
-PACKAGE=lib${LIB}
 LIB=	sysdecode
 
 SRCS=	errno.c flags.c ioctl.c signal.c syscallnames.c utrace.c
@@ -107,7 +106,7 @@ MLINKS+=sysdecode_mask.3 sysdecode_accessmode.3 \
 	sysdecode_mask.3 sysdecode_wait4_options.3 \
 	sysdecode_mask.3 sysdecode_wait6_options.3
 
-CLEANFILES= ioctl.c ioctl.c.tmp tables.h tables.h.tmp
+CLEANFILES= ioctl.c ioctl.c.tmp tables.h
 
 .if defined(COMPAT_32BIT)
 CPP+=	-m32
@@ -124,8 +123,7 @@ CFLAGS.gcc+=	${CFLAGS.gcc.${.IMPSRC}}
 
 DEPENDOBJS+=	tables.h
 tables.h: mktables
-	sh ${.CURDIR}/mktables ${SYSROOT:U${DESTDIR}}${INCLUDEDIR} ${.TARGET}.tmp && \
-	    mv -f ${.TARGET}.tmp ${.TARGET}
+	sh ${.CURDIR}/mktables ${SYSROOT:U${DESTDIR}}${INCLUDEDIR} ${.TARGET}
 
 # mkioctls runs find(1) for headers so needs to rebuild every time.  This used
 # to be a hack only done in buildworld.

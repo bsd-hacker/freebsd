@@ -185,15 +185,20 @@ sdhci_getaddr(void *arg, bus_dma_segment_t *segs, int nsegs, int error)
 static int
 slot_printf(const struct sdhci_slot *slot, const char * fmt, ...)
 {
+	char buf[128];
 	va_list ap;
 	int retval;
 
-	retval = printf("%s-slot%d: ",
-	    device_get_nameunit(slot->bus), slot->num);
-
+	/*
+	 * Make sure we print a single line all together rather than in two
+	 * halves to avoid console gibberish bingo.
+	 */
 	va_start(ap, fmt);
-	retval += vprintf(fmt, ap);
+	retval = vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
+
+	retval += printf("%s-slot%d: %s",
+	    device_get_nameunit(slot->bus), slot->num, buf);
 	return (retval);
 }
 
@@ -476,7 +481,7 @@ sdhci_set_power(struct sdhci_slot *slot, u_char power)
 		DELAY(100);
 	}
 	if (!(RD1(slot, SDHCI_POWER_CONTROL) & SDHCI_POWER_ON))
-		slot_printf(slot, "Bus power failed to enable");
+		slot_printf(slot, "Bus power failed to enable\n");
 
 	if (slot->quirks & SDHCI_QUIRK_INTEL_POWER_UP_RESET) {
 		WR1(slot, SDHCI_POWER_CONTROL, pwr | 0x10);
@@ -496,7 +501,13 @@ sdhci_read_block_pio(struct sdhci_slot *slot)
 	buffer = slot->curcmd->data->data;
 	buffer += slot->offset;
 	/* Transfer one block at a time. */
-	left = min(512, slot->curcmd->data->len - slot->offset);
+#ifdef MMCCAM
+	if (slot->curcmd->data->flags & MMC_DATA_BLOCK_SIZE)
+		left = min(slot->curcmd->data->block_size,
+		    slot->curcmd->data->len - slot->offset);
+	else
+#endif
+		left = min(512, slot->curcmd->data->len - slot->offset);
 	slot->offset += left;
 
 	/* If we are too fast, broken controllers return zeroes. */
@@ -539,7 +550,13 @@ sdhci_write_block_pio(struct sdhci_slot *slot)
 	buffer = slot->curcmd->data->data;
 	buffer += slot->offset;
 	/* Transfer one block at a time. */
-	left = min(512, slot->curcmd->data->len - slot->offset);
+#ifdef MMCCAM
+	if (slot->curcmd->data->flags & MMC_DATA_BLOCK_SIZE) {
+		left = min(slot->curcmd->data->block_size,
+		    slot->curcmd->data->len - slot->offset);
+	} else
+#endif
+		left = min(512, slot->curcmd->data->len - slot->offset);
 	slot->offset += left;
 
 	/* Handle unaligned and aligned buffer cases. */
@@ -1111,7 +1128,7 @@ no_tuning:
 	slot->timeout = 10;
 	SYSCTL_ADD_INT(device_get_sysctl_ctx(slot->bus),
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(slot->bus)), OID_AUTO,
-	    "timeout", CTLFLAG_RW, &slot->timeout, 0,
+	    "timeout", CTLFLAG_RWTUN, &slot->timeout, 0,
 	    "Maximum timeout for SDHCI transfers (in secs)");
 	TASK_INIT(&slot->card_task, 0, sdhci_card_task, slot);
 	TIMEOUT_TASK_INIT(taskqueue_swi_giant, &slot->card_delayed_task, 0,
@@ -1623,9 +1640,9 @@ sdhci_set_transfer_mode(struct sdhci_slot *slot, const struct mmc_data *data)
 		return;
 
 	mode = SDHCI_TRNS_BLK_CNT_EN;
-	if (data->len > 512) {
+	if (data->len > 512 || data->block_count > 1) {
 		mode |= SDHCI_TRNS_MULTI;
-		if (__predict_true(
+		if (data->block_count == 0 && __predict_true(
 #ifdef MMCCAM
 		    slot->ccb->mmcio.stop.opcode == MMC_STOP_TRANSMISSION &&
 #else
@@ -1750,7 +1767,9 @@ sdhci_start_command(struct sdhci_slot *slot, struct mmc_command *cmd)
 	/* Set data transfer mode. */
 	sdhci_set_transfer_mode(slot, cmd->data);
 	if (__predict_false(sdhci_debug > 1))
-		slot_printf(slot, "Starting command!\n");
+		slot_printf(slot, "Starting command opcode %#04x flags %#04x\n",
+		    cmd->opcode, flags);
+
 	/* Start command. */
 	WR2(slot, SDHCI_COMMAND_FLAGS, (cmd->opcode << 8) | (flags & 0xff));
 	/* Start timeout callout. */
@@ -1766,7 +1785,7 @@ sdhci_finish_command(struct sdhci_slot *slot)
 	uint8_t extra;
 
 	if (__predict_false(sdhci_debug > 1))
-		slot_printf(slot, "%s: called, err %d flags %d\n",
+		slot_printf(slot, "%s: called, err %d flags %#04x\n",
 		    __func__, slot->curcmd->error, slot->curcmd->flags);
 	slot->cmd_done = 1;
 	/*
@@ -1807,7 +1826,7 @@ sdhci_finish_command(struct sdhci_slot *slot)
 			slot->curcmd->resp[0] = RD4(slot, SDHCI_RESPONSE);
 	}
 	if (__predict_false(sdhci_debug > 1))
-		printf("Resp: %02x %02x %02x %02x\n",
+		slot_printf(slot, "Resp: %#04x %#04x %#04x %#04x\n",
 		    slot->curcmd->resp[0], slot->curcmd->resp[1],
 		    slot->curcmd->resp[2], slot->curcmd->resp[3]);
 
@@ -1888,11 +1907,23 @@ sdhci_start_data(struct sdhci_slot *slot, const struct mmc_data *data)
 	}
 	/* Current data offset for both PIO and DMA. */
 	slot->offset = 0;
-	/* Set block size and request border interrupts on the SDMA boundary. */
-	blksz = SDHCI_MAKE_BLKSZ(slot->sdma_boundary, ulmin(data->len, 512));
+#ifdef MMCCAM
+	if (data->flags & MMC_DATA_BLOCK_SIZE) {
+		/* Set block size and request border interrupts on the SDMA boundary. */
+		blksz = SDHCI_MAKE_BLKSZ(slot->sdma_boundary, data->block_size);
+		blkcnt = data->block_count;
+		if (__predict_false(sdhci_debug > 0))
+			slot_printf(slot, "SDIO Custom block params: blksz: "
+			    "%#10x, blk cnt: %#10x\n", blksz, blkcnt);
+	} else
+#endif
+	{
+		/* Set block size and request border interrupts on the SDMA boundary. */
+		blksz = SDHCI_MAKE_BLKSZ(slot->sdma_boundary, ulmin(data->len, 512));
+		blkcnt = howmany(data->len, 512);
+	}
+
 	WR2(slot, SDHCI_BLOCK_SIZE, blksz);
-	/* Set block count. */
-	blkcnt = howmany(data->len, 512);
 	WR2(slot, SDHCI_BLOCK_COUNT, blkcnt);
 	if (__predict_false(sdhci_debug > 1))
 		slot_printf(slot, "Blk size: 0x%08x | Blk cnt:  0x%08x\n",
@@ -2487,8 +2518,8 @@ sdhci_start_slot(struct sdhci_slot *slot)
 		goto fail;
 
 	mtx_init(&slot->sim_mtx, "sdhcisim", NULL, MTX_DEF);
-	slot->sim = cam_sim_alloc(sdhci_cam_action, sdhci_cam_poll,
-	    "sdhci_slot", slot, device_get_unit(slot->bus),
+	slot->sim = cam_sim_alloc_dev(sdhci_cam_action, sdhci_cam_poll,
+	    "sdhci_slot", slot, slot->bus,
 	    &slot->sim_mtx, 1, 1, slot->devq);
 
 	if (slot->sim == NULL) {
@@ -2781,10 +2812,13 @@ sdhci_cam_request(struct sdhci_slot *slot, union ccb *ccb)
 	}
 */
 	if (__predict_false(sdhci_debug > 1)) {
-		slot_printf(slot, "CMD%u arg %#x flags %#x dlen %u dflags %#x\n",
-			    mmcio->cmd.opcode, mmcio->cmd.arg, mmcio->cmd.flags,
-			    mmcio->cmd.data != NULL ? (unsigned int) mmcio->cmd.data->len : 0,
-			    mmcio->cmd.data != NULL ? mmcio->cmd.data->flags: 0);
+		slot_printf(slot, "CMD%u arg %#x flags %#x dlen %u dflags %#x "
+		    "blksz=%zu blkcnt=%zu\n",
+		    mmcio->cmd.opcode, mmcio->cmd.arg, mmcio->cmd.flags,
+		    mmcio->cmd.data != NULL ? (unsigned int) mmcio->cmd.data->len : 0,
+		    mmcio->cmd.data != NULL ? mmcio->cmd.data->flags : 0,
+		    mmcio->cmd.data != NULL ? mmcio->cmd.data->block_size : 0,
+		    mmcio->cmd.data != NULL ? mmcio->cmd.data->block_count : 0);
 	}
 	if (mmcio->cmd.data != NULL) {
 		if (mmcio->cmd.data->len == 0 || mmcio->cmd.data->flags == 0)

@@ -8,7 +8,7 @@
 # should be defined in the kern.pre.mk so that port makefiles can
 # override or augment them.
 
-.if defined(DTS) || defined(DTSO)
+.if defined(DTS) || defined(DTSO) || defined(FDT_DTS_FILE)
 .include "dtb.build.mk"
 
 KERNEL_EXTRA+=	${DTB} ${DTBO}
@@ -61,7 +61,7 @@ LOCAL_MODULES_DIR?= ${LOCALBASE}/sys/modules
 
 # Default to installing all modules installed by ports unless overridden
 # by the user.
-.if !defined(LOCAL_MODULES) && exists($LOCAL_MODULES_DIR)
+.if !defined(LOCAL_MODULES) && exists(${LOCAL_MODULES_DIR})
 LOCAL_MODULES!= ls ${LOCAL_MODULES_DIR}
 .endif
 .endif
@@ -77,7 +77,9 @@ modules-${target}:
 	    ${target:S/^reinstall$/install/:S/^clobber$/cleandir/}
 .endif
 .for module in ${LOCAL_MODULES}
-	cd ${LOCAL_MODULES_DIR}/${module}; ${MKMODULESENV} ${MAKE} \
+	@${ECHODIR} "===> ${module} (${target:S/^reinstall$/install/:S/^clobber$/cleandir/})"
+	@cd ${LOCAL_MODULES_DIR}/${module}; ${MKMODULESENV} ${MAKE} \
+	    DIRPRFX="${module}/" \
 	    ${target:S/^reinstall$/install/:S/^clobber$/cleandir/}
 .endfor
 .endif
@@ -357,7 +359,7 @@ _ILINKS+= x86
 # Ensure that debug info references the path in the source tree.
 .for _link in ${_ILINKS}
 .if !exists(${.OBJDIR}/${_link})
-${SRCS} ${CLEAN:M*.o}: ${_link}
+${SRCS} ${DEPENDOBJS}: ${_link}
 .endif
 .if defined(_MAP_DEBUG_PREFIX)
 .if ${_link} == "machine"

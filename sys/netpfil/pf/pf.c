@@ -48,6 +48,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/endian.h>
+#include <sys/gsb_crc32.h>
 #include <sys/hash.h>
 #include <sys/interrupt.h>
 #include <sys/kernel.h>
@@ -5260,7 +5261,7 @@ pf_test_state_other(struct pf_state **state, int direction, struct pfi_kif *kif,
 				    nk->addr[pd->didx].v4.s_addr,
 				    0);
 
-				break;
+			break;
 #endif /* INET */
 #ifdef INET6
 		case AF_INET6:
@@ -6350,9 +6351,8 @@ pf_test6(int dir, int pflags, struct ifnet *ifp, struct mbuf **m0, struct inpcb 
 	m = *m0;	/* pf_normalize messes with m0 */
 	h = mtod(m, struct ip6_hdr *);
 
-#if 1
 	/*
-	 * we do not support jumbogram yet.  if we keep going, zero ip6_plen
+	 * we do not support jumbogram.  if we keep going, zero ip6_plen
 	 * will do something bad, so drop the packet for now.
 	 */
 	if (htons(h->ip6_plen) == 0) {
@@ -6360,7 +6360,6 @@ pf_test6(int dir, int pflags, struct ifnet *ifp, struct mbuf **m0, struct inpcb 
 		REASON_SET(&reason, PFRES_NORM);	/*XXX*/
 		goto done;
 	}
-#endif
 
 	pd.src = (struct pf_addr *)&h->ip6_src;
 	pd.dst = (struct pf_addr *)&h->ip6_dst;

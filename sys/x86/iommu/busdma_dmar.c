@@ -275,7 +275,7 @@ dmar_get_dma_tag(device_t dev, device_t child)
 	struct dmar_ctx *ctx;
 	bus_dma_tag_t res;
 
-	dmar = dmar_find(child);
+	dmar = dmar_find(child, bootverbose);
 	/* Not in scope of any DMAR ? */
 	if (dmar == NULL)
 		return (NULL);
@@ -365,13 +365,18 @@ out:
 	return (error);
 }
 
+static bool
+dmar_bus_dma_id_mapped(bus_dma_tag_t dmat, vm_paddr_t buf, bus_size_t buflen)
+{
+
+	return (false);
+}
+
 static int
 dmar_bus_dmamap_create(bus_dma_tag_t dmat, int flags, bus_dmamap_t *mapp)
 {
 	struct bus_dma_tag_dmar *tag;
 	struct bus_dmamap_dmar *map;
-
-	WITNESS_WARN(WARN_GIANTOK | WARN_SLEEPOK, NULL, "%s", __func__);
 
 	tag = (struct bus_dma_tag_dmar *)dmat;
 	map = malloc_domainset(sizeof(*map), M_DMAR_DMAMAP,
@@ -681,7 +686,7 @@ dmar_bus_dmamap_load_phys(bus_dma_tag_t dmat, bus_dmamap_t map1,
 		return (ENOMEM);
 	fma = NULL;
 	for (i = 0; i < ma_cnt; i++) {
-		paddr = pstart + i * PAGE_SIZE;
+		paddr = pstart + ptoa(i);
 		ma[i] = PHYS_TO_VM_PAGE(paddr);
 		if (ma[i] == NULL || VM_PAGE_TO_PHYS(ma[i]) != paddr) {
 			/*
@@ -691,13 +696,13 @@ dmar_bus_dmamap_load_phys(bus_dma_tag_t dmat, bus_dmamap_t map1,
 			 */
 			if (fma == NULL) {
 				fma = malloc(sizeof(struct vm_page) * ma_cnt,
-				    M_DEVBUF, mflags);
+				    M_DEVBUF, M_ZERO | mflags);
 				if (fma == NULL) {
 					free(ma, M_DEVBUF);
 					return (ENOMEM);
 				}
 			}
-			vm_page_initfake(&fma[i], pstart + i * PAGE_SIZE,
+			vm_page_initfake(&fma[i], pstart + ptoa(i),
 			    VM_MEMATTR_DEFAULT);
 			ma[i] = &fma[i];
 		}
@@ -745,7 +750,7 @@ dmar_bus_dmamap_load_buffer(bus_dma_tag_t dmat, bus_dmamap_t map1, void *buf,
 			 */
 			if (fma == NULL) {
 				fma = malloc(sizeof(struct vm_page) * ma_cnt,
-				    M_DEVBUF, mflags);
+				    M_DEVBUF, M_ZERO | mflags);
 				if (fma == NULL) {
 					free(ma, M_DEVBUF);
 					return (ENOMEM);
@@ -859,6 +864,7 @@ struct bus_dma_impl bus_dma_dmar_impl = {
 	.tag_create = dmar_bus_dma_tag_create,
 	.tag_destroy = dmar_bus_dma_tag_destroy,
 	.tag_set_domain = dmar_bus_dma_tag_set_domain,
+	.id_mapped = dmar_bus_dma_id_mapped,
 	.map_create = dmar_bus_dmamap_create,
 	.map_destroy = dmar_bus_dmamap_destroy,
 	.mem_alloc = dmar_bus_dmamem_alloc,

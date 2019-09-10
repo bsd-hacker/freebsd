@@ -328,6 +328,14 @@ found:
 		NET_EPOCH_EXIT(et);
 		return -1;
 
+	case IFT_INFINIBAND:
+		if (addrlen != 20) {
+			NET_EPOCH_EXIT(et);
+			return -1;
+		}
+		bcopy(addr + 12, &in6->s6_addr[8], 8);
+		break;
+
 	default:
 		NET_EPOCH_EXIT(et);
 		return -1;
@@ -766,9 +774,11 @@ _in6_ifdetach(struct ifnet *ifp, int purgeulp)
 		in6_purgeaddr(ifa);
 	}
 	if (purgeulp) {
+		IN6_MULTI_LOCK();
 		in6_pcbpurgeif0(&V_udbinfo, ifp);
 		in6_pcbpurgeif0(&V_ulitecbinfo, ifp);
 		in6_pcbpurgeif0(&V_ripcbinfo, ifp);
+		IN6_MULTI_UNLOCK();
 	}
 	/* leave from all multicast groups joined */
 	in6_purgemaddrs(ifp);

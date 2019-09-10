@@ -1133,7 +1133,6 @@ IgotPltSection::IgotPltSection()
                        Target->GotPltEntrySize, getIgotPltName()) {}
 
 void IgotPltSection::addEntry(Symbol &Sym) {
-  Sym.IsInIgot = true;
   assert(Sym.PltIndex == Entries.size());
   Entries.push_back(&Sym);
 }
@@ -2003,6 +2002,11 @@ template <class ELFT> void SymbolTableSection<ELFT>::writeTo(uint8_t *Buf) {
       ESym->setVisibility(Sym->Visibility);
     }
 
+    // The 3 most significant bits of st_other are used by OpenPOWER ABI.
+    // See getPPC64GlobalEntryToLocalEntryOffset() for more details.
+    if (Config->EMachine == EM_PPC64)
+      ESym->st_other |= Sym->StOther & 0xe0;
+
     ESym->st_name = Ent.StrTabOffset;
     ESym->st_shndx = getSymSectionIndex(Ent.Sym);
 
@@ -2335,10 +2339,8 @@ void PltSection::writeTo(uint8_t *Buf) {
 template <class ELFT> void PltSection::addEntry(Symbol &Sym) {
   Sym.PltIndex = Entries.size();
   RelocationBaseSection *PltRelocSection = In.RelaPlt;
-  if (IsIplt) {
+  if (IsIplt)
     PltRelocSection = In.RelaIplt;
-    Sym.IsInIplt = true;
-  }
   unsigned RelOff =
       static_cast<RelocationSection<ELFT> *>(PltRelocSection)->getRelocOffset();
   Entries.push_back(std::make_pair(&Sym, RelOff));

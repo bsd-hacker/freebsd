@@ -278,7 +278,7 @@ gref_list_dtor(struct cleanup_data_struct *cleanup_data)
 					continue;
 				gnttab_free_grant_reference(gref->gref_id);
 			}
-			vm_page_unwire(gref->page, PQ_NONE);
+			vm_page_unwire_noq(gref->page);
 			vm_page_free(gref->page);
 			gref->page = NULL;
 		}
@@ -826,14 +826,12 @@ gntdev_gmap_pg_fault(vm_object_t object, vm_ooffset_t offset, int prot,
 
 	KASSERT((page->flags & PG_FICTITIOUS) != 0,
 	    ("not fictitious %p", page));
-	KASSERT(page->wire_count == 1, ("wire_count not 1 %p", page));
-	KASSERT(vm_page_busied(page) == 0, ("page %p is busy", page));
+	KASSERT(vm_page_wired(page), ("page %p is not wired", page));
+	KASSERT(!vm_page_busied(page), ("page %p is busy", page));
 
 	if (*mres != NULL) {
 		oldm = *mres;
-		vm_page_lock(oldm);
 		vm_page_free(oldm);
-		vm_page_unlock(oldm);
 		*mres = NULL;
 	}
 

@@ -2,7 +2,7 @@
 
 # Use the following command to build local debug version of dynamic
 # linker:
-# make DEBUG_FLAGS=-g DEBUG=-DDEBUG WITHOUT_TESTS=yes all
+# make DEBUG_FLAGS=-g WITHOUT_TESTS=yes all
 
 .include <src.opts.mk>
 PACKAGE=	clibs
@@ -63,7 +63,8 @@ CFLAGS+=	-fvisibility=hidden
 CFLAGS.reloc.c+=-fno-jump-tables
 .endif
 LDFLAGS+=	-shared -Wl,-Bsymbolic -Wl,-z,defs
-LIBADD=		c_nossp_pic
+# Pull in the dependencies that we use from libc
+.include "rtld-libc/Makefile.inc"
 .if ${MK_TOOLCHAIN} == "no"
 LDFLAGS+=	-L${LIBCDIR}
 .endif
