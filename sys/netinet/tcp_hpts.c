@@ -1000,10 +1000,10 @@ tcp_hpts_insert_locked(struct tcp_hpts_entry *hpts, struct inpcb *inp, uint32_t 
 			tcp_wakehpts(hpts);
 			if (diag) {
 				diag->need_new_to = 0;
-				diag->co_ret = 0xffff0000;
+				diag->co_ret = (callout_ret_t){};
 			}
 		} else if (need_new_to) {
-			int32_t co_ret;
+			callout_ret_t co_ret;
 			struct timeval tv;
 			sbintime_t sb;
 

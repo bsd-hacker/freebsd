@@ -1909,9 +1909,7 @@ int
 del_timer(struct timer_list *timer)
 {
 
-	if (callout_stop(&(timer)->callout) == -1)
-		return (0);
-	return (1);
+	return (callout_stop(&(timer)->callout).was_cancelled);
 }
 
 static void

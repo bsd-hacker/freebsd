@@ -68,7 +68,7 @@ struct hpts_diag {
 	uint32_t wheel_tick;		/* bbr->bw_inuse x */
 	uint32_t maxticks;		/* bbr->delRate x */
 	uint32_t wheel_cts;		/* bbr->rttProp x */
-	int32_t co_ret; 		/* bbr->pkts_out x */
+	callout_ret_t co_ret; 		/* bbr->pkts_out x */
 	uint32_t p_curtick;		/* upper bbr->cur_del_rate */
 	uint32_t p_lasttick;		/* lower bbr->cur_del_rate */
 	uint8_t p_on_min_sleep; 	/* bbr->flex8 x */
