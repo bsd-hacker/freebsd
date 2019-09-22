@@ -1380,7 +1380,7 @@ retry:
 	}
 
 	/* We failed to find an entry */
-	if (ncp == NULL) {
+	if (__predict_false(ncp == NULL)) {
 		rw_runlock(blp);
 		SDT_PROBE3(vfs, namecache, lookup, miss, dvp, cnp->cn_nameptr,
 		    NULL);
@@ -1388,35 +1388,17 @@ retry:
 		return (0);
 	}
 
+	if (ncp->nc_flag & NCF_NEGATIVE)
+		goto negative_success;
+
 	/* We found a "positive" match, return the vnode */
-	if (!(ncp->nc_flag & NCF_NEGATIVE)) {
-		counter_u64_add(numposhits, 1);
-		*vpp = ncp->nc_vp;
-		CTR4(KTR_VFS, "cache_lookup(%p, %s) found %p via ncp %p",
-		    dvp, cnp->cn_nameptr, *vpp, ncp);
-		SDT_PROBE3(vfs, namecache, lookup, hit, dvp, ncp->nc_name,
-		    *vpp);
-		cache_out_ts(ncp, tsp, ticksp);
-		goto success;
-	}
-
-negative_success:
-	/* We found a negative match, and want to create it, so purge */
-	if (cnp->cn_nameiop == CREATE) {
-		counter_u64_add(numnegzaps, 1);
-		goto zap_and_exit;
-	}
-
-	counter_u64_add(numneghits, 1);
-	cache_negative_hit(ncp);
-	if (ncp->nc_flag & NCF_WHITE)
-		cnp->cn_flags |= ISWHITEOUT;
-	SDT_PROBE2(vfs, namecache, lookup, hit__negative, dvp,
-	    ncp->nc_name);
+	counter_u64_add(numposhits, 1);
+	*vpp = ncp->nc_vp;
+	CTR4(KTR_VFS, "cache_lookup(%p, %s) found %p via ncp %p",
+	    dvp, cnp->cn_nameptr, *vpp, ncp);
+	SDT_PROBE3(vfs, namecache, lookup, hit, dvp, ncp->nc_name,
+	    *vpp);
 	cache_out_ts(ncp, tsp, ticksp);
-	cache_lookup_unlock(blp, dvlp);
-	return (ENOENT);
-
 success:
 	/*
 	 * On success we return a locked and ref'd vnode as per the lookup
@@ -1449,6 +1431,23 @@ success:
 		ASSERT_VOP_ELOCKED(*vpp, "cache_lookup");
 	}
 	return (-1);
+
+negative_success:
+	/* We found a negative match, and want to create it, so purge */
+	if (cnp->cn_nameiop == CREATE) {
+		counter_u64_add(numnegzaps, 1);
+		goto zap_and_exit;
+	}
+
+	counter_u64_add(numneghits, 1);
+	cache_negative_hit(ncp);
+	if (ncp->nc_flag & NCF_WHITE)
+		cnp->cn_flags |= ISWHITEOUT;
+	SDT_PROBE2(vfs, namecache, lookup, hit__negative, dvp,
+	    ncp->nc_name);
+	cache_out_ts(ncp, tsp, ticksp);
+	cache_lookup_unlock(blp, dvlp);
+	return (ENOENT);
 
 zap_and_exit:
 	if (blp != NULL)
@@ -1691,7 +1690,7 @@ cache_enter_time(struct vnode *dvp, struct vnode *vp, struct componentname *cnp,
 	uint32_t hash;
 	int flag;
 	int len;
-	bool neg_locked;
+	bool neg_locked, held_dvp;
 	u_long lnumcache;
 
 	CTR3(KTR_VFS, "cache_enter(%p, %p, %s)", dvp, vp, cnp->cn_nameptr);
@@ -1768,6 +1767,13 @@ cache_enter_time(struct vnode *dvp, struct vnode *vp, struct componentname *cnp,
 			SDT_PROBE3(vfs, namecache, enter, done, dvp, "..", vp);
 			flag = NCF_ISDOTDOT;
 		}
+	}
+
+	held_dvp = false;
+	if (LIST_EMPTY(&dvp->v_cache_src) && flag != NCF_ISDOTDOT) {
+		vhold(dvp);
+		atomic_add_long(&numcachehv, 1);
+		held_dvp = true;
 	}
 
 	/*
@@ -1859,8 +1865,21 @@ cache_enter_time(struct vnode *dvp, struct vnode *vp, struct componentname *cnp,
 
 	if (flag != NCF_ISDOTDOT) {
 		if (LIST_EMPTY(&dvp->v_cache_src)) {
-			vhold(dvp);
-			atomic_add_rel_long(&numcachehv, 1);
+			if (!held_dvp) {
+				vhold(dvp);
+				atomic_add_long(&numcachehv, 1);
+			}
+		} else {
+			if (held_dvp) {
+				/*
+				 * This will not take the interlock as someone
+				 * else already holds the vnode on account of
+				 * the namecache and we hold locks preventing
+				 * this from changing.
+				 */
+				vdrop(dvp);
+				atomic_subtract_long(&numcachehv, 1);
+			}
 		}
 		LIST_INSERT_HEAD(&dvp->v_cache_src, ncp, nc_src);
 	}
@@ -1895,6 +1914,10 @@ cache_enter_time(struct vnode *dvp, struct vnode *vp, struct componentname *cnp,
 out_unlock_free:
 	cache_enter_unlock(&cel);
 	cache_free(ncp);
+	if (held_dvp) {
+		vdrop(dvp);
+		atomic_subtract_long(&numcachehv, 1);
+	}
 	return;
 }
 
