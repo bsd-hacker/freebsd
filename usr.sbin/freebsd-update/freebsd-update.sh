@@ -64,7 +64,7 @@ Commands:
   upgrade      -- Fetch upgrades to FreeBSD version specified via -r option
   install      -- Install downloaded updates or upgrades
   rollback     -- Uninstall most recently installed updates
-  IDS          -- Compare the system against an index of "known good" files.
+  IDS          -- Compare the system against an index of "known good" files
 EOF
 	exit 0
 }
@@ -220,6 +220,14 @@ config_KeepModifiedMetadata () {
 
 # Add to the list of components which should be kept updated.
 config_Components () {
+	for C in $@; do
+		COMPONENTS="${COMPONENTS} ${C}"
+	done
+}
+
+# Remove src component from list if it isn't installed
+finalize_components_config () {
+	COMPONENTS=""
 	for C in $@; do
 		if [ "$C" = "src" ]; then
 			if [ -e "${BASEDIR}/usr/src/COPYRIGHT" ]; then
@@ -3284,6 +3292,7 @@ get_params () {
 	parse_cmdline $@
 	parse_conffile
 	default_params
+	finalize_components_config ${COMPONENTS}
 }
 
 # Fetch command.  Make sure that we're being called
