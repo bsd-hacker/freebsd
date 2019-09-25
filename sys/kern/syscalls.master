@@ -2579,7 +2579,7 @@
 		    int sig
 		);
 	}
-482	AUE_SHMOPEN	STD {
+482	AUE_SHMOPEN	COMPAT12 {
 		int shm_open(
 		    _In_z_ const char *path,
 		    int flags,
@@ -3194,6 +3194,15 @@
 		    _Inout_opt_ size_t *oldlenp,
 		    _In_reads_bytes_opt_(newlen) void *new,
 		    size_t newlen);
+	}
+571	AUE_SHMOPEN	STD {
+		int shm_open2(
+		    _In_z_ const char *path,
+		    int flags,
+		    mode_t mode,
+		    int shmflags,
+		    _In_z_ const char *name
+		);
 	}
 
 ; Please copy any additions and changes to the following compatability tables:

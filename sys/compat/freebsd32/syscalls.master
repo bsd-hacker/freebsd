@@ -910,8 +910,8 @@
 				    uint32_t length1, uint32_t length2); }
 #endif
 481	AUE_THR_KILL2	NOPROTO	{ int thr_kill2(pid_t pid, long id, int sig); }
-482	AUE_SHMOPEN	NOPROTO	{ int shm_open(const char *path, int flags, \
-				    mode_t mode); }
+482	AUE_SHMOPEN	COMPAT12|NOPROTO	{ int shm_open(const char *path,
+				    int flags, mode_t mode); }
 483	AUE_SHMUNLINK	NOPROTO	{ int shm_unlink(const char *path); }
 484	AUE_NULL	NOPROTO	{ int cpuset(cpusetid_t *setid); }
 #ifdef PAD64_REQUIRED
@@ -1154,5 +1154,8 @@
 570	AUE_SYSCTL	STD	{ int freebsd32___sysctlbyname(const char *name, \
 				    size_t namelen, void *old, uint32_t *oldlenp, \
 				    void *new, size_t newlen); }
+571	AUE_SHMOPEN	NOPROTO	{ int shm_open2( \
+				    const char *path, int flags, mode_t mode, \
+				    int shmflags, const char *name); }
 
 ; vim: syntax=off
