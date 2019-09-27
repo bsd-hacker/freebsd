@@ -30,6 +30,7 @@
 
 #include <sys/param.h>
 #include <sys/elf_common.h>
+#include <sys/endian.h>
 #include <sys/stat.h>
 
 #include <err.h>
@@ -56,7 +57,7 @@ static void usage(void);
 
 struct ControlFeatures {
 	const char *alias;
-	unsigned long featureVal;
+	unsigned long value;
 	const char *desc;
 };
 
@@ -65,49 +66,53 @@ static struct ControlFeatures featurelist[] = {
 	{ "protmax",	NT_FREEBSD_FCTL_PROTMAX_DISABLE,"Disable implicit PROT_MAX" },
 };
 
-static struct option controlelf_longopts[] = {
+static struct option long_opts[] = {
 	{ "help",	no_argument,	NULL,	'h' },
 	{ NULL,		0,		NULL,	0 }
 };
 
+#if BYTE_ORDER == LITTLE_ENDIAN
+#define SUPPORTED_ENDIAN ELFDATA2LSB
+#else
+#define SUPPORTED_ENDIAN ELFDATA2MSB
+#endif
+		
 int
 main(int argc, char **argv)
 {
 	GElf_Ehdr ehdr;
 	Elf *elf;
 	Elf_Kind kind;
-	int ch, fd, listed, editfeatures, retval;
+	int ch, fd, editfeatures, retval;
 	char *features;
+	bool lflag;
 
-	listed = 0;
+	lflag = 0;
 	editfeatures = 0;
 	retval = 0;
 
 	if (elf_version(EV_CURRENT) == EV_NONE)
 		errx(EXIT_FAILURE, "elf_version error");
 
-	while ((ch = getopt_long(argc, argv, "hle:", controlelf_longopts,
-	    NULL)) != -1) {
+	while ((ch = getopt_long(argc, argv, "hle:", long_opts, NULL)) != -1) {
 		switch (ch) {
 		case 'l':
 			print_features();
-			listed = 1;
+			lflag = true;
 			break;
 		case 'e':
 			features = optarg;
 			editfeatures = 1;
 			break;
 		case 'h':
-			usage();
-			break;
 		default:
 			usage();
 		}
 	}
 	argc -= optind;
 	argv += optind;
-	if (!argc) {
-		if (listed)
+	if (argc == 0) {
+		if (lflag)
 			exit(0);
 		else {
 			warnx("no file(s) specified");
@@ -142,6 +147,15 @@ main(int argc, char **argv)
 
 		if (gelf_getehdr(elf, &ehdr) == NULL) {
 			warnx("gelf_getehdr: %s", elf_errmsg(-1));
+			retval = 1;
+			goto fail;
+		}
+		/*
+		 * XXX need to support cross-endian operation, but for now
+		 * exit on error rather than misbehaving.
+		 */
+		if (ehdr.e_ident[EI_DATA] != SUPPORTED_ENDIAN) {
+			warnx("file endianness must match host");
 			retval = 1;
 			goto fail;
 		}
@@ -191,30 +205,19 @@ usage(void)
 static bool
 convert_to_feature_val(char *feature_str, u_int32_t *feature_val)
 {
-	char *feature_input, *feature;
+	char *feature;
 	int i, len;
 	u_int32_t input;
-	bool add, set;
+	char operation;
 
-	add = set = false;
 	input = 0;
-
-	if (feature_str[0] == '+')
-		add = true;
-	else if (feature_str[0] == '=')
-		set = true;
-	else if (feature_str[0] != '-') {
-		warnx("'%c' not an operator - use '+', '-', '='",
-		    feature_str[0]);
-		return (false);
-	}
-
-	feature_input = feature_str + 1;
+	operation = *feature_str;
+	feature_str++;
 	len = nitems(featurelist);
-	while ((feature = strsep(&feature_input, ",")) != NULL) {
+	while ((feature = strsep(&feature_str, ",")) != NULL) {
 		for (i = 0; i < len; ++i) {
 			if (strcmp(featurelist[i].alias, feature) == 0) {
-				input |= featurelist[i].featureVal;
+				input |= featurelist[i].value;
 				break;
 			}
 		}
@@ -224,12 +227,16 @@ convert_to_feature_val(char *feature_str, u_int32_t *feature_val)
 		}
 	}
 
-	if (add) {
+	if (operation == '+') {
 		*feature_val |= input;
-	} else if (set) {
+	} else if (operation == '=') {
 		*feature_val = input;
+	} else if (operation == '-') {
+		*feature_val &= ~input;
 	} else {
-		*feature_val -= (*feature_val) & input;
+		warnx("'%c' not an operator - use '+', '-', '='",
+		    feature_str[0]);
+		return (false);
 	}
 	return (true);
 }
@@ -248,8 +255,12 @@ edit_file_features(Elf *elf, int phcount, int fd, char *val)
 	if (!convert_to_feature_val(val, &features))
 		return (false);
 
-	lseek(fd, off, SEEK_SET);
-	write(fd, &features, sizeof(u_int32_t));
+	if (lseek(fd, off, SEEK_SET) == -1 ||
+	    write(fd, &features, sizeof(features)) <
+	    (ssize_t)sizeof(features)) {
+		warnx("error writing feature value");
+		return (false);
+	}
 	return (true);
 }
 
@@ -279,7 +290,7 @@ print_file_features(Elf *elf, int phcount, int fd, char *filename)
 		printf("%s\t\t'%s' is ", featurelist[i].alias,
 		    featurelist[i].desc);
 
-		if ((featurelist[i].featureVal & features) == 0)
+		if ((featurelist[i].value & features) == 0)
 			printf("un");
 
 		printf("set.\n");
