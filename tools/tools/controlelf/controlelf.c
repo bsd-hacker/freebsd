@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-3-Clause
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
  * Copyright (c) 2019 The FreeBSD Foundation.
  *
@@ -10,22 +10,22 @@
  * modification, are permitted provided that the following conditions
  * are met:
  * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer
- *    in this position and unchanged.
+ *    notice, this list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
- * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
- * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
  */
 
 #include <sys/param.h>
@@ -47,11 +47,11 @@
 
 __FBSDID("$FreeBSD$");
 
-static bool convert_to_feature_val(char*, u_int32_t*);
-static bool edit_file_features(Elf *, int, int, char*);
+static bool convert_to_feature_val(char *, u_int32_t *);
+static bool edit_file_features(Elf *, int, int, char *);
 static bool get_file_features(Elf *, int, int, u_int32_t *, u_int64_t *);
 static void print_features(void);
-static bool print_file_features(Elf *, int, int, char*);
+static bool print_file_features(Elf *, int, int, char *);
 static void usage(void);
 
 struct ControlFeatures {
@@ -61,12 +61,12 @@ struct ControlFeatures {
 };
 
 static struct ControlFeatures featurelist[] = {
-	{ "aslr",	NT_FREEBSD_FCTL_ASLR_DISABLE,			"Disable ASLR" }
+	{ "aslr",	NT_FREEBSD_FCTL_ASLR_DISABLE,	"Disable ASLR" },
 };
 
 static struct option controlelf_longopts[] = {
-	{ "help",	no_argument,	NULL,   'h' },
-	{ NULL,		0,		NULL,	0   }
+	{ "help",	no_argument,	NULL,	'h' },
+	{ NULL,		0,		NULL,	0 }
 };
 
 int
@@ -117,8 +117,8 @@ main(int argc, char **argv)
 	while (argc) {
 		elf = NULL;
 
-		if ((fd = open(argv[0], editfeatures ? O_RDWR :
-		    O_RDONLY, 0)) < 0) {
+		if ((fd = open(argv[0],
+		    editfeatures ? O_RDWR : O_RDONLY, 0)) < 0) {
 			warn("error opening file %s", argv[0]);
 			retval = 1;
 			goto fail;
@@ -132,10 +132,9 @@ main(int argc, char **argv)
 
 		if ((kind = elf_kind(elf)) != ELF_K_ELF) {
 			if (kind == ELF_K_AR)
-				warnx("file '%s' is an archive.", argv[0]);
+				warnx("file '%s' is an archive", argv[0]);
 			else
-				warnx("file '%s' is not an ELF file.",
-				    argv[0]);
+				warnx("file '%s' is not an ELF file", argv[0]);
 			retval = 1;
 			goto fail;
 		}
@@ -147,11 +146,13 @@ main(int argc, char **argv)
 		}
 
 		if (!editfeatures) {
-			if (!print_file_features(elf, ehdr.e_phnum, fd, argv[0])) {
+			if (!print_file_features(elf, ehdr.e_phnum, fd,
+			    argv[0])) {
 				retval = 1;
 				goto fail;
 			}
-		} else if (!edit_file_features(elf, ehdr.e_phnum, fd, features)) {
+		} else if (!edit_file_features(elf, ehdr.e_phnum, fd,
+		    features)) {
 			retval = 1;
 			goto fail;
 		}
@@ -169,7 +170,8 @@ fail:
 	return (retval);
 }
 
-#define	USAGE_MESSAGE	"\
+#define USAGE_MESSAGE \
+	"\
 Usage: %s [options] file...\n\
   Set or display the control features for an ELF object.\n\n\
   Supported options are:\n\
@@ -186,7 +188,7 @@ usage(void)
 }
 
 static bool
-convert_to_feature_val(char* feature_str, u_int32_t* feature_val)
+convert_to_feature_val(char *feature_str, u_int32_t *feature_val)
 {
 	char *feature_input, *feature;
 	int i, len;
@@ -201,7 +203,7 @@ convert_to_feature_val(char* feature_str, u_int32_t* feature_val)
 	else if (feature_str[0] == '=')
 		set = true;
 	else if (feature_str[0] != '-') {
-		warnx("'%c' is not an operator. Use instead '+', '-', '='.",
+		warnx("'%c' not an operator - use '+', '-', '='",
 		    feature_str[0]);
 		return (false);
 	}
@@ -216,7 +218,7 @@ convert_to_feature_val(char* feature_str, u_int32_t* feature_val)
 			}
 		}
 		if (i == len) {
-			warnx("%s is not a valid feature.", feature);
+			warnx("%s is not a valid feature", feature);
 			return (false);
 		}
 	}
@@ -238,7 +240,7 @@ edit_file_features(Elf *elf, int phcount, int fd, char *val)
 	u_int64_t off;
 
 	if (!get_file_features(elf, phcount, fd, &features, &off)) {
-		warnx("No control features note on the file.\n");
+		warnx("NT_FREEBSD_FEATURE_CTL note not found");
 		return (false);
 	}
 
@@ -262,7 +264,8 @@ print_features(void)
 }
 
 static bool
-print_file_features(Elf *elf, int phcount, int fd, char *filename) {
+print_file_features(Elf *elf, int phcount, int fd, char *filename)
+{
 	u_int32_t features;
 	unsigned long i;
 
@@ -284,7 +287,8 @@ print_file_features(Elf *elf, int phcount, int fd, char *filename) {
 }
 
 static bool
-get_file_features(Elf *elf, int phcount, int fd, u_int32_t *features, u_int64_t *off)
+get_file_features(Elf *elf, int phcount, int fd, u_int32_t *features,
+    u_int64_t *off)
 {
 	GElf_Phdr phdr;
 	Elf_Note note;
@@ -327,7 +331,7 @@ get_file_features(Elf *elf, int phcount, int fd, u_int32_t *features, u_int64_t 
 			namesz = roundup2(note.n_namesz, 4);
 			name = malloc(namesz);
 			if (name == NULL) {
-				warn("malloc() failed.\n");
+				warn("malloc() failed.");
 				return (false);
 			}
 			descsz = roundup2(note.n_descsz, 4);
@@ -339,7 +343,7 @@ get_file_features(Elf *elf, int phcount, int fd, u_int32_t *features, u_int64_t 
 			    note.n_type != NT_FREEBSD_FEATURE_CTL) {
 				/* Not the right note. Skip the description */
 				if (lseek(fd, descsz, SEEK_CUR) < 0) {
-					warn("lseek() failed.\n");
+					warn("lseek() failed.");
 					free(name);
 					return (false);
 				}
@@ -360,7 +364,7 @@ get_file_features(Elf *elf, int phcount, int fd, u_int32_t *features, u_int64_t 
 			 * 	descriptor. This should respect descsz.
 			 */
 			if (note.n_descsz > sizeof(u_int32_t))
-				warnx("Feature note is bigger than expected.");
+				warnx("Feature note is bigger than expected");
 			read(fd, features, sizeof(u_int32_t));
 			if (off != NULL)
 				*off = phdr.p_offset + read_total;
@@ -369,6 +373,6 @@ get_file_features(Elf *elf, int phcount, int fd, u_int32_t *features, u_int64_t 
 		}
 	}
 
-	warnx("Couldn't find a note header with control feature note.");
+	warnx("NT_FREEBSD_FEATURE_CTL note not found");
 	return (false);
 }
