@@ -32,8 +32,10 @@
 #include <rdma/ib_verbs.h>
 #include <dev/mlx5/mlx5_ifc.h>
 
-#define FW_INIT_TIMEOUT_MILI 2000
-#define FW_INIT_WAIT_MS 2
+#define	FW_INIT_TIMEOUT_MILI		2000
+#define	FW_INIT_WAIT_MS			2
+#define	FW_PRE_INIT_TIMEOUT_MILI	120000
+#define	FW_INIT_WARN_MESSAGE_INTERVAL	20000
 
 #if defined(__LITTLE_ENDIAN)
 #define MLX5_SET_HOST_ENDIANNESS	0
@@ -1052,6 +1054,9 @@ enum mlx5_mcam_feature_groups {
 
 #define MLX5_CAP_PCAM_FEATURE(mdev, fld) \
 	MLX5_GET(pcam_reg, (mdev)->caps.pcam, feature_cap_mask.enhanced_features.fld)
+
+#define	MLX5_CAP_PCAM_REG(mdev, reg) \
+	MLX5_GET(pcam_reg, (mdev)->caps.pcam, port_access_reg_cap_mask.regs_5000_to_507f.reg)
 
 #define MLX5_CAP_MCAM_FEATURE(mdev, fld) \
 	MLX5_GET(mcam_reg, (mdev)->caps.mcam, mng_feature_cap_mask.enhanced_features.fld)
