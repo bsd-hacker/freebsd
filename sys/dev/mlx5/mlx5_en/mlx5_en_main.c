@@ -1914,12 +1914,14 @@ mlx5e_create_cq(struct mlx5e_priv *priv,
 	param->wq.buf_numa_node = 0;
 	param->wq.db_numa_node = 0;
 
+	err = mlx5_vector2eqn(mdev, eq_ix, &eqn_not_used, &irqn);
+	if (err)
+		return (err);
+
 	err = mlx5_cqwq_create(mdev, &param->wq, param->cqc, &cq->wq,
 	    &cq->wq_ctrl);
 	if (err)
 		return (err);
-
-	mlx5_vector2eqn(mdev, eq_ix, &eqn_not_used, &irqn);
 
 	mcq->cqe_sz = 64;
 	mcq->set_ci_db = cq->wq_ctrl.db.db;
@@ -3387,8 +3389,7 @@ out:
 		}
 		/* Check if module is present before doing an access */
 		module_status = mlx5_query_module_status(priv->mdev, module_num);
-		if (module_status != MLX5_MODULE_STATUS_PLUGGED_ENABLED &&
-		    module_status != MLX5_MODULE_STATUS_PLUGGED_DISABLED) {
+		if (module_status != MLX5_MODULE_STATUS_PLUGGED_ENABLED) {
 			error = EINVAL;
 			goto err_i2c;
 		}

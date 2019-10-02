@@ -38,6 +38,7 @@
 #include <dev/mlx5/cq.h>
 #include <dev/mlx5/qp.h>
 #include <dev/mlx5/srq.h>
+#include <dev/mlx5/mpfs.h>
 #include <linux/delay.h>
 #include <dev/mlx5/mlx5_ifc.h>
 #include <dev/mlx5/mlx5_fpga/core.h>
@@ -275,13 +276,14 @@ static int mlx5_enable_msix(struct mlx5_core_dev *dev)
 	else
 		nvec += MLX5_CAP_GEN(dev, num_ports) * num_online_cpus();
 
-	nvec = min_t(int, nvec, num_eqs);
+	if (nvec > num_eqs)
+		nvec = num_eqs;
+	if (nvec > 256)
+		nvec = 256;	/* limit of firmware API */
 	if (nvec <= MLX5_EQ_VEC_COMP_BASE)
 		return -ENOMEM;
 
 	priv->msix_arr = kzalloc(nvec * sizeof(*priv->msix_arr), GFP_KERNEL);
-
-	priv->irq_info = kzalloc(nvec * sizeof(*priv->irq_info), GFP_KERNEL);
 
 	for (i = 0; i < nvec; i++)
 		priv->msix_arr[i].entry = i;
@@ -292,9 +294,7 @@ static int mlx5_enable_msix(struct mlx5_core_dev *dev)
 		return nvec;
 
 	table->num_comp_vectors = nvec - MLX5_EQ_VEC_COMP_BASE;
-
 	return 0;
-
 }
 
 static void mlx5_disable_msix(struct mlx5_core_dev *dev)
@@ -302,7 +302,6 @@ static void mlx5_disable_msix(struct mlx5_core_dev *dev)
 	struct mlx5_priv *priv = &dev->priv;
 
 	pci_disable_msix(dev->pdev);
-	kfree(priv->irq_info);
 	kfree(priv->msix_arr);
 }
 
@@ -600,30 +599,6 @@ int mlx5_vector2eqn(struct mlx5_core_dev *dev, int vector, int *eqn, int *irqn)
 }
 EXPORT_SYMBOL(mlx5_vector2eqn);
 
-int mlx5_rename_eq(struct mlx5_core_dev *dev, int eq_ix, char *name)
-{
-	struct mlx5_priv *priv = &dev->priv;
-	struct mlx5_eq_table *table = &priv->eq_table;
-	struct mlx5_eq *eq;
-	int err = -ENOENT;
-
-	spin_lock(&table->lock);
-	list_for_each_entry(eq, &table->comp_eqs_list, list) {
-		if (eq->index == eq_ix) {
-			int irq_ix = eq_ix + MLX5_EQ_VEC_COMP_BASE;
-
-			snprintf(priv->irq_info[irq_ix].name, MLX5_MAX_IRQ_NAME,
-				 "%s-%d", name, eq_ix);
-
-			err = 0;
-			break;
-		}
-	}
-	spin_unlock(&table->lock);
-
-	return err;
-}
-
 static void free_comp_eqs(struct mlx5_core_dev *dev)
 {
 	struct mlx5_eq_table *table = &dev->priv.eq_table;
@@ -645,7 +620,6 @@ static void free_comp_eqs(struct mlx5_core_dev *dev)
 static int alloc_comp_eqs(struct mlx5_core_dev *dev)
 {
 	struct mlx5_eq_table *table = &dev->priv.eq_table;
-	char name[MLX5_MAX_IRQ_NAME];
 	struct mlx5_eq *eq;
 	int ncomp_vec;
 	int nent;
@@ -658,10 +632,9 @@ static int alloc_comp_eqs(struct mlx5_core_dev *dev)
 	for (i = 0; i < ncomp_vec; i++) {
 		eq = kzalloc(sizeof(*eq), GFP_KERNEL);
 
-		snprintf(name, MLX5_MAX_IRQ_NAME, "mlx5_comp%d", i);
 		err = mlx5_create_map_eq(dev, eq,
 					 i + MLX5_EQ_VEC_COMP_BASE, nent, 0,
-					 name, &dev->priv.uuari.uars[0]);
+					 &dev->priv.uuari.uars[0]);
 		if (err) {
 			kfree(eq);
 			goto clean;
@@ -1127,16 +1100,22 @@ static int mlx5_load_one(struct mlx5_core_dev *dev, struct mlx5_priv *priv,
 		goto err_free_comp_eqs;
 	}
 
+	err = mlx5_mpfs_init(dev);
+	if (err) {
+		mlx5_core_err(dev, "mpfs init failed %d\n", err);
+		goto err_fs;
+	}
+
 	err = mlx5_fpga_device_start(dev);
 	if (err) {
 		dev_err(&pdev->dev, "fpga device start failed %d\n", err);
-		goto err_fpga_start;
+		goto err_mpfs;
 	}
 
 	err = mlx5_register_device(dev);
 	if (err) {
 		dev_err(&pdev->dev, "mlx5_register_device failed %d\n", err);
-		goto err_fs;
+		goto err_fpga;
 	}
 
 	set_bit(MLX5_INTERFACE_STATE_UP, &dev->intf_state);
@@ -1145,7 +1124,12 @@ out:
 	mutex_unlock(&dev->intf_state_mutex);
 	return 0;
 
-err_fpga_start:
+err_fpga:
+	mlx5_fpga_device_stop(dev);
+
+err_mpfs:
+	mlx5_mpfs_destroy(dev);
+
 err_fs:
 	mlx5_cleanup_fs(dev);
 
@@ -1211,6 +1195,7 @@ static int mlx5_unload_one(struct mlx5_core_dev *dev, struct mlx5_priv *priv,
 	mlx5_unregister_device(dev);
 
 	mlx5_fpga_device_stop(dev);
+	mlx5_mpfs_destroy(dev);
 	mlx5_cleanup_fs(dev);
 	unmap_bf_area(dev);
 	mlx5_wait_for_reclaim_vfs_pages(dev);
@@ -1259,13 +1244,31 @@ struct mlx5_core_event_handler {
 		      void *data);
 };
 
+#define	MLX5_STATS_DESC(a, b, c, d, e, ...) d, e,
+
+#define	MLX5_PORT_MODULE_ERROR_STATS(m)				\
+m(+1, u64, power_budget_exceeded, "power_budget", "Module Power Budget Exceeded") \
+m(+1, u64, long_range, "long_range", "Module Long Range for non MLNX cable/module") \
+m(+1, u64, bus_stuck, "bus_stuck", "Module Bus stuck(I2C or data shorted)") \
+m(+1, u64, no_eeprom, "no_eeprom", "No EEPROM/retry timeout") \
+m(+1, u64, enforce_part_number, "enforce_part_number", "Module Enforce part number list") \
+m(+1, u64, unknown_id, "unknown_id", "Module Unknown identifier") \
+m(+1, u64, high_temp, "high_temp", "Module High Temperature") \
+m(+1, u64, cable_shorted, "cable_shorted", "Module Cable is shorted")
+
+static const char *mlx5_pme_err_desc[] = {
+	MLX5_PORT_MODULE_ERROR_STATS(MLX5_STATS_DESC)
+};
+
 static int init_one(struct pci_dev *pdev,
 		    const struct pci_device_id *id)
 {
 	struct mlx5_core_dev *dev;
 	struct mlx5_priv *priv;
 	device_t bsddev = pdev->dev.bsddev;
-	int err;
+	int i,err;
+	struct sysctl_oid *pme_sysctl_node;
+	struct sysctl_oid *pme_err_sysctl_node;
 
 	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
 	priv = &dev->priv;
@@ -1296,6 +1299,41 @@ static int init_one(struct pci_dev *pdev,
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(bsddev)),
 	    OID_AUTO, "power_value", CTLFLAG_RD, &dev->pwr_value, 0,
 	    "Current power value in Watts");
+
+	pme_sysctl_node = SYSCTL_ADD_NODE(&dev->sysctl_ctx,
+	    SYSCTL_CHILDREN(device_get_sysctl_tree(bsddev)),
+	    OID_AUTO, "pme_stats", CTLFLAG_RD, NULL,
+	    "Port module event statistics");
+	if (pme_sysctl_node == NULL) {
+		err = -ENOMEM;
+		goto clean_sysctl_ctx;
+	}
+	pme_err_sysctl_node = SYSCTL_ADD_NODE(&dev->sysctl_ctx,
+	    SYSCTL_CHILDREN(pme_sysctl_node),
+	    OID_AUTO, "errors", CTLFLAG_RD, NULL,
+	    "Port module event error statistics");
+	if (pme_err_sysctl_node == NULL) {
+		err = -ENOMEM;
+		goto clean_sysctl_ctx;
+	}
+	SYSCTL_ADD_U64(&dev->sysctl_ctx,
+	    SYSCTL_CHILDREN(pme_sysctl_node), OID_AUTO,
+	    "module_plug", CTLFLAG_RD | CTLFLAG_MPSAFE,
+	    &dev->priv.pme_stats.status_counters[MLX5_MODULE_STATUS_PLUGGED_ENABLED],
+	    0, "Number of time module plugged");
+	SYSCTL_ADD_U64(&dev->sysctl_ctx,
+	    SYSCTL_CHILDREN(pme_sysctl_node), OID_AUTO,
+	    "module_unplug", CTLFLAG_RD | CTLFLAG_MPSAFE,
+	    &dev->priv.pme_stats.status_counters[MLX5_MODULE_STATUS_UNPLUGGED],
+	    0, "Number of time module unplugged");
+	for (i = 0 ; i < MLX5_MODULE_EVENT_ERROR_NUM; i++) {
+		SYSCTL_ADD_U64(&dev->sysctl_ctx,
+		    SYSCTL_CHILDREN(pme_err_sysctl_node), OID_AUTO,
+		    mlx5_pme_err_desc[2 * i], CTLFLAG_RD | CTLFLAG_MPSAFE,
+		    &dev->priv.pme_stats.error_counters[i],
+		    0, mlx5_pme_err_desc[2 * i + 1]);
+	}
+
 
 	INIT_LIST_HEAD(&priv->ctx_list);
 	spin_lock_init(&priv->ctx_lock);
@@ -1335,8 +1373,9 @@ clean_health:
 close_pci:
 	mlx5_pci_close(dev, priv);
 clean_dev:
-	sysctl_ctx_free(&dev->sysctl_ctx);
 	mtx_destroy(&dev->dump_lock);
+clean_sysctl_ctx:
+	sysctl_ctx_free(&dev->sysctl_ctx);
 	kfree(dev);
 	return err;
 }
