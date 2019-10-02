@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018, Mellanox Technologies, Ltd.  All rights reserved.
+ * Copyright (c) 2018, 2019 Mellanox Technologies, Ltd.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,10 +35,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/mlx5/mlx5_core/mlx5_core.h>
 #include <dev/mlx5/mlx5io.h>
 
-extern const struct mlx5_crspace_regmap mlx5_crspace_regmap_mt4117[];
-extern const struct mlx5_crspace_regmap mlx5_crspace_regmap_mt4115[];
-extern const struct mlx5_crspace_regmap mlx5_crspace_regmap_connectx5[];
-
 static MALLOC_DEFINE(M_MLX5_DUMP, "MLX5DUMP", "MLX5 Firmware dump");
 
 static unsigned
@@ -64,35 +60,90 @@ mlx5_fwdump_destroy_dd(struct mlx5_core_dev *mdev)
 void
 mlx5_fwdump_prep(struct mlx5_core_dev *mdev)
 {
-	int error;
+	device_t dev;
+	int error, vsc_addr;
+	unsigned i, sz;
+	u32 addr, in, out, next_addr;
 
 	mdev->dump_data = NULL;
 	error = mlx5_vsc_find_cap(mdev);
 	if (error != 0) {
 		/* Inability to create a firmware dump is not fatal. */
-		device_printf((&mdev->pdev->dev)->bsddev, "WARN: "
+		mlx5_core_warn(mdev,
 		    "mlx5_fwdump_prep failed %d\n", error);
 		return;
 	}
-	switch (pci_get_device(mdev->pdev->dev.bsddev)) {
-	case 0x1013:
-		mdev->dump_rege = mlx5_crspace_regmap_mt4115;
-		break;
-	case 0x1015:
-		mdev->dump_rege = mlx5_crspace_regmap_mt4117;
-		break;
-	case 0x1017:
-	case 0x1019:
-		mdev->dump_rege = mlx5_crspace_regmap_connectx5;
-		break;
-	default:
-		return; /* silently fail, do not prevent driver attach */
+	error = mlx5_vsc_lock(mdev);
+	if (error != 0)
+		return;
+	error = mlx5_vsc_set_space(mdev, MLX5_VSC_DOMAIN_SCAN_CRSPACE);
+	if (error != 0) {
+		mlx5_core_warn(mdev, "VSC scan space is not supported\n");
+		goto unlock_vsc;
 	}
+	dev = mdev->pdev->dev.bsddev;
+	vsc_addr = mdev->vsc_addr;
+	if (vsc_addr == 0) {
+		mlx5_core_warn(mdev, "Cannot read vsc, no address\n");
+		goto unlock_vsc;
+	}
+
+	in = 0;
+	for (sz = 1, addr = 0;;) {
+		MLX5_VSC_SET(vsc_addr, &in, address, addr);
+		pci_write_config(dev, vsc_addr + MLX5_VSC_ADDR_OFFSET, in, 4);
+		error = mlx5_vsc_wait_on_flag(mdev, 1);
+		if (error != 0) {
+			mlx5_core_warn(mdev,
+		    "Failed waiting for read complete flag, error %d\n", error);
+			goto unlock_vsc;
+		}
+		pci_read_config(dev, vsc_addr + MLX5_VSC_DATA_OFFSET, 4);
+		out = pci_read_config(dev, vsc_addr + MLX5_VSC_ADDR_OFFSET, 4);
+		next_addr = MLX5_VSC_GET(vsc_addr, &out, address);
+		if (next_addr == 0 || next_addr == addr)
+			break;
+		if (next_addr != addr + 4)
+			sz++;
+		addr = next_addr;
+	}
+	mdev->dump_rege = malloc(sz * sizeof(struct mlx5_crspace_regmap),
+	    M_MLX5_DUMP, M_WAITOK | M_ZERO);
+
+	for (i = 0, addr = 0;;) {
+		MPASS(i < sz);
+		mdev->dump_rege[i].cnt++;
+		MLX5_VSC_SET(vsc_addr, &in, address, addr);
+		pci_write_config(dev, vsc_addr + MLX5_VSC_ADDR_OFFSET, in, 4);
+		error = mlx5_vsc_wait_on_flag(mdev, 1);
+		if (error != 0) {
+			mlx5_core_warn(mdev,
+		    "Failed waiting for read complete flag, error %d\n", error);
+			free(mdev->dump_rege, M_MLX5_DUMP);
+			mdev->dump_rege = NULL;
+			goto unlock_vsc;
+		}
+		pci_read_config(dev, vsc_addr + MLX5_VSC_DATA_OFFSET, 4);
+		out = pci_read_config(dev, vsc_addr + MLX5_VSC_ADDR_OFFSET, 4);
+		next_addr = MLX5_VSC_GET(vsc_addr, &out, address);
+		if (next_addr == 0 || next_addr == addr)
+			break;
+		if (next_addr != addr + 4)
+			mdev->dump_rege[++i].addr = next_addr;
+		addr = next_addr;
+	}
+	KASSERT(i + 1 == sz,
+	    ("inconsistent hw crspace reads: sz %u i %u addr %#lx",
+	    sz, i, (unsigned long)addr));
+
 	mdev->dump_size = mlx5_fwdump_getsize(mdev->dump_rege);
 	mdev->dump_data = malloc(mdev->dump_size * sizeof(uint32_t),
 	    M_MLX5_DUMP, M_WAITOK | M_ZERO);
 	mdev->dump_valid = false;
 	mdev->dump_copyout = false;
+
+unlock_vsc:
+	mlx5_vsc_unlock(mdev);
 }
 
 void
@@ -102,13 +153,13 @@ mlx5_fwdump(struct mlx5_core_dev *mdev)
 	uint32_t i, ri;
 	int error;
 
-	dev_info(&mdev->pdev->dev, "Issuing FW dump\n");
+	mlx5_core_info(mdev, "Issuing FW dump\n");
 	mtx_lock(&mdev->dump_lock);
 	if (mdev->dump_data == NULL)
 		goto failed;
 	if (mdev->dump_valid) {
 		/* only one dump */
-		dev_warn(&mdev->pdev->dev,
+		mlx5_core_warn(mdev,
 		    "Only one FW dump can be captured aborting FW dump\n");
 		goto failed;
 	}
@@ -145,6 +196,7 @@ mlx5_fwdump_clean(struct mlx5_core_dev *mdev)
 		msleep(&mdev->dump_copyout, &mdev->dump_lock, 0, "mlx5fwc", 0);
 	mlx5_fwdump_destroy_dd(mdev);
 	mtx_unlock(&mdev->dump_lock);
+	free(mdev->dump_rege, M_MLX5_DUMP);
 }
 
 static int
