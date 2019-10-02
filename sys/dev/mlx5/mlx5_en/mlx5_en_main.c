@@ -32,9 +32,9 @@
 #include <machine/atomic.h>
 
 #ifndef ETH_DRIVER_VERSION
-#define	ETH_DRIVER_VERSION	"3.5.1"
+#define	ETH_DRIVER_VERSION	"3.5.2"
 #endif
-#define DRIVER_RELDATE	"April 2019"
+#define DRIVER_RELDATE	"September 2019"
 
 static const char mlx5e_version[] = "mlx5en: Mellanox Ethernet driver "
 	ETH_DRIVER_VERSION " (" DRIVER_RELDATE ")\n";
@@ -3903,7 +3903,7 @@ mlx5e_sysctl_rx_priority_flow_control(SYSCTL_HANDLER_ARGS)
 	/* check if update is required */
 	if (rx_pfc != priv->params.rx_priority_flow_control) {
 		err = -mlx5e_set_port_pfc(priv);
-		if (err == 0)
+		if (err == 0 && priv->sw_is_port_buf_owner)
 			err = mlx5e_update_buf_lossy(priv);
 	}
 done:
