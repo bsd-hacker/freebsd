@@ -3689,13 +3689,14 @@ if_delmulti_ifma_flags(struct ifmultiaddr *ifma, int flags)
 	if (ifp == NULL) {
 		printf("%s: ifma_ifp seems to be detached\n", __func__);
 	} else {
+		struct epoch_tracker et;
 		struct ifnet *oifp;
 
-		NET_EPOCH_ASSERT();
-
+		NET_EPOCH_ENTER(et);
 		CK_STAILQ_FOREACH(oifp, &V_ifnet, if_link)
 			if (ifp == oifp)
 				break;
+		NET_EPOCH_EXIT(et);
 		if (ifp != oifp)
 			ifp = NULL;
 	}
@@ -3821,26 +3822,18 @@ if_setlladdr(struct ifnet *ifp, const u_char *lladdr, int len)
 	struct sockaddr_dl *sdl;
 	struct ifaddr *ifa;
 	struct ifreq ifr;
-	int rc;
 
-	NET_EPOCH_ASSERT();
-
-	rc = 0;
 	ifa = ifp->if_addr;
-	if (ifa == NULL) {
-		rc = EINVAL;
-		goto out;
-	}
+	if (ifa == NULL)
+		return (EINVAL);
 
 	sdl = (struct sockaddr_dl *)ifa->ifa_addr;
-	if (sdl == NULL) {
-		rc = EINVAL;
-		goto out;
-	}
-	if (len != sdl->sdl_alen) {	/* don't allow length to change */
-		rc = EINVAL;
-		goto out;
-	}
+	if (sdl == NULL)
+		return (EINVAL);
+
+	if (len != sdl->sdl_alen)	/* don't allow length to change */
+		return (EINVAL);
+
 	switch (ifp->if_type) {
 	case IFT_ETHER:
 	case IFT_XETHER:
@@ -3850,8 +3843,7 @@ if_setlladdr(struct ifnet *ifp, const u_char *lladdr, int len)
 		bcopy(lladdr, LLADDR(sdl), len);
 		break;
 	default:
-		rc = ENODEV;
-		goto out;
+		return (ENODEV);
 	}
 
 	/*
@@ -3872,9 +3864,8 @@ if_setlladdr(struct ifnet *ifp, const u_char *lladdr, int len)
 		}
 	}
 	EVENTHANDLER_INVOKE(iflladdr_event, ifp);
+
 	return (0);
-out:
-	return (rc);
 }
 
 /*
