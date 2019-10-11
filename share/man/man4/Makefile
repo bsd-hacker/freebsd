@@ -504,6 +504,7 @@ MAN=	aac.4 \
 	ste.4 \
 	stf.4 \
 	stge.4 \
+	${_superio.4} \
 	sym.4 \
 	syncache.4 \
 	syncer.4 \
@@ -804,22 +805,23 @@ _ntb_transport.4=ntb_transport.4
 _nvd.4=		nvd.4
 _nvme.4=	nvme.4
 _nvram.4=	nvram.4
+_padlock.4=	padlock.4
+_rr232x.4=	rr232x.4
+_speaker.4=	speaker.4
+_spkr.4=	spkr.4
+_superio.4=	superio.4
+_tpm.4=		tpm.4
+_urtw.4=	urtw.4
+_viawd.4=	viawd.4
 _virtio.4=	virtio.4
 _virtio_balloon.4=virtio_balloon.4
 _virtio_blk.4=	virtio_blk.4
 _virtio_console.4=virtio_console.4
 _virtio_random.4= virtio_random.4
 _virtio_scsi.4= virtio_scsi.4
+_vmci.4=	vmci.4
 _vmx.4=		vmx.4
 _vtnet.4=	vtnet.4
-_padlock.4=	padlock.4
-_rr232x.4=	rr232x.4
-_speaker.4=	speaker.4
-_spkr.4=	spkr.4
-_tpm.4=		tpm.4
-_urtw.4=	urtw.4
-_viawd.4=	viawd.4
-_vmci.4=	vmci.4
 _wbwd.4=	wbwd.4
 _wpi.4=		wpi.4
 _xen.4=		xen.4
