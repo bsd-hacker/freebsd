@@ -42,6 +42,7 @@ arm/allwinner/aw_spi.c		optional	aw_spi fdt
 arm/allwinner/aw_syscon.c	optional	aw_syscon ext_resources syscon fdt
 arm/allwinner/aw_thermal.c	optional	aw_thermal nvmem fdt
 arm/allwinner/aw_usbphy.c	optional	ehci aw_usbphy fdt
+arm/allwinner/aw_usb3phy.c	optional	xhci aw_usbphy fdt
 arm/allwinner/aw_wdog.c		optional	aw_wdog fdt
 arm/allwinner/axp81x.c		optional	axp81x fdt
 arm/allwinner/if_awg.c		optional	awg ext_resources syscon aw_sid nvmem fdt
@@ -53,9 +54,13 @@ arm/allwinner/clkng/aw_clk_m.c		optional	aw_ccu fdt
 arm/allwinner/clkng/aw_clk_mipi.c	optional	aw_ccu fdt
 arm/allwinner/clkng/aw_clk_nkmp.c	optional	aw_ccu fdt
 arm/allwinner/clkng/aw_clk_nm.c		optional	aw_ccu fdt
+arm/allwinner/clkng/aw_clk_nmm.c	optional	aw_ccu fdt
+arm/allwinner/clkng/aw_clk_np.c		optional	aw_ccu fdt
 arm/allwinner/clkng/aw_clk_prediv_mux.c	optional	aw_ccu fdt
 arm/allwinner/clkng/ccu_a64.c		optional	soc_allwinner_a64 aw_ccu fdt
 arm/allwinner/clkng/ccu_h3.c		optional	soc_allwinner_h5 aw_ccu fdt
+arm/allwinner/clkng/ccu_h6.c		optional	soc_allwinner_h6 aw_ccu fdt
+arm/allwinner/clkng/ccu_h6_r.c		optional	soc_allwinner_h6 aw_ccu fdt
 arm/allwinner/clkng/ccu_sun8i_r.c	optional	aw_ccu fdt
 arm/allwinner/clkng/ccu_de2.c		optional	aw_ccu fdt
 
@@ -64,6 +69,8 @@ arm/allwinner/a64/a64_padconf.c	optional	soc_allwinner_a64 fdt
 arm/allwinner/a64/a64_r_padconf.c optional	soc_allwinner_a64 fdt
 arm/allwinner/h3/h3_padconf.c	optional	soc_allwinner_h5 fdt
 arm/allwinner/h3/h3_r_padconf.c optional	soc_allwinner_h5 fdt
+arm/allwinner/h6/h6_padconf.c optional		soc_allwinner_h6 fdt
+arm/allwinner/h6/h6_r_padconf.c optional	soc_allwinner_h6 fdt
 
 arm/annapurna/alpine/alpine_ccu.c		optional	al_ccu fdt
 arm/annapurna/alpine/alpine_nb_service.c	optional	al_nb_service fdt
