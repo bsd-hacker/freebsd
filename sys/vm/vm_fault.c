@@ -211,6 +211,7 @@ vm_fault_dirty(vm_map_entry_t entry, vm_page_t m, vm_prot_t prot,
 		return;
 
 	VM_OBJECT_ASSERT_LOCKED(m->object);
+	VM_PAGE_OBJECT_BUSY_ASSERT(m);
 
 	need_dirty = ((fault_type & VM_PROT_WRITE) != 0 &&
 	    (fault_flags & VM_FAULT_WIRE) == 0) ||
@@ -224,15 +225,14 @@ vm_fault_dirty(vm_map_entry_t entry, vm_page_t m, vm_prot_t prot,
 		 * FALSE, one for the map entry with MAP_ENTRY_NOSYNC
 		 * flag set, other with flag clear, race, it is
 		 * possible for the no-NOSYNC thread to see m->dirty
-		 * != 0 and not clear VPO_NOSYNC.  Take vm_page lock
-		 * around manipulation of VPO_NOSYNC and
-		 * vm_page_dirty() call, to avoid the race and keep
-		 * m->oflags consistent.
+		 * != 0 and not clear PGA_NOSYNC.  Take vm_page lock
+		 * around manipulation of PGA_NOSYNC and
+		 * vm_page_dirty() call to avoid the race.
 		 */
 		vm_page_lock(m);
 
 	/*
-	 * If this is a NOSYNC mmap we do not want to set VPO_NOSYNC
+	 * If this is a NOSYNC mmap we do not want to set PGA_NOSYNC
 	 * if the page is already dirty to prevent data written with
 	 * the expectation of being synced from not being synced.
 	 * Likewise if this entry does not request NOSYNC then make
@@ -241,10 +241,10 @@ vm_fault_dirty(vm_map_entry_t entry, vm_page_t m, vm_prot_t prot,
 	 */
 	if ((entry->eflags & MAP_ENTRY_NOSYNC) != 0) {
 		if (m->dirty == 0) {
-			m->oflags |= VPO_NOSYNC;
+			vm_page_aflag_set(m, PGA_NOSYNC);
 		}
 	} else {
-		m->oflags &= ~VPO_NOSYNC;
+		vm_page_aflag_clear(m, PGA_NOSYNC);
 	}
 
 	/*
@@ -281,11 +281,14 @@ vm_fault_soft_fast(struct faultstate *fs, vm_offset_t vaddr, vm_prot_t prot,
 	int psind, rv;
 
 	MPASS(fs->vp == NULL);
+	vm_object_busy(fs->first_object);
 	m = vm_page_lookup(fs->first_object, fs->first_pindex);
 	/* A busy page can be mapped for read|execute access. */
 	if (m == NULL || ((prot & VM_PROT_WRITE) != 0 &&
-	    vm_page_busied(m)) || m->valid != VM_PAGE_BITS_ALL)
-		return (KERN_FAILURE);
+	    vm_page_busied(m)) || !vm_page_all_valid(m)) {
+		rv = KERN_FAILURE;
+		goto out;
+	}
 	m_map = m;
 	psind = 0;
 #if (defined(__aarch64__) || defined(__amd64__) || (defined(__arm__) && \
@@ -323,7 +326,7 @@ vm_fault_soft_fast(struct faultstate *fs, vm_offset_t vaddr, vm_prot_t prot,
 	rv = pmap_enter(fs->map->pmap, vaddr, m_map, prot, fault_type |
 	    PMAP_ENTER_NOSLEEP | (wired ? PMAP_ENTER_WIRED : 0), psind);
 	if (rv != KERN_SUCCESS)
-		return (rv);
+		goto out;
 	if (m_hold != NULL) {
 		*m_hold = m;
 		vm_page_wire(m);
@@ -334,7 +337,10 @@ vm_fault_soft_fast(struct faultstate *fs, vm_offset_t vaddr, vm_prot_t prot,
 	VM_OBJECT_RUNLOCK(fs->first_object);
 	vm_map_lookup_done(fs->map, fs->entry);
 	curthread->td_ru.ru_minflt++;
-	return (KERN_SUCCESS);
+
+out:
+	vm_object_unbusy(fs->first_object);
+	return (rv);
 }
 
 static void
@@ -362,7 +368,7 @@ vm_fault_populate_check_page(vm_page_t m)
 	 * valid, and exclusively busied.
 	 */
 	MPASS(m != NULL);
-	MPASS(m->valid == VM_PAGE_BITS_ALL);
+	MPASS(vm_page_all_valid(m));
 	MPASS(vm_page_xbusied(m));
 }
 
@@ -787,7 +793,7 @@ RetryFault_oom:
 			 * around with a shared busied page except, perhaps,
 			 * to pmap it.
 			 */
-			if (vm_page_busied(fs.m)) {
+			if (vm_page_tryxbusy(fs.m) == 0) {
 				/*
 				 * Reference the page before unlocking and
 				 * sleeping so that the page daemon is less
@@ -819,13 +825,12 @@ RetryFault_oom:
 			}
 
 			/*
-			 * Mark page busy for other processes, and the 
+			 * The page is marked busy for other processes and the
 			 * pagedaemon.  If it still isn't completely valid
 			 * (readable), jump to readrest, else break-out ( we
 			 * found the page ).
 			 */
-			vm_page_xbusy(fs.m);
-			if (fs.m->valid != VM_PAGE_BITS_ALL)
+			if (!vm_page_all_valid(fs.m))
 				goto readrest;
 			break; /* break to PAGE HAS BEEN FOUND */
 		}
@@ -1149,7 +1154,7 @@ readrest:
 				VM_CNT_INC(v_ozfod);
 			}
 			VM_CNT_INC(v_zfod);
-			fs.m->valid = VM_PAGE_BITS_ALL;
+			vm_page_valid(fs.m);
 			/* Don't try to prefault neighboring pages. */
 			faultcount = 1;
 			break;	/* break to PAGE HAS BEEN FOUND */
@@ -1232,11 +1237,6 @@ readrest:
 				    fs.object, OFF_TO_IDX(
 				    fs.first_object->backing_object_offset));
 #endif
-				/*
-				 * Removing the page from the backing object
-				 * unbusied it.
-				 */
-				vm_page_xbusy(fs.m);
 				fs.first_m = fs.m;
 				fs.m = NULL;
 				VM_CNT_INC(v_cow_optim);
@@ -1245,7 +1245,7 @@ readrest:
 				 * Oh, well, lets copy it.
 				 */
 				pmap_copy_page(fs.m, fs.first_m);
-				fs.first_m->valid = VM_PAGE_BITS_ALL;
+				vm_page_valid(fs.first_m);
 				if (wired && (fault_flags &
 				    VM_FAULT_WIRE) == 0) {
 					vm_page_wire(fs.first_m);
@@ -1357,14 +1357,14 @@ readrest:
 	if (hardfault)
 		fs.entry->next_read = vaddr + ptoa(ahead) + PAGE_SIZE;
 
-	vm_fault_dirty(fs.entry, fs.m, prot, fault_type, fault_flags, true);
 	vm_page_assert_xbusied(fs.m);
+	vm_fault_dirty(fs.entry, fs.m, prot, fault_type, fault_flags, true);
 
 	/*
 	 * Page must be completely valid or it is not fit to
 	 * map into user space.  vm_pager_get_pages() ensures this.
 	 */
-	KASSERT(fs.m->valid == VM_PAGE_BITS_ALL,
+	KASSERT(vm_page_all_valid(fs.m),
 	    ("vm_fault: page %p partially invalid", fs.m));
 	VM_OBJECT_WUNLOCK(fs.object);
 
@@ -1480,7 +1480,7 @@ vm_fault_dontneed(const struct faultstate *fs, vm_offset_t vaddr, int ahead)
 			    entry->start);
 			while ((m = m_next) != NULL && m->pindex < pend) {
 				m_next = TAILQ_NEXT(m, listq);
-				if (m->valid != VM_PAGE_BITS_ALL ||
+				if (!vm_page_all_valid(m) ||
 				    vm_page_busied(m))
 					continue;
 
@@ -1577,7 +1577,7 @@ vm_fault_prefault(const struct faultstate *fs, vm_offset_t addra,
 				VM_OBJECT_RUNLOCK(lobject);
 			break;
 		}
-		if (m->valid == VM_PAGE_BITS_ALL &&
+		if (vm_page_all_valid(m) &&
 		    (m->flags & PG_FICTITIOUS) == 0)
 			pmap_enter_quick(pmap, addr, m, entry->protection);
 		if (!obj_locked || lobject != entry->object.vm_object)
@@ -1826,16 +1826,17 @@ again:
 			dst_m->dirty = dst_m->valid = src_m->valid;
 		} else {
 			dst_m = src_m;
-			if (vm_page_sleep_if_busy(dst_m, "fltupg"))
+			if (vm_page_busy_acquire(dst_m, VM_ALLOC_WAITFAIL) == 0)
 				goto again;
-			if (dst_m->pindex >= dst_object->size)
+			if (dst_m->pindex >= dst_object->size) {
 				/*
 				 * We are upgrading.  Index can occur
 				 * out of bounds if the object type is
 				 * vnode and the file was truncated.
 				 */
+				vm_page_xunbusy(dst_m);
 				break;
-			vm_page_xbusy(dst_m);
+			}
 		}
 		VM_OBJECT_WUNLOCK(dst_object);
 
@@ -1851,7 +1852,7 @@ again:
 		 * all copies of the wired map entry have similar
 		 * backing pages.
 		 */
-		if (dst_m->valid == VM_PAGE_BITS_ALL) {
+		if (vm_page_all_valid(dst_m)) {
 			pmap_enter(dst_map->pmap, vaddr, dst_m, prot,
 			    access | (upgrade ? PMAP_ENTER_WIRED : 0), 0);
 		}
