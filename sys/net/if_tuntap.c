@@ -209,6 +209,8 @@ SYSCTL_INT(_net_link_tap, OID_AUTO, devfs_cloning, CTLFLAG_RWTUN, &tapdclone, 0,
     "Enable legacy devfs interface creation");
 SYSCTL_INT(_net_link_tap, OID_AUTO, debug, CTLFLAG_RW, &tundebug, 0, "");
 
+static int	tun_create_device(struct tuntap_driver *drv, int unit,
+    struct ucred *cr, struct cdev **dev, const char *name);
 static int	tun_busy_locked(struct tuntap_softc *tp);
 static void	tun_unbusy_locked(struct tuntap_softc *tp);
 static int	tun_busy(struct tuntap_softc *tp);
@@ -217,7 +219,8 @@ static void	tun_unbusy(struct tuntap_softc *tp);
 static int	tuntap_name2info(const char *name, int *unit, int *flags);
 static void	tunclone(void *arg, struct ucred *cred, char *name,
 		    int namelen, struct cdev **dev);
-static void	tuncreate(struct cdev *dev, struct tuntap_driver *);
+static void	tuncreate(struct cdev *dev);
+static void	tundtor(void *data);
 static void	tunrename(void *arg, struct ifnet *ifp);
 static int	tunifioctl(struct ifnet *, u_long, caddr_t);
 static void	tuninit(struct ifnet *);
@@ -236,7 +239,6 @@ static int	tun_clone_destroy(struct if_clone *, struct ifnet *);
 static void	tun_vnethdr_set(struct ifnet *ifp, int vhdrlen);
 
 static d_open_t		tunopen;
-static d_close_t	tunclose;
 static d_read_t		tunread;
 static d_write_t	tunwrite;
 static d_ioctl_t	tunioctl;
@@ -276,7 +278,6 @@ static struct tuntap_driver {
 		    .d_version =	D_VERSION,
 		    .d_flags =		D_NEEDMINOR,
 		    .d_open =		tunopen,
-		    .d_close =		tunclose,
 		    .d_read =		tunread,
 		    .d_write =		tunwrite,
 		    .d_ioctl =		tunioctl,
@@ -294,7 +295,6 @@ static struct tuntap_driver {
 		    .d_version =	D_VERSION,
 		    .d_flags =		D_NEEDMINOR,
 		    .d_open =		tunopen,
-		    .d_close =		tunclose,
 		    .d_read =		tunread,
 		    .d_write =		tunwrite,
 		    .d_ioctl =		tunioctl,
@@ -312,7 +312,6 @@ static struct tuntap_driver {
 		    .d_version =	D_VERSION,
 		    .d_flags =		D_NEEDMINOR,
 		    .d_open =		tunopen,
-		    .d_close =		tunclose,
 		    .d_read =		tunread,
 		    .d_write =		tunwrite,
 		    .d_ioctl =		tunioctl,
@@ -544,16 +543,15 @@ tun_clone_create(struct if_clone *ifc, char *name, size_t len, caddr_t params)
 	snprintf(name, IFNAMSIZ, "%s%d", drv->cdevsw.d_name, unit);
 
 	/* find any existing device, or allocate new unit number */
+	dev = NULL;
 	i = clone_create(&drv->clones, &drv->cdevsw, &unit, &dev, 0);
-	if (i) {
-		/* No preexisting struct cdev *, create one */
-		dev = make_dev(&drv->cdevsw, unit, UID_UUCP, GID_DIALER, 0600,
-		    "%s%d", drv->cdevsw.d_name, unit);
-	}
+	/* No preexisting struct cdev *, create one */
+	if (i != 0)
+		i = tun_create_device(drv, unit, NULL, &dev, name);
+	if (i == 0)
+		tuncreate(dev);
 
-	tuncreate(dev, drv);
-
-	return (0);
+	return (i);
 }
 
 static void
@@ -608,12 +606,11 @@ tunclone(void *arg, struct ucred *cred, char *name, int namelen,
 			    name, u);
 			name = devname;
 		}
-		/* No preexisting struct cdev *, create one */
-		*dev = make_dev_credf(MAKEDEV_REF, &drv->cdevsw, u, cred,
-		    UID_UUCP, GID_DIALER, 0600, "%s", name);
-	}
 
-	if_clone_create(name, namelen, NULL);
+		i = tun_create_device(drv, u, cred, dev, name);
+	}
+	if (i == 0)
+		if_clone_create(name, namelen, NULL);
 out:
 	CURVNET_RESTORE();
 }
@@ -791,6 +788,46 @@ MODULE_VERSION(if_tuntap, 1);
 MODULE_VERSION(if_tun, 1);
 MODULE_VERSION(if_tap, 1);
 
+static int
+tun_create_device(struct tuntap_driver *drv, int unit, struct ucred *cr,
+    struct cdev **dev, const char *name)
+{
+	struct make_dev_args args;
+	struct tuntap_softc *tp;
+	int error;
+
+	tp = malloc(sizeof(*tp), M_TUN, M_WAITOK | M_ZERO);
+	mtx_init(&tp->tun_mtx, "tun_mtx", NULL, MTX_DEF);
+	cv_init(&tp->tun_cv, "tun_condvar");
+	tp->tun_flags = drv->ident_flags;
+	tp->tun_drv = drv;
+
+	make_dev_args_init(&args);
+	if (cr != NULL)
+		args.mda_flags = MAKEDEV_REF;
+	args.mda_devsw = &drv->cdevsw;
+	args.mda_cr = cr;
+	args.mda_uid = UID_UUCP;
+	args.mda_gid = GID_DIALER;
+	args.mda_mode = 0600;
+	args.mda_unit = unit;
+	args.mda_si_drv1 = tp;
+	error = make_dev_s(&args, dev, "%s", name);
+	if (error != 0) {
+		free(tp, M_TUN);
+		return (error);
+	}
+
+	KASSERT((*dev)->si_drv1 != NULL,
+	    ("Failed to set si_drv1 at %s creation", name));
+	tp->tun_dev = *dev;
+	knlist_init_mtx(&tp->tun_rsel.si_note, &tp->tun_mtx);
+	mtx_lock(&tunmtx);
+	TAILQ_INSERT_TAIL(&tunhead, tp, tun_list);
+	mtx_unlock(&tunmtx);
+	return (0);
+}
+
 static void
 tunstart(struct ifnet *ifp)
 {
@@ -883,49 +920,43 @@ tunstart_l2(struct ifnet *ifp)
 	TUN_UNLOCK(tp);
 } /* tunstart_l2 */
 
-
 /* XXX: should return an error code so it can fail. */
 static void
-tuncreate(struct cdev *dev, struct tuntap_driver *drv)
+tuncreate(struct cdev *dev)
 {
-	struct tuntap_softc *sc;
+	struct tuntap_driver *drv;
+	struct tuntap_softc *tp;
 	struct ifnet *ifp;
 	struct ether_addr eaddr;
 	int iflags;
 	u_char type;
 
-	sc = malloc(sizeof(*sc), M_TUN, M_WAITOK | M_ZERO);
-	mtx_init(&sc->tun_mtx, "tun_mtx", NULL, MTX_DEF);
-	cv_init(&sc->tun_cv, "tun_condvar");
-	sc->tun_flags = drv->ident_flags;
-	sc->tun_dev = dev;
-	sc->tun_drv = drv;
-	mtx_lock(&tunmtx);
-	TAILQ_INSERT_TAIL(&tunhead, sc, tun_list);
-	mtx_unlock(&tunmtx);
+	tp = dev->si_drv1;
+	KASSERT(tp != NULL,
+	    ("si_drv1 should have been initialized at creation"));
 
+	drv = tp->tun_drv;
 	iflags = IFF_MULTICAST;
-	if ((sc->tun_flags & TUN_L2) != 0) {
+	if ((tp->tun_flags & TUN_L2) != 0) {
 		type = IFT_ETHER;
 		iflags |= IFF_BROADCAST | IFF_SIMPLEX;
 	} else {
 		type = IFT_PPP;
 		iflags |= IFF_POINTOPOINT;
 	}
-	ifp = sc->tun_ifp = if_alloc(type);
+	ifp = tp->tun_ifp = if_alloc(type);
 	if (ifp == NULL)
 		panic("%s%d: failed to if_alloc() interface.\n",
 		    drv->cdevsw.d_name, dev2unit(dev));
-	ifp->if_softc = sc;
+	ifp->if_softc = tp;
 	if_initname(ifp, drv->cdevsw.d_name, dev2unit(dev));
 	ifp->if_ioctl = tunifioctl;
 	ifp->if_flags = iflags;
 	IFQ_SET_MAXLEN(&ifp->if_snd, ifqmaxlen);
-	knlist_init_mtx(&sc->tun_rsel.si_note, &sc->tun_mtx);
 	ifp->if_capabilities |= IFCAP_LINKSTATE;
 	ifp->if_capenable |= IFCAP_LINKSTATE;
 
-	if ((sc->tun_flags & TUN_L2) != 0) {
+	if ((tp->tun_flags & TUN_L2) != 0) {
 		ifp->if_mtu = ETHERMTU;
 		ifp->if_init = tunifinit;
 		ifp->if_start = tunstart_l2;
@@ -943,11 +974,10 @@ tuncreate(struct cdev *dev, struct tuntap_driver *drv)
 		if_attach(ifp);
 		bpfattach(ifp, DLT_NULL, sizeof(u_int32_t));
 	}
-	dev->si_drv1 = sc;
 
-	TUN_LOCK(sc);
-	sc->tun_flags |= TUN_INITED;
-	TUN_UNLOCK(sc);
+	TUN_LOCK(tp);
+	tp->tun_flags |= TUN_INITED;
+	TUN_UNLOCK(tp);
 
 	TUNDEBUG(ifp, "interface %s is created, minor = %#x\n",
 	    ifp->if_xname, dev2unit(dev));
@@ -1008,7 +1038,6 @@ static int
 tunopen(struct cdev *dev, int flag, int mode, struct thread *td)
 {
 	struct ifnet	*ifp;
-	struct tuntap_driver *drv;
 	struct tuntap_softc *tp;
 	int error, tunflags;
 
@@ -1031,22 +1060,16 @@ tunopen(struct cdev *dev, int flag, int mode, struct thread *td)
 		}
 	}
 
-	/*
-	 * XXXRW: Non-atomic test and set of dev->si_drv1 requires
-	 * synchronization.
-	 */
 	tp = dev->si_drv1;
-	if (!tp) {
-		drv = tuntap_driver_from_flags(tunflags);
-		if (drv == NULL) {
-			CURVNET_RESTORE();
-			return (ENXIO);
-		}
-		tuncreate(dev, drv);
-		tp = dev->si_drv1;
-	}
+	KASSERT(tp != NULL,
+	    ("si_drv1 should have been initialized at creation"));
 
 	TUN_LOCK(tp);
+	if ((tp->tun_flags & TUN_INITED) == 0) {
+		TUN_UNLOCK(tp);
+		CURVNET_RESTORE();
+		return (ENXIO);
+	}
 	if ((tp->tun_flags & (TUN_OPEN | TUN_DYING)) != 0) {
 		TUN_UNLOCK(tp);
 		CURVNET_RESTORE();
@@ -1074,24 +1097,33 @@ tunopen(struct cdev *dev, int flag, int mode, struct thread *td)
 	if_link_state_change(ifp, LINK_STATE_UP);
 	TUNDEBUG(ifp, "open\n");
 	TUN_UNLOCK(tp);
+
+	/*
+	 * This can fail with either ENOENT or EBUSY.  This is in the middle of
+	 * d_open, so ENOENT should not be possible.  EBUSY is possible, but
+	 * the only cdevpriv dtor being set will be tundtor and the softc being
+	 * passed is constant for a given cdev.  We ignore the possible error
+	 * because of this as either "unlikely" or "not actually a problem."
+	 */
+	(void)devfs_set_cdevpriv(tp, tundtor);
 	CURVNET_RESTORE();
 	return (0);
 }
 
 /*
- * tunclose - close the device - mark i/f down & delete
+ * tundtor - tear down the device - mark i/f down & delete
  * routing info
  */
-static	int
-tunclose(struct cdev *dev, int foo, int bar, struct thread *td)
+static void
+tundtor(void *data)
 {
 	struct proc *p;
 	struct tuntap_softc *tp;
 	struct ifnet *ifp;
 	bool l2tun;
 
-	p = td->td_proc;
-	tp = dev->si_drv1;
+	tp = data;
+	p = curproc;
 	ifp = TUN2IFP(tp);
 
 	TUN_LOCK(tp);
@@ -1107,7 +1139,7 @@ tunclose(struct cdev *dev, int foo, int bar, struct thread *td)
 	if (p->p_pid != tp->tun_pid) {
 		log(LOG_INFO,
 		    "pid %d (%s), %s: tun/tap protocol violation, non-controlling process closed last.\n",
-		    p->p_pid, p->p_comm, dev->si_name);
+		    p->p_pid, p->p_comm, tp->tun_dev->si_name);
 	}
 
 	/*
@@ -1167,7 +1199,6 @@ out:
 
 	tun_unbusy_locked(tp);
 	TUN_UNLOCK(tp);
-	return (0);
 }
 
 static void
