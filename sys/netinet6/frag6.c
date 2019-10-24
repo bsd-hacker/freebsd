@@ -202,6 +202,10 @@ SYSCTL_PROC(_net_inet6_ip6, IPV6CTL_MAXFRAGPACKETS, maxfragpackets,
 	"Default maximum number of outstanding fragmented IPv6 packets. "
 	"A value of 0 means no fragmented packets will be accepted, while a "
 	"a value of -1 means no limit");
+SYSCTL_UINT(_net_inet6_ip6, OID_AUTO, frag6_nfragpackets,
+	CTLFLAG_VNET | CTLFLAG_RD,
+	__DEVOLATILE(u_int *, &VNET_NAME(frag6_nfragpackets)), 0,
+	"Per-VNET number of IPv6 fragments across all reassembly queues.");
 SYSCTL_INT(_net_inet6_ip6, IPV6CTL_MAXFRAGSPERPACKET, maxfragsperpacket,
 	CTLFLAG_VNET | CTLFLAG_RW, &VNET_NAME(ip6_maxfragsperpacket), 0,
 	"Maximum allowed number of fragments per packet");
@@ -572,17 +576,35 @@ frag6_input(struct mbuf **mp, int *offp, int proto)
 	if (q6->ip6q_unfrglen >= 0) {
 		/* The 1st fragment has already arrived. */
 		if (q6->ip6q_unfrglen + fragoff + frgpartlen > IPV6_MAXPACKET) {
+			if (only_frag) {
+				TAILQ_REMOVE(head, q6, ip6q_tq);
+				V_ip6qb[bucket].count--;
+				atomic_subtract_int(&V_frag6_nfragpackets, 1);
+#ifdef MAC
+				mac_ip6q_destroy(q6);
+#endif
+				free(q6, M_FRAG6);
+			}
+			IP6QB_UNLOCK(bucket);
 			icmp6_error(m, ICMP6_PARAM_PROB, ICMP6_PARAMPROB_HEADER,
 			    offset - sizeof(struct ip6_frag) +
 			    offsetof(struct ip6_frag, ip6f_offlg));
-			IP6QB_UNLOCK(bucket);
 			return (IPPROTO_DONE);
 		}
 	} else if (fragoff + frgpartlen > IPV6_MAXPACKET) {
+		if (only_frag) {
+			TAILQ_REMOVE(head, q6, ip6q_tq);
+			V_ip6qb[bucket].count--;
+			atomic_subtract_int(&V_frag6_nfragpackets, 1);
+#ifdef MAC
+			mac_ip6q_destroy(q6);
+#endif
+			free(q6, M_FRAG6);
+		}
+		IP6QB_UNLOCK(bucket);
 		icmp6_error(m, ICMP6_PARAM_PROB, ICMP6_PARAMPROB_HEADER,
 		    offset - sizeof(struct ip6_frag) +
 		    offsetof(struct ip6_frag, ip6f_offlg));
-		IP6QB_UNLOCK(bucket);
 		return (IPPROTO_DONE);
 	}
 
@@ -590,11 +612,11 @@ frag6_input(struct mbuf **mp, int *offp, int proto)
 	 * If it is the first fragment, do the above check for each
 	 * fragment already stored in the reassembly queue.
 	 */
-	if (fragoff == 0) {
+	if (fragoff == 0 && !only_frag) {
 		TAILQ_FOREACH_SAFE(af6, &q6->ip6q_frags, ip6af_tq, af6tmp) {
 
-			if (q6->ip6q_unfrglen + af6->ip6af_off + af6->ip6af_frglen >
-			    IPV6_MAXPACKET) {
+			if (q6->ip6q_unfrglen + af6->ip6af_off +
+			    af6->ip6af_frglen > IPV6_MAXPACKET) {
 				struct ip6_hdr *ip6err;
 				struct mbuf *merr;
 				int erroff;
@@ -604,6 +626,8 @@ frag6_input(struct mbuf **mp, int *offp, int proto)
 
 				/* Dequeue the fragment. */
 				TAILQ_REMOVE(&q6->ip6q_frags, af6, ip6af_tq);
+				q6->ip6q_nfrag--;
+				atomic_subtract_int(&frag6_nfrags, 1);
 				free(af6, M_FRAG6);
 
 				/* Set a valid receive interface pointer. */
