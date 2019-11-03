@@ -90,6 +90,16 @@ static int ig4iic_pci_detach(device_t dev);
 #define PCI_CHIP_APL_I2C_5		0x5ab68086
 #define PCI_CHIP_APL_I2C_6		0x5ab88086
 #define PCI_CHIP_APL_I2C_7		0x5aba8086
+#define PCI_CHIP_CANNONLAKE_LP_I2C_0	0x9dc58086
+#define PCI_CHIP_CANNONLAKE_LP_I2C_1	0x9dc68086
+#define PCI_CHIP_CANNONLAKE_LP_I2C_2	0x9de88086
+#define PCI_CHIP_CANNONLAKE_LP_I2C_3	0x9de98086
+#define PCI_CHIP_CANNONLAKE_LP_I2C_4	0x9dea8086
+#define PCI_CHIP_CANNONLAKE_LP_I2C_5	0x9deb8086
+#define PCI_CHIP_CANNONLAKE_H_I2C_0	0xa3688086
+#define PCI_CHIP_CANNONLAKE_H_I2C_1	0xa3698086
+#define PCI_CHIP_CANNONLAKE_H_I2C_2	0xa36a8086
+#define PCI_CHIP_CANNONLAKE_H_I2C_3	0xa36b8086
 
 struct ig4iic_pci_device {
 	uint32_t	devid;
@@ -121,7 +131,17 @@ static struct ig4iic_pci_device ig4iic_pci_devices[] = {
 	{ PCI_CHIP_APL_I2C_4, "Intel Apollo Lake I2C Controller-4", IG4_APL},
 	{ PCI_CHIP_APL_I2C_5, "Intel Apollo Lake I2C Controller-5", IG4_APL},
 	{ PCI_CHIP_APL_I2C_6, "Intel Apollo Lake I2C Controller-6", IG4_APL},
-	{ PCI_CHIP_APL_I2C_7, "Intel Apollo Lake I2C Controller-7", IG4_APL}
+	{ PCI_CHIP_APL_I2C_7, "Intel Apollo Lake I2C Controller-7", IG4_APL},
+	{ PCI_CHIP_CANNONLAKE_LP_I2C_0, "Intel Cannon Lake-LP I2C Controller-0", IG4_CANNONLAKE},
+	{ PCI_CHIP_CANNONLAKE_LP_I2C_1, "Intel Cannon Lake-LP I2C Controller-1", IG4_CANNONLAKE},
+	{ PCI_CHIP_CANNONLAKE_LP_I2C_2, "Intel Cannon Lake-LP I2C Controller-2", IG4_CANNONLAKE},
+	{ PCI_CHIP_CANNONLAKE_LP_I2C_3, "Intel Cannon Lake-LP I2C Controller-3", IG4_CANNONLAKE},
+	{ PCI_CHIP_CANNONLAKE_LP_I2C_4, "Intel Cannon Lake-LP I2C Controller-4", IG4_CANNONLAKE},
+	{ PCI_CHIP_CANNONLAKE_LP_I2C_5, "Intel Cannon Lake-LP I2C Controller-5", IG4_CANNONLAKE},
+	{ PCI_CHIP_CANNONLAKE_H_I2C_0, "Intel Cannon Lake-H I2C Controller-0", IG4_CANNONLAKE},
+	{ PCI_CHIP_CANNONLAKE_H_I2C_1, "Intel Cannon Lake-H I2C Controller-1", IG4_CANNONLAKE},
+	{ PCI_CHIP_CANNONLAKE_H_I2C_2, "Intel Cannon Lake-H I2C Controller-2", IG4_CANNONLAKE},
+	{ PCI_CHIP_CANNONLAKE_H_I2C_3, "Intel Cannon Lake-H I2C Controller-3", IG4_CANNONLAKE},
 };
 
 static int
@@ -230,6 +250,18 @@ static device_method_t ig4iic_pci_methods[] = {
 	DEVMETHOD(device_suspend, ig4iic_pci_suspend),
 	DEVMETHOD(device_resume, ig4iic_pci_resume),
 
+	/* Bus interface */
+	DEVMETHOD(bus_setup_intr, bus_generic_setup_intr),
+	DEVMETHOD(bus_teardown_intr, bus_generic_teardown_intr),
+	DEVMETHOD(bus_alloc_resource, bus_generic_alloc_resource),
+	DEVMETHOD(bus_release_resource, bus_generic_release_resource),
+	DEVMETHOD(bus_activate_resource, bus_generic_activate_resource),
+	DEVMETHOD(bus_deactivate_resource, bus_generic_deactivate_resource),
+	DEVMETHOD(bus_adjust_resource, bus_generic_adjust_resource),
+	DEVMETHOD(bus_set_resource, bus_generic_rl_set_resource),
+	DEVMETHOD(bus_get_resource, bus_generic_rl_get_resource),
+
+	/* iicbus interface */
 	DEVMETHOD(iicbus_transfer, ig4iic_transfer),
 	DEVMETHOD(iicbus_reset, ig4iic_reset),
 	DEVMETHOD(iicbus_callback, ig4iic_callback),

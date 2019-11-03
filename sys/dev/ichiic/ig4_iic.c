@@ -68,17 +68,11 @@ __FBSDID("$FreeBSD$");
 #include <dev/acpica/acpivar.h>
 #endif
 
-#include <dev/pci/pcivar.h>
-#include <dev/pci/pcireg.h>
 #include <dev/iicbus/iicbus.h>
 #include <dev/iicbus/iiconf.h>
 
 #include <dev/ichiic/ig4_reg.h>
 #include <dev/ichiic/ig4_var.h>
-
-#define TRANS_NORMAL	1
-#define TRANS_PCALL	2
-#define TRANS_BLOCK	3
 
 #define DO_POLL(sc)	(cold || kdb_active || SCHEDULER_STOPPED() || sc->poll)
 
@@ -121,9 +115,14 @@ static const struct ig4_hw ig4iic_hw[] = {
 		.scl_fall_time = 208,
 		.sda_hold_time = 207,
 	},
+	[IG4_CANNONLAKE] = {
+		.ic_clock_rate = 216,
+		.sda_hold_time = 230,
+	},
 };
 
-static void ig4iic_intr(void *cookie);
+static int ig4iic_set_config(ig4iic_softc_t *sc, bool reset);
+static driver_filter_t ig4iic_intr;
 static void ig4iic_dump(ig4iic_softc_t *sc);
 
 static int ig4_dump;
@@ -170,6 +169,55 @@ set_intr_mask(ig4iic_softc_t *sc, uint32_t val)
 	}
 }
 
+static int
+intrstat2iic(ig4iic_softc_t *sc, uint32_t val)
+{
+	uint32_t src;
+
+	if (val & IG4_INTR_RX_UNDER)
+		reg_read(sc, IG4_REG_CLR_RX_UNDER);
+	if (val & IG4_INTR_RX_OVER)
+		reg_read(sc, IG4_REG_CLR_RX_OVER);
+	if (val & IG4_INTR_TX_OVER)
+		reg_read(sc, IG4_REG_CLR_TX_OVER);
+
+	if (val & IG4_INTR_TX_ABRT) {
+		src = reg_read(sc, IG4_REG_TX_ABRT_SOURCE);
+		reg_read(sc, IG4_REG_CLR_TX_ABORT);
+		/* User-requested abort. Not really a error */
+		if (src & IG4_ABRTSRC_TRANSFER)
+			return (IIC_ESTATUS);
+		/* Master has lost arbitration */
+		if (src & IG4_ABRTSRC_ARBLOST)
+			return (IIC_EBUSBSY);
+		/* Did not receive an acknowledge from the remote slave */
+		if (src & (IG4_ABRTSRC_TXNOACK_ADDR7 |
+			   IG4_ABRTSRC_TXNOACK_ADDR10_1 |
+			   IG4_ABRTSRC_TXNOACK_ADDR10_2 |
+			   IG4_ABRTSRC_TXNOACK_DATA |
+			   IG4_ABRTSRC_GENCALL_NOACK))
+			return (IIC_ENOACK);
+		/* Programming errors */
+		if (src & (IG4_ABRTSRC_GENCALL_READ |
+			   IG4_ABRTSRC_NORESTART_START |
+			   IG4_ABRTSRC_NORESTART_10))
+			return (IIC_ENOTSUPP);
+		/* Other errors */
+		if (src & IG4_ABRTSRC_ACKED_START)
+			return (IIC_EBUSERR);
+	}
+	/*
+	 * TX_OVER, RX_OVER and RX_UNDER are caused by wrong RX/TX FIFO depth
+	 * detection or driver's read/write pipelining errors.
+	 */
+	if (val & (IG4_INTR_TX_OVER | IG4_INTR_RX_OVER))
+		return (IIC_EOVERFLOW);
+	if (val & IG4_INTR_RX_UNDER)
+		return (IIC_EUNDERFLOW);
+
+	return (IIC_NOERR);
+}
+
 /*
  * Enable or disable the controller and wait for the controller to acknowledge
  * the state change.
@@ -204,10 +252,10 @@ set_controller(ig4iic_softc_t *sc, uint32_t ctl)
 }
 
 /*
- * Wait up to 25ms for the requested status using a 25uS polling loop.
+ * Wait up to 25ms for the requested interrupt using a 25uS polling loop.
  */
 static int
-wait_status(ig4iic_softc_t *sc, uint32_t status)
+wait_intr(ig4iic_softc_t *sc, uint32_t intr)
 {
 	uint32_t v;
 	int error;
@@ -215,24 +263,21 @@ wait_status(ig4iic_softc_t *sc, uint32_t status)
 	u_int count_us = 0;
 	u_int limit_us = 25000; /* 25ms */
 
-	error = IIC_ETIMEOUT;
-
 	for (;;) {
 		/*
 		 * Check requested status
 		 */
-		v = reg_read(sc, IG4_REG_I2C_STA);
-		if (v & status) {
-			error = 0;
+		v = reg_read(sc, IG4_REG_RAW_INTR_STAT);
+		error = intrstat2iic(sc, v & IG4_INTR_ERR_MASK);
+		if (error || (v & intr))
 			break;
-		}
 
 		/*
 		 * When waiting for the transmit FIFO to become empty,
 		 * reset the timeout if we see a change in the transmit
 		 * FIFO level as progress is being made.
 		 */
-		if (status & IG4_STATUS_TX_EMPTY) {
+		if (intr & (IG4_INTR_TX_EMPTY | IG4_INTR_STOP_DET)) {
 			v = reg_read(sc, IG4_REG_TXFLR) & IG4_FIFOLVL_MASK;
 			if (txlvl != v) {
 				txlvl = v;
@@ -243,20 +288,21 @@ wait_status(ig4iic_softc_t *sc, uint32_t status)
 		/*
 		 * Stop if we've run out of time.
 		 */
-		if (count_us >= limit_us)
+		if (count_us >= limit_us) {
+			error = IIC_ETIMEOUT;
 			break;
+		}
 
 		/*
-		 * When waiting for receive data let the interrupt do its
-		 * work, otherwise poll with the lock held.
+		 * When polling is not requested let the interrupt do its work.
 		 */
-		if ((status & IG4_STATUS_RX_NOTEMPTY) && !DO_POLL(sc)) {
-			mtx_lock(&sc->io_lock);
-			set_intr_mask(sc, IG4_INTR_STOP_DET | IG4_INTR_RX_FULL);
-			mtx_sleep(sc, &sc->io_lock, 0, "i2cwait",
+		if (!DO_POLL(sc)) {
+			mtx_lock_spin(&sc->io_lock);
+			set_intr_mask(sc, intr | IG4_INTR_ERR_MASK);
+			msleep_spin(sc, &sc->io_lock, "i2cwait",
 				  (hz + 99) / 100); /* sleep up to 10ms */
 			set_intr_mask(sc, 0);
-			mtx_unlock(&sc->io_lock);
+			mtx_unlock_spin(&sc->io_lock);
 			count_us += 10000;
 		} else {
 			DELAY(25);
@@ -290,22 +336,8 @@ set_slave_addr(ig4iic_softc_t *sc, uint8_t slave)
 
 	/*
 	 * Wait for TXFIFO to drain before disabling the controller.
-	 *
-	 * If a write message has not been completed it's really a
-	 * programming error, but for now in that case issue an extra
-	 * byte + STOP.
-	 *
-	 * If a read message has not been completed it's also a programming
-	 * error, for now just ignore it.
 	 */
-	wait_status(sc, IG4_STATUS_TX_NOTFULL);
-	if (sc->write_started) {
-		reg_write(sc, IG4_REG_DATA_CMD, IG4_DATA_STOP);
-		sc->write_started = 0;
-	}
-	if (sc->read_started)
-		sc->read_started = 0;
-	wait_status(sc, IG4_STATUS_TX_EMPTY);
+	wait_intr(sc, IG4_INTR_TX_EMPTY);
 
 	set_controller(sc, 0);
 	ctl = reg_read(sc, IG4_REG_CTL);
@@ -328,10 +360,47 @@ set_slave_addr(ig4iic_softc_t *sc, uint8_t slave)
  *				IICBUS API FUNCTIONS
  */
 static int
-ig4iic_xfer_start(ig4iic_softc_t *sc, uint16_t slave)
+ig4iic_xfer_start(ig4iic_softc_t *sc, uint16_t slave, bool repeated_start)
 {
 	set_slave_addr(sc, slave >> 1);
+
+	if (!repeated_start) {
+		/*
+		 * Clear any previous TX/RX FIFOs overflow/underflow bits
+		 * and I2C bus STOP condition.
+		 */
+		reg_read(sc, IG4_REG_CLR_INTR);
+	}
+
 	return (0);
+}
+
+static bool
+ig4iic_xfer_is_started(ig4iic_softc_t *sc)
+{
+	/*
+	 * It requires that no IG4_REG_CLR_INTR or IG4_REG_CLR_START/STOP_DET
+	 * register reads is issued after START condition.
+	 */
+	return ((reg_read(sc, IG4_REG_RAW_INTR_STAT) &
+	    (IG4_INTR_START_DET | IG4_INTR_STOP_DET)) == IG4_INTR_START_DET);
+}
+
+static int
+ig4iic_xfer_abort(ig4iic_softc_t *sc)
+{
+	int error;
+
+	/* Request send of STOP condition and flush of TX FIFO */
+	set_controller(sc, IG4_I2C_ABORT | IG4_I2C_ENABLE);
+	/*
+	 * Wait for the TX_ABRT interrupt with ABRTSRC_TRANSFER
+	 * bit set in TX_ABRT_SOURCE register.
+	 */
+	error = wait_intr(sc, IG4_INTR_STOP_DET);
+	set_controller(sc, IG4_I2C_ENABLE);
+
+	return (error == IIC_ESTATUS ? 0 : error);
 }
 
 /*
@@ -357,14 +426,14 @@ ig4iic_read(ig4iic_softc_t *sc, uint8_t *buf, uint16_t len,
 	while (received < len) {
 		burst = sc->cfg.txfifo_depth -
 		    (reg_read(sc, IG4_REG_TXFLR) & IG4_FIFOLVL_MASK);
-		/* Ensure we have enough free space in RXFIFO */
-		burst = MIN(burst, sc->cfg.rxfifo_depth - lowat);
 		if (burst <= 0) {
-			error = wait_status(sc, IG4_STATUS_TX_NOTFULL);
+			error = wait_intr(sc, IG4_INTR_TX_EMPTY);
 			if (error)
 				break;
-			burst = 1;
+			burst = sc->cfg.txfifo_depth;
 		}
+		/* Ensure we have enough free space in RXFIFO */
+		burst = MIN(burst, sc->cfg.rxfifo_depth - lowat);
 		target = MIN(requested + burst, (int)len);
 		while (requested < target) {
 			cmd = IG4_DATA_COMMAND_RD;
@@ -388,14 +457,13 @@ ig4iic_read(ig4iic_softc_t *sc, uint8_t *buf, uint16_t len,
 					buf[received++] = 0xFF &
 					    reg_read(sc, IG4_REG_DATA_CMD);
 			} else {
-				error = wait_status(sc, IG4_STATUS_RX_NOTEMPTY);
+				error = wait_intr(sc, IG4_INTR_RX_FULL);
 				if (error)
 					goto out;
 			}
 		}
 	}
 out:
-	(void)reg_read(sc, IG4_REG_TX_ABRT_SOURCE);
 	return (error);
 }
 
@@ -404,24 +472,41 @@ ig4iic_write(ig4iic_softc_t *sc, uint8_t *buf, uint16_t len,
     bool repeated_start, bool stop)
 {
 	uint32_t cmd;
-	uint16_t i;
+	int sent = 0;
+	int burst, target;
 	int error;
+	bool lowat_set = false;
 
 	if (len == 0)
 		return (0);
 
-	cmd = repeated_start ? IG4_DATA_RESTART : 0;
-	for (i = 0; i < len; i++) {
-		error = wait_status(sc, IG4_STATUS_TX_NOTFULL);
-		if (error)
-			break;
-		cmd |= buf[i];
-		cmd |= stop && i == len - 1 ? IG4_DATA_STOP : 0;
-		reg_write(sc, IG4_REG_DATA_CMD, cmd);
-		cmd = 0;
+	while (sent < len) {
+		burst = sc->cfg.txfifo_depth -
+		    (reg_read(sc, IG4_REG_TXFLR) & IG4_FIFOLVL_MASK);
+		target = MIN(sent + burst, (int)len);
+		/* Leave some data queued to maintain the hardware pipeline */
+		if (!lowat_set && target != len) {
+			lowat_set = true;
+			reg_write(sc, IG4_REG_TX_TL, IG4_FIFO_LOWAT);
+		}
+		while(sent < target) {
+			cmd = buf[sent];
+			if (repeated_start && sent == 0)
+				cmd |= IG4_DATA_RESTART;
+			if (stop && sent == len - 1)
+				cmd |= IG4_DATA_STOP;
+			reg_write(sc, IG4_REG_DATA_CMD, cmd);
+			sent++;
+		}
+		if (sent < len) {
+			error = wait_intr(sc, IG4_INTR_TX_EMPTY);
+			if (error)
+				break;
+		}
 	}
+	if (lowat_set)
+		reg_write(sc, IG4_REG_TX_TL, 0);
 
-	(void)reg_read(sc, IG4_REG_TX_ABRT_SOURCE);
 	return (error);
 }
 
@@ -520,7 +605,7 @@ ig4iic_transfer(device_t dev, struct iic_msg *msgs, uint32_t nmsgs)
 	error = 0;
 	for (i = 0; i < nmsgs; i++) {
 		if ((msgs[i].flags & IIC_M_NOSTART) == 0) {
-			error = ig4iic_xfer_start(sc, msgs[i].slave);
+			error = ig4iic_xfer_start(sc, msgs[i].slave, rpstart);
 		} else {
 			if (!sc->slave_valid ||
 			    (msgs[i].slave >> 1) != sc->last_slave) {
@@ -541,8 +626,34 @@ ig4iic_transfer(device_t dev, struct iic_msg *msgs, uint32_t nmsgs)
 		else
 			error = ig4iic_write(sc, msgs[i].buf, msgs[i].len,
 			    rpstart, stop);
-		if (error != 0)
+
+		/* Wait for error or stop condition occurred on the I2C bus */
+		if (stop && error == 0) {
+			error = wait_intr(sc, IG4_INTR_STOP_DET);
+			if (error == 0)
+				reg_read(sc, IG4_REG_CLR_INTR);
+		}
+
+		if (error != 0) {
+			/*
+			 * Send STOP condition if it's not done yet and flush
+			 * both FIFOs. Do a controller soft reset if transfer
+			 * abort is failed.
+			 */
+			if (ig4iic_xfer_is_started(sc) &&
+			    ig4iic_xfer_abort(sc) != 0) {
+				device_printf(sc->dev, "Failed to abort "
+				    "transfer. Do the controller reset.\n");
+				ig4iic_set_config(sc, true);
+			} else {
+				while (reg_read(sc, IG4_REG_I2C_STA) &
+				    IG4_STATUS_RX_NOTEMPTY)
+					reg_read(sc, IG4_REG_DATA_CMD);
+				reg_read(sc, IG4_REG_TX_ABRT_SOURCE);
+				reg_read(sc, IG4_REG_CLR_INTR);
+			}
 			break;
+		}
 
 		rpstart = !stop;
 	}
@@ -800,18 +911,24 @@ ig4iic_get_config(ig4iic_softc_t *sc)
 }
 
 static int
-ig4iic_set_config(ig4iic_softc_t *sc)
+ig4iic_set_config(ig4iic_softc_t *sc, bool reset)
 {
 	uint32_t v;
 
 	v = reg_read(sc, IG4_REG_DEVIDLE_CTRL);
-	if (sc->version == IG4_SKYLAKE && (v & IG4_RESTORE_REQUIRED) ) {
+	if (IG4_HAS_ADDREGS(sc->version) && (v & IG4_RESTORE_REQUIRED)) {
 		reg_write(sc, IG4_REG_DEVIDLE_CTRL, IG4_DEVICE_IDLE | IG4_RESTORE_REQUIRED);
 		reg_write(sc, IG4_REG_DEVIDLE_CTRL, 0);
+		pause("i2crst", 1);
+		reset = true;
+	}
 
+	if ((sc->version == IG4_HASWELL || sc->version == IG4_ATOM) && reset) {
+		reg_write(sc, IG4_REG_RESETS_HSW, IG4_RESETS_ASSERT_HSW);
+		reg_write(sc, IG4_REG_RESETS_HSW, IG4_RESETS_DEASSERT_HSW);
+	} else if (IG4_HAS_ADDREGS(sc->version) && reset) {
 		reg_write(sc, IG4_REG_RESETS_SKL, IG4_RESETS_ASSERT_SKL);
 		reg_write(sc, IG4_REG_RESETS_SKL, IG4_RESETS_DEASSERT_SKL);
-		DELAY(1000);
 	}
 
 	if (sc->version == IG4_ATOM)
@@ -835,7 +952,7 @@ ig4iic_set_config(ig4iic_softc_t *sc)
 	if (sc->version == IG4_HASWELL) {
 		v = reg_read(sc, IG4_REG_SW_LTR_VALUE);
 		v = reg_read(sc, IG4_REG_AUTO_LTR_VALUE);
-	} else if (sc->version == IG4_SKYLAKE) {
+	} else if (IG4_HAS_ADDREGS(sc->version)) {
 		v = reg_read(sc, IG4_REG_ACTIVE_LTR_VALUE);
 		v = reg_read(sc, IG4_REG_IDLE_LTR_VALUE);
 	}
@@ -871,12 +988,16 @@ ig4iic_set_config(ig4iic_softc_t *sc)
 	 * See ig4_var.h for details on interrupt handler synchronization.
 	 */
 	reg_write(sc, IG4_REG_RX_TL, 0);
+	reg_write(sc, IG4_REG_TX_TL, 0);
 
 	reg_write(sc, IG4_REG_CTL,
 		  IG4_CTL_MASTER |
 		  IG4_CTL_SLAVE_DISABLE |
 		  IG4_CTL_RESTARTEN |
 		  (sc->cfg.bus_speed & IG4_CTL_SPEED_MASK));
+
+	/* Force setting of the target address on the next transfer */
+	sc->slave_valid = 0;
 
 	return (0);
 }
@@ -889,12 +1010,12 @@ ig4iic_attach(ig4iic_softc_t *sc)
 {
 	int error;
 
-	mtx_init(&sc->io_lock, "IG4 I/O lock", NULL, MTX_DEF);
+	mtx_init(&sc->io_lock, "IG4 I/O lock", NULL, MTX_SPIN);
 	sx_init(&sc->call_lock, "IG4 call lock");
 
 	ig4iic_get_config(sc);
 
-	error = ig4iic_set_config(sc);
+	error = ig4iic_set_config(sc, IG4_HAS_ADDREGS(sc->version));
 	if (error)
 		goto done;
 
@@ -904,19 +1025,6 @@ ig4iic_attach(ig4iic_softc_t *sc)
 		error = ENXIO;
 		goto done;
 	}
-
-#if 0
-	/*
-	 * Don't do this, it blows up the PCI config
-	 */
-	if (sc->version == IG4_HASWELL || sc->version == IG4_ATOM) {
-		reg_write(sc, IG4_REG_RESETS_HSW, IG4_RESETS_ASSERT_HSW);
-		reg_write(sc, IG4_REG_RESETS_HSW, IG4_RESETS_DEASSERT_HSW);
-	} else if (sc->version = IG4_SKYLAKE) {
-		reg_write(sc, IG4_REG_RESETS_SKL, IG4_RESETS_ASSERT_SKL);
-		reg_write(sc, IG4_REG_RESETS_SKL, IG4_RESETS_DEASSERT_SKL);
-	}
-#endif
 
 	if (set_controller(sc, IG4_I2C_ENABLE)) {
 		device_printf(sc->dev, "controller error during attach-2\n");
@@ -929,7 +1037,7 @@ ig4iic_attach(ig4iic_softc_t *sc)
 		goto done;
 	}
 	error = bus_setup_intr(sc->dev, sc->intr_res, INTR_TYPE_MISC | INTR_MPSAFE,
-			       NULL, ig4iic_intr, sc, &sc->intr_handle);
+			       ig4iic_intr, NULL, sc, &sc->intr_handle);
 	if (error) {
 		device_printf(sc->dev,
 			      "Unable to setup irq: error %d\n", error);
@@ -985,7 +1093,7 @@ ig4iic_suspend(ig4iic_softc_t *sc)
 
 	sx_xlock(&sc->call_lock);
 	set_controller(sc, 0);
-	if (sc->version == IG4_SKYLAKE) {
+	if (IG4_HAS_ADDREGS(sc->version)) {
 		/*
 		 * Place the device in the idle state, just to be safe
 		 */
@@ -1007,10 +1115,8 @@ int ig4iic_resume(ig4iic_softc_t *sc)
 	int error;
 
 	sx_xlock(&sc->call_lock);
-	if (ig4iic_set_config(sc))
+	if (ig4iic_set_config(sc, IG4_HAS_ADDREGS(sc->version)))
 		device_printf(sc->dev, "controller error during resume\n");
-	/* Force setting of the target address on the next transfer */
-	sc->slave_valid = 0;
 	sx_xunlock(&sc->call_lock);
 
 	error = bus_generic_resume(sc->dev);
@@ -1021,19 +1127,23 @@ int ig4iic_resume(ig4iic_softc_t *sc)
 /*
  * Interrupt Operation, see ig4_var.h for locking semantics.
  */
-static void
+static int
 ig4iic_intr(void *cookie)
 {
 	ig4iic_softc_t *sc = cookie;
+	int retval = FILTER_STRAY;
 
-	mtx_lock(&sc->io_lock);
+	mtx_lock_spin(&sc->io_lock);
 	/* Ignore stray interrupts */
 	if (sc->intr_mask != 0 && reg_read(sc, IG4_REG_INTR_STAT) != 0) {
+		/* Interrupt bits are cleared in wait_intr() loop */
 		set_intr_mask(sc, 0);
-		reg_read(sc, IG4_REG_CLR_INTR);
 		wakeup(sc);
+		retval = FILTER_HANDLED;
 	}
-	mtx_unlock(&sc->io_lock);
+	mtx_unlock_spin(&sc->io_lock);
+
+	return (retval);
 }
 
 #define REGDUMP(sc, reg)	\
@@ -1081,7 +1191,7 @@ ig4iic_dump(ig4iic_softc_t *sc)
 	if (sc->version == IG4_HASWELL) {
 		REGDUMP(sc, IG4_REG_SW_LTR_VALUE);
 		REGDUMP(sc, IG4_REG_AUTO_LTR_VALUE);
-	} else if (sc->version == IG4_SKYLAKE) {
+	} else if (IG4_HAS_ADDREGS(sc->version)) {
 		REGDUMP(sc, IG4_REG_ACTIVE_LTR_VALUE);
 		REGDUMP(sc, IG4_REG_IDLE_LTR_VALUE);
 	}
