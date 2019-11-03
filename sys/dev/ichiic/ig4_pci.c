@@ -206,31 +206,45 @@ ig4iic_pci_detach(device_t dev)
 	return (0);
 }
 
+static int
+ig4iic_pci_suspend(device_t dev)
+{
+	ig4iic_softc_t *sc = device_get_softc(dev);
+
+	return (ig4iic_suspend(sc));
+}
+
+static int
+ig4iic_pci_resume(device_t dev)
+{
+	ig4iic_softc_t *sc  = device_get_softc(dev);
+
+	return (ig4iic_resume(sc));
+}
+
 static device_method_t ig4iic_pci_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe, ig4iic_pci_probe),
 	DEVMETHOD(device_attach, ig4iic_pci_attach),
 	DEVMETHOD(device_detach, ig4iic_pci_detach),
+	DEVMETHOD(device_suspend, ig4iic_pci_suspend),
+	DEVMETHOD(device_resume, ig4iic_pci_resume),
 
 	DEVMETHOD(iicbus_transfer, ig4iic_transfer),
 	DEVMETHOD(iicbus_reset, ig4iic_reset),
-	DEVMETHOD(iicbus_callback, iicbus_null_callback),
+	DEVMETHOD(iicbus_callback, ig4iic_callback),
 
 	DEVMETHOD_END
 };
 
 static driver_t ig4iic_pci_driver = {
-	"ig4iic_pci",
+	"ig4iic",
 	ig4iic_pci_methods,
 	sizeof(struct ig4iic_softc)
 };
 
-static devclass_t ig4iic_pci_devclass;
-
-DRIVER_MODULE_ORDERED(ig4iic_pci, pci, ig4iic_pci_driver, ig4iic_pci_devclass, 0, 0,
+DRIVER_MODULE_ORDERED(ig4iic, pci, ig4iic_pci_driver, ig4iic_devclass, 0, 0,
     SI_ORDER_ANY);
-MODULE_DEPEND(ig4iic_pci, pci, 1, 1, 1);
-MODULE_DEPEND(ig4iic_pci, iicbus, IICBUS_MINVER, IICBUS_PREFVER, IICBUS_MAXVER);
-MODULE_VERSION(ig4iic_pci, 1);
-MODULE_PNP_INFO("W32:vendor/device", pci, ig4iic_pci, ig4iic_pci_devices,
+MODULE_DEPEND(ig4iic, pci, 1, 1, 1);
+MODULE_PNP_INFO("W32:vendor/device", pci, ig4iic, ig4iic_pci_devices,
     nitems(ig4iic_pci_devices));
