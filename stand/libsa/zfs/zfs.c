@@ -668,7 +668,14 @@ zfs_dev_open(struct open_file *f, ...)
 		spa = spa_find_by_guid(dev->pool_guid);
 	if (!spa)
 		return (ENXIO);
+	if (spa->spa_with_log) {
+		printf("Reading pool %s is not supported due to log device.\n",
+		    spa->spa_name);
+		return (ENXIO);
+	}
 	mount = malloc(sizeof(*mount));
+	if (mount == NULL)
+		return (ENOMEM);
 	rv = zfs_mount(spa, dev->root_guid, mount);
 	if (rv != 0) {
 		free(mount);
