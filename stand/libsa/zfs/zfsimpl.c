@@ -1622,10 +1622,8 @@ vdev_label_read_config(vdev_t *vd, uint64_t txg)
 
 	nvl_size = VDEV_PHYS_SIZE - sizeof (zio_eck_t) - 4;
 	nvl = malloc(nvl_size);
-	if (nvl == NULL) {
-		free(label);
-		return (NULL);
-	}
+	if (nvl == NULL)
+		goto done;
 
 	for (int l = 0; l < VDEV_LABELS; l++) {
 		const unsigned char *nvlist;
@@ -1643,7 +1641,7 @@ vdev_label_read_config(vdev_t *vd, uint64_t txg)
 		    DATA_TYPE_UINT64, NULL, &label_txg);
 		if (error != 0 || label_txg == 0) {
 			memcpy(nvl, nvlist, nvl_size);
-			return (nvl);
+			goto done;
 		}
 
 		if (label_txg <= txg && label_txg > best_txg) {
@@ -1666,6 +1664,8 @@ vdev_label_read_config(vdev_t *vd, uint64_t txg)
 		free(nvl);
 		nvl = NULL;
 	}
+done:
+	free(label);
 	return (nvl);
 }
 
@@ -1697,7 +1697,7 @@ vdev_uberblock_load(vdev_t *vd, uberblock_t *ub)
 static int
 vdev_probe(vdev_phys_read_t *_read, void *read_priv, spa_t **spap)
 {
-	vdev_t vtmp;
+	vdev_t vtmp = { 0 };
 	spa_t *spa;
 	vdev_t *vdev, *top_vdev, *pool_vdev;
 	unsigned char *nvlist;
@@ -1713,7 +1713,6 @@ vdev_probe(vdev_phys_read_t *_read, void *read_priv, spa_t **spap)
 	 * Load the vdev label and figure out which
 	 * uberblock is most current.
 	 */
-	memset(&vtmp, 0, sizeof(vtmp));
 	vtmp.v_phys_read = _read;
 	vtmp.v_read_priv = read_priv;
 	vtmp.v_psize = P2ALIGN(ldi_get_size(read_priv),
