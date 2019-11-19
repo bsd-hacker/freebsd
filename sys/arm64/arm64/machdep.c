@@ -412,8 +412,8 @@ int
 ptrace_set_pc(struct thread *td, u_long addr)
 {
 
-	printf("ARM64TODO: ptrace_set_pc");
-	return (EDOOFUS);
+	td->td_frame->tf_elr = addr;
+	return (0);
 }
 
 int
