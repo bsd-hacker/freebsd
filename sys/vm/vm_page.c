@@ -433,7 +433,7 @@ sysctl_vm_page_blacklist(SYSCTL_HANDLER_ARGS)
  * Nonetheless, it write busies the page as a safety precaution.
  */
 static void
-vm_page_init_marker(vm_page_t marker, int queue, uint8_t aflags)
+vm_page_init_marker(vm_page_t marker, int queue, uint16_t aflags)
 {
 
 	bzero(marker, sizeof(*marker));
@@ -3175,7 +3175,7 @@ static inline void
 vm_pqbatch_process_page(struct vm_pagequeue *pq, vm_page_t m)
 {
 	struct vm_domain *vmd;
-	uint8_t qflags;
+	uint16_t qflags;
 
 	CRITICAL_ASSERT(curthread);
 	vm_pagequeue_assert_locked(pq);
@@ -3185,7 +3185,7 @@ vm_pqbatch_process_page(struct vm_pagequeue *pq, vm_page_t m)
 	 * the page queue lock held.  In this case it is about to free the page,
 	 * which must not have any queue state.
 	 */
-	qflags = atomic_load_8(&m->aflags);
+	qflags = atomic_load_16(&m->aflags);
 	KASSERT(pq == vm_page_pagequeue(m) ||
 	    (qflags & PGA_QUEUE_STATE_MASK) == 0,
 	    ("page %p doesn't belong to queue %p but has aflags %#x",
@@ -3421,7 +3421,7 @@ void
 vm_page_dequeue(vm_page_t m)
 {
 	struct vm_pagequeue *pq, *pq1;
-	uint8_t aflags;
+	uint16_t aflags;
 
 	KASSERT(mtx_owned(vm_page_lockptr(m)) || m->ref_count == 0,
 	    ("page %p is allocated and unlocked", m));
@@ -3433,7 +3433,7 @@ vm_page_dequeue(vm_page_t m)
 			 * vm_page_dequeue_complete().  Ensure that all queue
 			 * state is cleared before we return.
 			 */
-			aflags = atomic_load_8(&m->aflags);
+			aflags = atomic_load_16(&m->aflags);
 			if ((aflags & PGA_QUEUE_STATE_MASK) == 0)
 				return;
 			KASSERT((aflags & PGA_DEQUEUE) != 0,
