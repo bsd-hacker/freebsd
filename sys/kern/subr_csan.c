@@ -151,6 +151,8 @@ kcsan_access(uintptr_t addr, size_t size, bool write, bool atomic, uintptr_t pc)
 
 	if (__predict_false(!kcsan_enabled))
 		return;
+	if (__predict_false(kcsan_md_unsupported((vm_offset_t)addr)))
+		return;
 
 	new.addr = addr;
 	new.size = size;
@@ -828,24 +830,32 @@ CSAN_BUS_WRITE_PTR_FUNC(region_stream, 8, uint64_t)
 	}
 
 CSAN_BUS_SET_FUNC(multi, 1, uint8_t)
-CSAN_BUS_SET_FUNC(multi_stream, 1, uint8_t)
 CSAN_BUS_SET_FUNC(region, 1, uint8_t)
+#if !defined(__aarch64__)
+CSAN_BUS_SET_FUNC(multi_stream, 1, uint8_t)
 CSAN_BUS_SET_FUNC(region_stream, 1, uint8_t)
+#endif
 
 CSAN_BUS_SET_FUNC(multi, 2, uint16_t)
-CSAN_BUS_SET_FUNC(multi_stream, 2, uint16_t)
 CSAN_BUS_SET_FUNC(region, 2, uint16_t)
+#if !defined(__aarch64__)
+CSAN_BUS_SET_FUNC(multi_stream, 2, uint16_t)
 CSAN_BUS_SET_FUNC(region_stream, 2, uint16_t)
+#endif
 
 CSAN_BUS_SET_FUNC(multi, 4, uint32_t)
-CSAN_BUS_SET_FUNC(multi_stream, 4, uint32_t)
 CSAN_BUS_SET_FUNC(region, 4, uint32_t)
+#if !defined(__aarch64__)
+CSAN_BUS_SET_FUNC(multi_stream, 4, uint32_t)
 CSAN_BUS_SET_FUNC(region_stream, 4, uint32_t)
+#endif
 
 #if !defined(__amd64__)
 CSAN_BUS_SET_FUNC(multi, 8, uint64_t)
-CSAN_BUS_SET_FUNC(multi_stream, 8, uint64_t)
 CSAN_BUS_SET_FUNC(region, 8, uint64_t)
+#if !defined(__aarch64__)
+CSAN_BUS_SET_FUNC(multi_stream, 8, uint64_t)
 CSAN_BUS_SET_FUNC(region_stream, 8, uint64_t)
+#endif
 #endif
 
