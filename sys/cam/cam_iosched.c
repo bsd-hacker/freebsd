@@ -281,6 +281,8 @@ struct cam_iosched_softc {
 	int		trim_ticks;		/* Max ticks to hold trims */
 	int		last_trim_tick;		/* Last 'tick' time ld a trim */
 	int		queued_trims;		/* Number of trims in the queue */
+	int		max_trims;		/* Maximum number of trims pending at once */
+	int		pend_trims;		/* Number of pending trims now */
 #ifdef CAM_IOSCHED_DYNAMIC
 	int		read_bias;		/* Read bias setting */
 	int		current_read_bias;	/* Current read bias state */
@@ -707,11 +709,6 @@ cam_iosched_cl_maybe_steer(struct control_loop *clp)
 }
 #endif
 
-/*
- * Trim or similar currently pending completion. Should only be set for
- * those drivers wishing only one Trim active at a time.
- */
-#define CAM_IOSCHED_FLAG_TRIM_ACTIVE	(1ul << 0)
 			/* Callout active, and needs to be torn down */
 #define CAM_IOSCHED_FLAG_CALLOUT_ACTIVE (1ul << 1)
 
@@ -755,6 +752,19 @@ cam_iosched_has_io(struct cam_iosched_softc *isc)
 static inline bool
 cam_iosched_has_more_trim(struct cam_iosched_softc *isc)
 {
+	struct bio *bp;
+
+	bp = bioq_first(&isc->trim_queue);
+#ifdef CAM_IOSCHED_DYNAMIC
+	if (do_dynamic_iosched) {
+		/*
+		 * If we're limiting trims, then defer action on trims
+		 * for a bit.
+		 */
+		if (bp == NULL || cam_iosched_limiter_caniop(&isc->trim_stats, bp) != 0)
+			return false;
+	}
+#endif
 
 	/*
 	 * If we've set a trim_goal, then if we exceed that allow trims
@@ -771,8 +781,7 @@ cam_iosched_has_more_trim(struct cam_iosched_softc *isc)
 		return false;
 	}
 
-	return !(isc->flags & CAM_IOSCHED_FLAG_TRIM_ACTIVE) &&
-	    bioq_first(&isc->trim_queue);
+	return isc->pend_trims <= isc->max_trims && bp != NULL;
 }
 
 #define cam_iosched_sort_queue(isc)	((isc)->sort_io_queue >= 0 ?	\
@@ -1096,6 +1105,7 @@ cam_iosched_init(struct cam_iosched_softc **iscp, struct cam_periph *periph)
 	(*iscp)->sort_io_queue = -1;
 	bioq_init(&(*iscp)->bio_queue);
 	bioq_init(&(*iscp)->trim_queue);
+	(*iscp)->max_trims = 1;
 #ifdef CAM_IOSCHED_DYNAMIC
 	if (do_dynamic_iosched) {
 		bioq_init(&(*iscp)->write_queue);
@@ -1389,10 +1399,17 @@ cam_iosched_next_trim(struct cam_iosched_softc *isc)
 struct bio *
 cam_iosched_get_trim(struct cam_iosched_softc *isc)
 {
+#ifdef CAM_IOSCHED_DYNAMIC
+	struct bio *bp;
+#endif
 
 	if (!cam_iosched_has_more_trim(isc))
 		return NULL;
 #ifdef CAM_IOSCHED_DYNAMIC
+	bp  = bioq_first(&isc->trim_queue);
+	if (bp == NULL)
+		return NULL;
+
 	/*
 	 * If pending read, prefer that based on current read bias setting. The
 	 * read bias is shared for both writes and TRIMs, but on TRIMs the bias
@@ -1414,6 +1431,26 @@ cam_iosched_get_trim(struct cam_iosched_softc *isc)
 		 */
 		isc->current_read_bias = isc->read_bias;
 	}
+
+	/*
+	 * See if our current limiter allows this I/O. Because we only call this
+	 * here, and not in next_trim, the 'bandwidth' limits for trims won't
+	 * work, while the iops or max queued limits will work. It's tricky
+	 * because we want the limits to be from the perspective of the
+	 * "commands sent to the device." To make iops work, we need to check
+	 * only here (since we want all the ops we combine to count as one). To
+	 * make bw limits work, we'd need to check in next_trim, but that would
+	 * have the effect of limiting the iops as seen from the upper layers.
+	 */
+	if (cam_iosched_limiter_iop(&isc->trim_stats, bp) != 0) {
+		if (iosched_debug)
+			printf("Can't trim because limiter says no.\n");
+		isc->trim_stats.state_flags |= IOP_RATE_LIMITED;
+		return NULL;
+	}
+	isc->current_read_bias = isc->read_bias;
+	isc->trim_stats.state_flags &= ~IOP_RATE_LIMITED;
+	/* cam_iosched_next_trim below keeps proper book */
 #endif
 	return cam_iosched_next_trim(isc);
 }
@@ -1497,6 +1534,41 @@ cam_iosched_queue_work(struct cam_iosched_softc *isc, struct bio *bp)
 {
 
 	/*
+	 * A BIO_SPEEDUP from the uppper layers means that they have a block
+	 * shortage. At the present, this is only sent when we're trying to
+	 * allocate blocks, but have a shortage before giving up. bio_length is
+	 * the size of their shortage. We will complete just enough BIO_DELETEs
+	 * in the queue to satisfy the need. If bio_length is 0, we'll complete
+	 * them all. This allows the scheduler to delay BIO_DELETEs to improve
+	 * read/write performance without worrying about the upper layers. When
+	 * it's possibly a problem, we respond by pretending the BIO_DELETEs
+	 * just worked. We can't do anything about the BIO_DELETEs in the
+	 * hardware, though. We have to wait for them to complete.
+	 */
+	if (bp->bio_cmd == BIO_SPEEDUP) {
+		off_t len;
+		struct bio *nbp;
+
+		len = 0;
+		while (bioq_first(&isc->trim_queue) &&
+		    (bp->bio_length == 0 || len < bp->bio_length)) {
+			nbp = bioq_takefirst(&isc->trim_queue);
+			len += nbp->bio_length;
+			nbp->bio_error = 0;
+			biodone(nbp);
+		}
+		if (bp->bio_length > 0) {
+			if (bp->bio_length > len)
+				bp->bio_resid = bp->bio_length - len;
+			else
+				bp->bio_resid = 0;
+		}
+		bp->bio_error = 0;
+		biodone(bp);
+		return;
+	}
+
+	/*
 	 * If we get a BIO_FLUSH, and we're doing delayed BIO_DELETEs then we
 	 * set the last tick time to one less than the current ticks minus the
 	 * delay to force the BIO_DELETEs to be presented to the client driver.
@@ -1569,7 +1641,7 @@ void
 cam_iosched_trim_done(struct cam_iosched_softc *isc)
 {
 
-	isc->flags &= ~CAM_IOSCHED_FLAG_TRIM_ACTIVE;
+	isc->pend_trims--;
 }
 
 /*
@@ -1637,7 +1709,7 @@ void
 cam_iosched_submit_trim(struct cam_iosched_softc *isc)
 {
 
-	isc->flags |= CAM_IOSCHED_FLAG_TRIM_ACTIVE;
+	isc->pend_trims++;
 }
 
 /*
@@ -1863,7 +1935,7 @@ DB_SHOW_COMMAND(iosched, cam_iosched_db_show)
 	db_printf("in_reads:          %d\n", isc->read_stats.in);
 	db_printf("out_reads:         %d\n", isc->read_stats.out);
 	db_printf("queued_reads:      %d\n", isc->read_stats.queued);
-	db_printf("Current Q len      %d\n", biolen(&isc->bio_queue));
+	db_printf("Read Q len         %d\n", biolen(&isc->bio_queue));
 	db_printf("pending_writes:    %d\n", isc->write_stats.pending);
 	db_printf("min_writes:        %d\n", isc->write_stats.min);
 	db_printf("max_writes:        %d\n", isc->write_stats.max);
@@ -1871,7 +1943,7 @@ DB_SHOW_COMMAND(iosched, cam_iosched_db_show)
 	db_printf("in_writes:         %d\n", isc->write_stats.in);
 	db_printf("out_writes:        %d\n", isc->write_stats.out);
 	db_printf("queued_writes:     %d\n", isc->write_stats.queued);
-	db_printf("Current Q len      %d\n", biolen(&isc->write_queue));
+	db_printf("Write Q len        %d\n", biolen(&isc->write_queue));
 	db_printf("pending_trims:     %d\n", isc->trim_stats.pending);
 	db_printf("min_trims:         %d\n", isc->trim_stats.min);
 	db_printf("max_trims:         %d\n", isc->trim_stats.max);
@@ -1879,11 +1951,11 @@ DB_SHOW_COMMAND(iosched, cam_iosched_db_show)
 	db_printf("in_trims:          %d\n", isc->trim_stats.in);
 	db_printf("out_trims:         %d\n", isc->trim_stats.out);
 	db_printf("queued_trims:      %d\n", isc->trim_stats.queued);
-	db_printf("Current Q len      %d\n", biolen(&isc->trim_queue));
+	db_printf("Trim Q len         %d\n", biolen(&isc->trim_queue));
 	db_printf("read_bias:         %d\n", isc->read_bias);
 	db_printf("current_read_bias: %d\n", isc->current_read_bias);
-	db_printf("Trim active?       %s\n",
-	    (isc->flags & CAM_IOSCHED_FLAG_TRIM_ACTIVE) ? "yes" : "no");
+	db_printf("Trims active       %d\n", isc->pend_trims);
+	db_printf("Max trims active   %d\n", isc->max_trims);
 }
 #endif
 #endif
