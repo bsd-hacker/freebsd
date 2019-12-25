@@ -281,7 +281,6 @@ static uma_keg_t uma_kcreate(uma_zone_t zone, size_t size, uma_init uminit,
     uma_fini fini, int align, uint32_t flags);
 static int zone_import(void *, void **, int, int, int);
 static void zone_release(void *, void **, int);
-static void uma_zero_item(void *, uma_zone_t);
 static bool cache_alloc(uma_zone_t, uma_cache_t, void *, int);
 static bool cache_free(uma_zone_t, uma_cache_t, void *, void *, int);
 
@@ -531,6 +530,144 @@ zone_put_bucket(uma_zone_t zone, uma_zone_domain_t zdom, uma_bucket_t bucket,
 	if (ws && zdom->uzd_imax < zdom->uzd_nitems)
 		zdom->uzd_imax = zdom->uzd_nitems;
 	zone->uz_bkt_count += bucket->ub_cnt;
+}
+
+/* Pops an item out of a per-cpu cache bucket. */
+static inline void *
+cache_bucket_pop(uma_cache_t cache, uma_cache_bucket_t bucket)
+{
+	void *item;
+
+	CRITICAL_ASSERT(curthread);
+
+	bucket->ucb_cnt--;
+	item = bucket->ucb_bucket->ub_bucket[bucket->ucb_cnt];
+#ifdef INVARIANTS
+	bucket->ucb_bucket->ub_bucket[bucket->ucb_cnt] = NULL;
+	KASSERT(item != NULL, ("uma_zalloc: Bucket pointer mangled."));
+#endif
+	cache->uc_allocs++;
+
+	return (item);
+}
+
+/* Pushes an item into a per-cpu cache bucket. */
+static inline void
+cache_bucket_push(uma_cache_t cache, uma_cache_bucket_t bucket, void *item)
+{
+
+	CRITICAL_ASSERT(curthread);
+	KASSERT(bucket->ucb_bucket->ub_bucket[bucket->ucb_cnt] == NULL,
+	    ("uma_zfree: Freeing to non free bucket index."));
+
+	bucket->ucb_bucket->ub_bucket[bucket->ucb_cnt] = item;
+	bucket->ucb_cnt++;
+	cache->uc_frees++;
+}
+
+/*
+ * Unload a UMA bucket from a per-cpu cache.
+ */
+static inline uma_bucket_t
+cache_bucket_unload(uma_cache_bucket_t bucket)
+{
+	uma_bucket_t b;
+
+	b = bucket->ucb_bucket;
+	if (b != NULL) {
+		MPASS(b->ub_entries == bucket->ucb_entries);
+		b->ub_cnt = bucket->ucb_cnt;
+		bucket->ucb_bucket = NULL;
+		bucket->ucb_entries = bucket->ucb_cnt = 0;
+	}
+
+	return (b);
+}
+
+static inline uma_bucket_t
+cache_bucket_unload_alloc(uma_cache_t cache)
+{
+
+	return (cache_bucket_unload(&cache->uc_allocbucket));
+}
+
+static inline uma_bucket_t
+cache_bucket_unload_free(uma_cache_t cache)
+{
+
+	return (cache_bucket_unload(&cache->uc_freebucket));
+}
+
+static inline uma_bucket_t
+cache_bucket_unload_cross(uma_cache_t cache)
+{
+
+	return (cache_bucket_unload(&cache->uc_crossbucket));
+}
+
+/*
+ * Load a bucket into a per-cpu cache bucket.
+ */
+static inline void
+cache_bucket_load(uma_cache_bucket_t bucket, uma_bucket_t b)
+{
+
+	CRITICAL_ASSERT(curthread);
+	MPASS(bucket->ucb_bucket == NULL);
+
+	bucket->ucb_bucket = b;
+	bucket->ucb_cnt = b->ub_cnt;
+	bucket->ucb_entries = b->ub_entries;
+}
+
+static inline void
+cache_bucket_load_alloc(uma_cache_t cache, uma_bucket_t b)
+{
+
+	cache_bucket_load(&cache->uc_allocbucket, b);
+}
+
+static inline void
+cache_bucket_load_free(uma_cache_t cache, uma_bucket_t b)
+{
+
+	cache_bucket_load(&cache->uc_freebucket, b);
+}
+
+#ifdef UMA_XDOMAIN
+static inline void 
+cache_bucket_load_cross(uma_cache_t cache, uma_bucket_t b)
+{
+
+	cache_bucket_load(&cache->uc_crossbucket, b);
+}
+#endif
+
+/*
+ * Copy and preserve ucb_spare.
+ */
+static inline void
+cache_bucket_copy(uma_cache_bucket_t b1, uma_cache_bucket_t b2)
+{
+
+	b1->ucb_bucket = b2->ucb_bucket;
+	b1->ucb_entries = b2->ucb_entries;
+	b1->ucb_cnt = b2->ucb_cnt;
+}
+
+/*
+ * Swap two cache buckets.
+ */
+static inline void
+cache_bucket_swap(uma_cache_bucket_t b1, uma_cache_bucket_t b2)
+{
+	struct uma_cache_bucket b3;
+
+	CRITICAL_ASSERT(curthread);
+
+	cache_bucket_copy(&b3, b1);
+	cache_bucket_copy(b1, b2);
+	cache_bucket_copy(b2, &b3);
 }
 
 static void
@@ -801,6 +938,7 @@ static void
 cache_drain(uma_zone_t zone)
 {
 	uma_cache_t cache;
+	uma_bucket_t bucket;
 	int cpu;
 
 	/*
@@ -817,18 +955,21 @@ cache_drain(uma_zone_t zone)
 	 */
 	CPU_FOREACH(cpu) {
 		cache = &zone->uz_cpu[cpu];
-		bucket_drain(zone, cache->uc_allocbucket);
-		if (cache->uc_allocbucket != NULL)
-			bucket_free(zone, cache->uc_allocbucket, NULL);
-		cache->uc_allocbucket = NULL;
-		bucket_drain(zone, cache->uc_freebucket);
-		if (cache->uc_freebucket != NULL)
-			bucket_free(zone, cache->uc_freebucket, NULL);
-		cache->uc_freebucket = NULL;
-		bucket_drain(zone, cache->uc_crossbucket);
-		if (cache->uc_crossbucket != NULL)
-			bucket_free(zone, cache->uc_crossbucket, NULL);
-		cache->uc_crossbucket = NULL;
+		bucket = cache_bucket_unload_alloc(cache);
+		if (bucket != NULL) {
+			bucket_drain(zone, bucket);
+			bucket_free(zone, bucket, NULL);
+		}
+		bucket = cache_bucket_unload_free(cache);
+		if (bucket != NULL) {
+			bucket_drain(zone, bucket);
+			bucket_free(zone, bucket, NULL);
+		}
+		bucket = cache_bucket_unload_cross(cache);
+		if (bucket != NULL) {
+			bucket_drain(zone, bucket);
+			bucket_free(zone, bucket, NULL);
+		}
 	}
 	ZONE_LOCK(zone);
 	bucket_cache_reclaim(zone, true);
@@ -866,24 +1007,17 @@ cache_drain_safe_cpu(uma_zone_t zone, void *unused)
 	else
 		domain = 0;
 	cache = &zone->uz_cpu[curcpu];
-	if (cache->uc_allocbucket) {
-		if (cache->uc_allocbucket->ub_cnt != 0)
-			zone_put_bucket(zone, &zone->uz_domain[domain],
-			    cache->uc_allocbucket, false);
-		else
-			b1 = cache->uc_allocbucket;
-		cache->uc_allocbucket = NULL;
+	b1 = cache_bucket_unload_alloc(cache);
+	if (b1 != NULL && b1->ub_cnt != 0) {
+		zone_put_bucket(zone, &zone->uz_domain[domain], b1, false);
+		b1 = NULL;
 	}
-	if (cache->uc_freebucket) {
-		if (cache->uc_freebucket->ub_cnt != 0)
-			zone_put_bucket(zone, &zone->uz_domain[domain],
-			    cache->uc_freebucket, false);
-		else
-			b2 = cache->uc_freebucket;
-		cache->uc_freebucket = NULL;
+	b2 = cache_bucket_unload_free(cache);
+	if (b2 != NULL && b2->ub_cnt != 0) {
+		zone_put_bucket(zone, &zone->uz_domain[domain], b2, false);
+		b2 = NULL;
 	}
-	b3 = cache->uc_crossbucket;
-	cache->uc_crossbucket = NULL;
+	b3 = cache_bucket_unload_cross(cache);
 	critical_exit();
 	ZONE_UNLOCK(zone);
 	if (b1)
@@ -2048,6 +2182,17 @@ zone_count(uma_zone_t zone, void *arg)
 		    zone->uz_namecnt + 1);
 }
 
+static void
+zone_update_caches(uma_zone_t zone)
+{
+	int i;
+
+	for (i = 0; i <= mp_maxid; i++) {
+		cache_set_uz_size(&zone->uz_cpu[i], zone->uz_size);
+		cache_set_uz_flags(&zone->uz_cpu[i], zone->uz_flags);
+	}
+}
+
 /*
  * Zone header ctor.  This initializes all fields, locks, etc.
  *
@@ -2093,7 +2238,7 @@ zone_ctor(void *mem, int size, void *udata, int flags)
 
 #ifdef INVARIANTS
 	if (arg->uminit == trash_init && arg->fini == trash_fini)
-		zone->uz_flags |= UMA_ZFLAG_TRASH;
+		zone->uz_flags |= UMA_ZFLAG_TRASH | UMA_ZFLAG_CTORDTOR;
 #endif
 
 	/*
@@ -2192,6 +2337,9 @@ out:
 	else
 		zone->uz_bucket_size = bucket_select(zone->uz_size);
 	zone->uz_bucket_size_min = zone->uz_bucket_size;
+	if (zone->uz_dtor != NULL || zone->uz_ctor != NULL)
+		zone->uz_flags |= UMA_ZFLAG_CTORDTOR;
+	zone_update_caches(zone);
 
 	return (0);
 }
@@ -2666,35 +2814,14 @@ uma_zfree_pcpu_arg(uma_zone_t zone, void *item, void *udata)
 	uma_zfree_arg(zone, item, udata);
 }
 
-static inline void *
-bucket_pop(uma_zone_t zone, uma_cache_t cache, uma_bucket_t bucket)
-{
-	void *item;
-
-	bucket->ub_cnt--;
-	item = bucket->ub_bucket[bucket->ub_cnt];
 #ifdef INVARIANTS
-	bucket->ub_bucket[bucket->ub_cnt] = NULL;
-	KASSERT(item != NULL, ("uma_zalloc: Bucket pointer mangled."));
+#define	UMA_ALWAYS_CTORDTOR	1
+#else
+#define	UMA_ALWAYS_CTORDTOR	0
 #endif
-	cache->uc_allocs++;
-
-	return (item);
-}
-
-static inline void
-bucket_push(uma_zone_t zone, uma_cache_t cache, uma_bucket_t bucket,
-    void *item)
-{
-	KASSERT(bucket->ub_bucket[bucket->ub_cnt] == NULL,
-	    ("uma_zfree: Freeing to non free bucket index."));
-	bucket->ub_bucket[bucket->ub_cnt] = item;
-	bucket->ub_cnt++;
-	cache->uc_frees++;
-}
 
 static void *
-item_ctor(uma_zone_t zone, void *udata, int flags, void *item)
+item_ctor(uma_zone_t zone, int size, void *udata, int flags, void *item)
 {
 #ifdef INVARIANTS
 	bool skipdbg;
@@ -2702,10 +2829,10 @@ item_ctor(uma_zone_t zone, void *udata, int flags, void *item)
 	skipdbg = uma_dbg_zskip(zone, item);
 	if (!skipdbg && (zone->uz_flags & UMA_ZFLAG_TRASH) != 0 &&
 	    zone->uz_ctor != trash_ctor)
-		trash_ctor(item, zone->uz_size, udata, flags);
+		trash_ctor(item, size, udata, flags);
 #endif
 	if (__predict_false(zone->uz_ctor != NULL) &&
-	    zone->uz_ctor(item, zone->uz_size, udata, flags) != 0) {
+	    zone->uz_ctor(item, size, udata, flags) != 0) {
 		counter_u64_add(zone->uz_fails, 1);
 		zone_free_item(zone, item, udata, SKIP_DTOR | SKIP_CNT);
 		return (NULL);
@@ -2715,13 +2842,14 @@ item_ctor(uma_zone_t zone, void *udata, int flags, void *item)
 		uma_dbg_alloc(zone, NULL, item);
 #endif
 	if (flags & M_ZERO)
-		uma_zero_item(item, zone);
+		bzero(item, size);
 
 	return (item);
 }
 
 static inline void
-item_dtor(uma_zone_t zone, void *item, void *udata, enum zfreeskip skip)
+item_dtor(uma_zone_t zone, void *item, int size, void *udata,
+    enum zfreeskip skip)
 {
 #ifdef INVARIANTS
 	bool skipdbg;
@@ -2734,13 +2862,13 @@ item_dtor(uma_zone_t zone, void *item, void *udata, enum zfreeskip skip)
 			uma_dbg_free(zone, NULL, item);
 	}
 #endif
-	if (skip < SKIP_DTOR) {
+	if (__predict_true(skip < SKIP_DTOR)) {
 		if (zone->uz_dtor != NULL)
-			zone->uz_dtor(item, zone->uz_size, udata);
+			zone->uz_dtor(item, size, udata);
 #ifdef INVARIANTS
 		if (!skipdbg && (zone->uz_flags & UMA_ZFLAG_TRASH) != 0 &&
 		    zone->uz_dtor != trash_dtor)
-			trash_dtor(item, zone->uz_size, udata);
+			trash_dtor(item, size, udata);
 #endif
 	}
 }
@@ -2749,10 +2877,10 @@ item_dtor(uma_zone_t zone, void *item, void *udata, enum zfreeskip skip)
 void *
 uma_zalloc_arg(uma_zone_t zone, void *udata, int flags)
 {
-	uma_bucket_t bucket;
+	uma_cache_bucket_t bucket;
 	uma_cache_t cache;
 	void *item;
-	int cpu, domain;
+	int domain, size, uz_flags;
 
 	/* Enable entropy collection for RANDOM_ENABLE_UMA kernel option */
 	random_harvest_fast_uma(&zone, sizeof(zone), RANDOM_UMA);
@@ -2761,16 +2889,21 @@ uma_zalloc_arg(uma_zone_t zone, void *udata, int flags)
 	CTR4(KTR_UMA, "uma_zalloc_arg thread %x zone %s(%p) flags %d",
 	    curthread, zone->uz_name, zone, flags);
 
+#ifdef WITNESS
 	if (flags & M_WAITOK) {
 		WITNESS_WARN(WARN_GIANTOK | WARN_SLEEPOK, NULL,
 		    "uma_zalloc_arg: zone \"%s\"", zone->uz_name);
 	}
+#endif
+
+#ifdef INVARIANTS
 	KASSERT((flags & M_EXEC) == 0, ("uma_zalloc_arg: called with M_EXEC"));
 	KASSERT(curthread->td_critnest == 0 || SCHEDULER_STOPPED(),
 	    ("uma_zalloc_arg: called with spinlock or critical section held"));
 	if (zone->uz_flags & UMA_ZONE_PCPU)
 		KASSERT((flags & M_ZERO) == 0, ("allocating from a pcpu zone "
 		    "with M_ZERO passed"));
+#endif
 
 #ifdef DEBUG_MEMGUARD
 	if (memguard_cmp_zone(zone)) {
@@ -2804,13 +2937,19 @@ uma_zalloc_arg(uma_zone_t zone, void *udata, int flags)
 	 */
 	critical_enter();
 	do {
-		cpu = curcpu;
-		cache = &zone->uz_cpu[cpu];
-		bucket = cache->uc_allocbucket;
-		if (__predict_true(bucket != NULL && bucket->ub_cnt != 0)) {
-			item = bucket_pop(zone, cache, bucket);
+		cache = &zone->uz_cpu[curcpu];
+		bucket = &cache->uc_allocbucket;
+		size = cache_uz_size(cache);
+		uz_flags = cache_uz_flags(cache);
+		if (__predict_true(bucket->ucb_cnt != 0)) {
+			item = cache_bucket_pop(cache, bucket);
 			critical_exit();
-			return (item_ctor(zone, udata, flags, item));
+			if (__predict_false((uz_flags & UMA_ZFLAG_CTORDTOR) != 0 ||
+			    UMA_ALWAYS_CTORDTOR))
+				return (item_ctor(zone, size, udata, flags, item));
+			if (flags & M_ZERO)
+				bzero(item, size);
+			return (item);
 		}
 	} while (cache_alloc(zone, cache, udata, flags));
 	critical_exit();
@@ -2818,7 +2957,7 @@ uma_zalloc_arg(uma_zone_t zone, void *udata, int flags)
 	/*
 	 * We can not get a bucket so try to return a single item.
 	 */
-	if (zone->uz_flags & UMA_ZONE_NUMA)
+	if (uz_flags & UMA_ZONE_NUMA)
 		domain = PCPU_GET(domain);
 	else
 		domain = UMA_ANYDOMAIN;
@@ -2837,7 +2976,7 @@ cache_alloc(uma_zone_t zone, uma_cache_t cache, void *udata, int flags)
 {
 	uma_zone_domain_t zdom;
 	uma_bucket_t bucket;
-	int cpu, domain;
+	int domain;
 	bool lockfail;
 
 	CRITICAL_ASSERT(curthread);
@@ -2846,18 +2985,15 @@ cache_alloc(uma_zone_t zone, uma_cache_t cache, void *udata, int flags)
 	 * If we have run out of items in our alloc bucket see
 	 * if we can switch with the free bucket.
 	 */
-	bucket = cache->uc_freebucket;
-	if (bucket != NULL && bucket->ub_cnt != 0) {
-		cache->uc_freebucket = cache->uc_allocbucket;
-		cache->uc_allocbucket = bucket;
+	if (cache->uc_freebucket.ucb_cnt != 0) {
+		cache_bucket_swap(&cache->uc_freebucket, &cache->uc_allocbucket);
 		return (true);
 	}
 
 	/*
 	 * Discard any empty allocation bucket while we hold no locks.
 	 */
-	bucket = cache->uc_allocbucket;
-	cache->uc_allocbucket = NULL;
+	bucket = cache_bucket_unload_alloc(cache);
 	critical_exit();
 	if (bucket != NULL)
 		bucket_free(zone, bucket, udata);
@@ -2883,11 +3019,10 @@ cache_alloc(uma_zone_t zone, uma_cache_t cache, void *udata, int flags)
 	if (zone->uz_bucket_size == 0 || bucketdisable)
 		return (false);
 
-	cpu = curcpu;
-	cache = &zone->uz_cpu[cpu];
+	cache = &zone->uz_cpu[curcpu];
 
 	/* See if we lost the race to fill the cache. */
-	if (cache->uc_allocbucket != NULL) {
+	if (cache->uc_allocbucket.ucb_bucket != NULL) {
 		ZONE_UNLOCK(zone);
 		return (true);
 	}
@@ -2907,7 +3042,7 @@ cache_alloc(uma_zone_t zone, uma_cache_t cache, void *udata, int flags)
 		ZONE_UNLOCK(zone);
 		KASSERT(bucket->ub_cnt != 0,
 		    ("uma_zalloc_arg: Returning an empty bucket."));
-		cache->uc_allocbucket = bucket;
+		cache_bucket_load_alloc(cache, bucket);
 		return (true);
 	}
 	/* We are no longer associated with this CPU. */
@@ -2935,12 +3070,11 @@ cache_alloc(uma_zone_t zone, uma_cache_t cache, void *udata, int flags)
 	 * initialized bucket to make this less likely or claim
 	 * the memory directly.
 	 */
-	cpu = curcpu;
-	cache = &zone->uz_cpu[cpu];
-	if (cache->uc_allocbucket == NULL &&
+	cache = &zone->uz_cpu[curcpu];
+	if (cache->uc_allocbucket.ucb_bucket == NULL &&
 	    ((zone->uz_flags & UMA_ZONE_NUMA) == 0 ||
 	    domain == PCPU_GET(domain))) {
-		cache->uc_allocbucket = bucket;
+		cache_bucket_load_alloc(cache, bucket);
 		zdom->uzd_imax += bucket->ub_cnt;
 	} else if (zone->uz_bkt_count >= zone->uz_bkt_max) {
 		critical_exit();
@@ -3332,7 +3466,7 @@ zone_alloc_item_locked(uma_zone_t zone, void *udata, int domain, int flags)
 			goto fail_cnt;
 		}
 	}
-	item = item_ctor(zone, udata, flags, item);
+	item = item_ctor(zone, zone->uz_size, udata, flags, item);
 	if (item == NULL)
 		goto fail;
 
@@ -3361,8 +3495,8 @@ void
 uma_zfree_arg(uma_zone_t zone, void *item, void *udata)
 {
 	uma_cache_t cache;
-	uma_bucket_t bucket;
-	int cpu, domain, itemdomain;
+	uma_cache_bucket_t bucket;
+	int domain, itemdomain, uz_flags;
 
 	/* Enable entropy collection for RANDOM_ENABLE_UMA kernel option */
 	random_harvest_fast_uma(&zone, sizeof(zone), RANDOM_UMA);
@@ -3386,14 +3520,26 @@ uma_zfree_arg(uma_zone_t zone, void *item, void *udata)
 		return;
 	}
 #endif
-	item_dtor(zone, item, udata, SKIP_NONE);
+
+	/*
+	 * We are accessing the per-cpu cache without a critical section to
+	 * fetch size and flags.  This is acceptable, if we are preempted we
+	 * will simply read another cpu's line.
+	 */
+	cache = &zone->uz_cpu[curcpu];
+	uz_flags = cache_uz_flags(cache);
+	if (__predict_false((uz_flags & UMA_ZFLAG_CTORDTOR) != 0 ||
+	    UMA_ALWAYS_CTORDTOR))
+		item_dtor(zone, item, cache_uz_size(cache), udata, SKIP_NONE);
 
 	/*
 	 * The race here is acceptable.  If we miss it we'll just have to wait
 	 * a little longer for the limits to be reset.
 	 */
-	if (zone->uz_sleepers > 0)
-		goto zfree_item;
+	if (__predict_false(uz_flags & UMA_ZFLAG_LIMIT)) {
+		if (zone->uz_sleepers > 0)
+			goto zfree_item;
+	}
 
 	/*
 	 * If possible, free to the per-CPU cache.  There are two
@@ -3409,17 +3555,15 @@ uma_zfree_arg(uma_zone_t zone, void *item, void *udata)
 	domain = itemdomain = 0;
 	critical_enter();
 	do {
-		cpu = curcpu;
-		cache = &zone->uz_cpu[cpu];
-		bucket = cache->uc_allocbucket;
+		cache = &zone->uz_cpu[curcpu];
+		bucket = &cache->uc_allocbucket;
 #ifdef UMA_XDOMAIN
-		if ((zone->uz_flags & UMA_ZONE_NUMA) != 0) {
+		if ((uz_flags & UMA_ZONE_NUMA) != 0) {
 			itemdomain = _vm_phys_domain(pmap_kextract((vm_offset_t)item));
 			domain = PCPU_GET(domain);
 		}
-		if ((zone->uz_flags & UMA_ZONE_NUMA) != 0 &&
-		    domain != itemdomain) {
-			bucket = cache->uc_crossbucket;
+		if ((uz_flags & UMA_ZONE_NUMA) != 0 && domain != itemdomain) {
+			bucket = &cache->uc_crossbucket;
 		} else
 #endif
 
@@ -3428,11 +3572,10 @@ uma_zfree_arg(uma_zone_t zone, void *item, void *udata)
 		 * for cache-hot datastructures.  Spill over into the freebucket
 		 * if necessary.  Alloc will swap them if one runs dry.
 		 */
-		if (bucket == NULL || bucket->ub_cnt >= bucket->ub_entries)
-			bucket = cache->uc_freebucket;
-		if (__predict_true(bucket != NULL &&
-		    bucket->ub_cnt < bucket->ub_entries)) {
-			bucket_push(zone, cache, bucket, item);
+		if (__predict_false(bucket->ucb_cnt >= bucket->ucb_entries))
+			bucket = &cache->uc_freebucket;
+		if (__predict_true(bucket->ucb_cnt < bucket->ucb_entries)) {
+			cache_bucket_push(cache, bucket, item);
 			critical_exit();
 			return;
 		}
@@ -3511,15 +3654,14 @@ cache_free(uma_zone_t zone, uma_cache_t cache, void *udata, void *item,
     int itemdomain)
 {
 	uma_bucket_t bucket;
-	int cpu, domain;
+	int domain;
 
 	CRITICAL_ASSERT(curthread);
 
 	if (zone->uz_bucket_size == 0 || bucketdisable)
 		return false;
 
-	cpu = curcpu;
-	cache = &zone->uz_cpu[cpu];
+	cache = &zone->uz_cpu[curcpu];
 
 	/*
 	 * NUMA domains need to free to the correct zdom.  When XDOMAIN
@@ -3536,16 +3678,12 @@ cache_free(uma_zone_t zone, uma_cache_t cache, void *udata, void *item,
 		itemdomain = domain = 0;
 #ifdef UMA_XDOMAIN
 	if (domain != itemdomain) {
-		bucket = cache->uc_crossbucket;
-		cache->uc_crossbucket = NULL;
+		bucket = cache_bucket_unload_cross(cache);
 		if (bucket != NULL)
 			atomic_add_64(&zone->uz_xdomain, bucket->ub_cnt);
 	} else
 #endif
-	{
-		bucket = cache->uc_freebucket;
-		cache->uc_freebucket = NULL;
-	}
+		bucket = cache_bucket_unload_free(cache);
 
 
 	/* We are no longer associated with this CPU. */
@@ -3560,8 +3698,7 @@ cache_free(uma_zone_t zone, uma_cache_t cache, void *udata, void *item,
 	critical_enter();
 	if (bucket == NULL)
 		return (false);
-	cpu = curcpu;
-	cache = &zone->uz_cpu[cpu];
+	cache = &zone->uz_cpu[curcpu];
 #ifdef UMA_XDOMAIN
 	/*
 	 * Check to see if we should be populating the cross bucket.  If it
@@ -3570,8 +3707,9 @@ cache_free(uma_zone_t zone, uma_cache_t cache, void *udata, void *item,
 	 */
 	if ((zone->uz_flags & UMA_ZONE_NUMA) != 0) {
 		domain = PCPU_GET(domain);
-		if (domain != itemdomain && cache->uc_crossbucket == NULL) {
-			cache->uc_crossbucket = bucket;
+		if (domain != itemdomain &&
+		    cache->uc_crossbucket.ucb_bucket == NULL) {
+			cache_bucket_load_cross(cache, bucket);
 			return (true);
 		}
 	}
@@ -3579,12 +3717,12 @@ cache_free(uma_zone_t zone, uma_cache_t cache, void *udata, void *item,
 	/*
 	 * We may have lost the race to fill the bucket or switched CPUs.
 	 */
-	if (cache->uc_freebucket != NULL) {
+	if (cache->uc_freebucket.ucb_bucket != NULL) {
 		critical_exit();
 		bucket_free(zone, bucket, udata);
 		critical_enter();
 	} else
-		cache->uc_freebucket = bucket;
+		cache_bucket_load_free(cache, bucket);
 
 	return (true);
 }
@@ -3682,7 +3820,7 @@ static void
 zone_free_item(uma_zone_t zone, void *item, void *udata, enum zfreeskip skip)
 {
 
-	item_dtor(zone, item, udata, skip);
+	item_dtor(zone, item, zone->uz_size, udata, skip);
 
 	if (skip < SKIP_FINI && zone->uz_fini)
 		zone->uz_fini(item, zone->uz_size);
@@ -3718,6 +3856,8 @@ uma_zone_set_max(uma_zone_t zone, int nitems)
 	if (zone->uz_bucket_size_min > zone->uz_bucket_size_max)
 		zone->uz_bucket_size_min = zone->uz_bucket_size_max;
 	zone->uz_max_items = nitems;
+	zone->uz_flags |= UMA_ZFLAG_LIMIT;
+	zone_update_caches(zone);
 	ZONE_UNLOCK(zone);
 
 	return (nitems);
@@ -3985,7 +4125,9 @@ uma_zone_reserve_kva(uma_zone_t zone, int count)
 #else
 	keg->uk_allocf = noobj_alloc;
 #endif
-	keg->uk_flags |= UMA_ZONE_NOFREE;
+	keg->uk_flags |= UMA_ZFLAG_LIMIT | UMA_ZONE_NOFREE;
+	zone->uz_flags |= UMA_ZFLAG_LIMIT | UMA_ZONE_NOFREE;
+	zone_update_caches(zone);
 	ZONE_UNLOCK(zone);
 
 	return (1);
@@ -4132,13 +4274,6 @@ uma_zone_exhausted_nolock(uma_zone_t zone)
 	return (zone->uz_sleepers > 0);
 }
 
-static void
-uma_zero_item(void *item, uma_zone_t zone)
-{
-
-	bzero(item, zone->uz_size);
-}
-
 unsigned long
 uma_limit(void)
 {
@@ -4175,9 +4310,6 @@ uma_avail(void)
  * Note: does not update the zone statistics, as it can't safely clear the
  * per-CPU cache statistic.
  *
- * XXXRW: Following the uc_allocbucket and uc_freebucket pointers here isn't
- * safe from off-CPU; we should modify the caches to track this information
- * directly so that we don't have to.
  */
 static void
 uma_zone_sumstat(uma_zone_t z, long *cachefreep, uint64_t *allocsp,
@@ -4191,14 +4323,10 @@ uma_zone_sumstat(uma_zone_t z, long *cachefreep, uint64_t *allocsp,
 	cachefree = 0;
 	CPU_FOREACH(cpu) {
 		cache = &z->uz_cpu[cpu];
-		if (cache->uc_allocbucket != NULL)
-			cachefree += cache->uc_allocbucket->ub_cnt;
-		if (cache->uc_freebucket != NULL)
-			cachefree += cache->uc_freebucket->ub_cnt;
-		if (cache->uc_crossbucket != NULL) {
-			xdomain += cache->uc_crossbucket->ub_cnt;
-			cachefree += cache->uc_crossbucket->ub_cnt;
-		}
+		cachefree += cache->uc_allocbucket.ucb_cnt;
+		cachefree += cache->uc_freebucket.ucb_cnt;
+		xdomain += cache->uc_crossbucket.ucb_cnt;
+		cachefree += cache->uc_crossbucket.ucb_cnt;
 		allocs += cache->uc_allocs;
 		frees += cache->uc_frees;
 	}
@@ -4244,7 +4372,6 @@ uma_vm_zone_stats(struct uma_type_header *uth, uma_zone_t z, struct sbuf *sbuf,
     struct uma_percpu_stat *ups, bool internal)
 {
 	uma_zone_domain_t zdom;
-	uma_bucket_t bucket;
 	uma_cache_t cache;
 	int i;
 
@@ -4272,15 +4399,9 @@ uma_vm_zone_stats(struct uma_type_header *uth, uma_zone_t z, struct sbuf *sbuf,
 		if (internal || CPU_ABSENT(i))
 			continue;
 		cache = &z->uz_cpu[i];
-		bucket = (uma_bucket_t)atomic_load_ptr(&cache->uc_allocbucket);
-		if (bucket != NULL)
-			ups[i].ups_cache_free += bucket->ub_cnt;
-		bucket = (uma_bucket_t)atomic_load_ptr(&cache->uc_freebucket);
-		if (bucket != NULL)
-			ups[i].ups_cache_free += bucket->ub_cnt;
-		bucket = (uma_bucket_t)atomic_load_ptr(&cache->uc_crossbucket);
-		if (bucket != NULL)
-			ups[i].ups_cache_free += bucket->ub_cnt;
+		ups[i].ups_cache_free += cache->uc_allocbucket.ucb_cnt;
+		ups[i].ups_cache_free += cache->uc_freebucket.ucb_cnt;
+		ups[i].ups_cache_free += cache->uc_crossbucket.ucb_cnt;
 		ups[i].ups_allocs = cache->uc_allocs;
 		ups[i].ups_frees = cache->uc_frees;
 	}
