@@ -480,11 +480,16 @@ MK_KERBEROS:=	no
 .if ${MK_CXX} == "no"
 MK_CLANG:=	no
 MK_GNUCXX:=	no
+MK_GOOGLETEST:=	no
 MK_TESTS:=	no
 .endif
 
 .if ${MK_DIALOG} == "no"
 MK_BSDINSTALL:=	no
+.endif
+
+.if ${MK_FILE} == "no"
+MK_SVNLITE:=	no
 .endif
 
 .if ${MK_MAIL} == "no"
