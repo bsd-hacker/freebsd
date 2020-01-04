@@ -254,10 +254,13 @@ cache_uz_size(uma_cache_t cache)
  * Per-domain slab lists.  Embedded in the kegs.
  */
 struct uma_domain {
+	struct mtx_padalign ud_lock;	/* Lock for the domain lists. */
 	struct slabhead	ud_part_slab;	/* partially allocated slabs */
 	struct slabhead	ud_free_slab;	/* completely unallocated slabs */
 	struct slabhead ud_full_slab;	/* fully allocated slabs */
-};
+	uint32_t	ud_pages;	/* Total page count */
+	uint32_t	ud_free;	/* Count of items free in slabs */
+} __aligned(CACHE_LINE_SIZE);
 
 typedef struct uma_domain * uma_domain_t;
 
@@ -268,16 +271,11 @@ typedef struct uma_domain * uma_domain_t;
  *
  */
 struct uma_keg {
-	struct mtx	uk_lock;	/* Lock for the keg must be first.
-					 * See shared uz_keg/uz_lockptr
-					 * member of struct uma_zone. */
 	struct uma_hash	uk_hash;
 	LIST_HEAD(,uma_zone)	uk_zones;	/* Keg's zones */
 
 	struct domainset_ref uk_dr;	/* Domain selection policy. */
 	uint32_t	uk_align;	/* Alignment mask */
-	uint32_t	uk_pages;	/* Total page count */
-	uint32_t	uk_free;	/* Count of items free in slabs */
 	uint32_t	uk_reserve;	/* Number of reserved items. */
 	uint32_t	uk_size;	/* Requested size of each item */
 	uint32_t	uk_rsize;	/* Real size of each item */
@@ -306,6 +304,10 @@ struct uma_keg {
 typedef struct uma_keg	* uma_keg_t;
 
 #ifdef _KERNEL
+#define	KEG_ASSERT_COLD(k)						\
+	KASSERT((k)->uk_domain[0].ud_pages == 0,			\
+	    ("keg %s initialization after use.", (k)->uk_name))
+
 /*
  * Free bits per-slab.
  */
@@ -401,30 +403,24 @@ struct uma_zone_domain {
 	long		uzd_imax;	/* maximum item count this period */
 	long		uzd_imin;	/* minimum item count this period */
 	long		uzd_wss;	/* working set size estimate */
-};
+} __aligned(CACHE_LINE_SIZE);
 
 typedef struct uma_zone_domain * uma_zone_domain_t;
 
 /*
- * Zone management structure 
- *
- * TODO: Optimize for cache line size
- *
+ * Zone structure - per memory type.
  */
 struct uma_zone {
 	/* Offset 0, used in alloc/free fast/medium fast path and const. */
-	union {
-		uma_keg_t	uz_keg;		/* This zone's keg */
-		struct mtx 	*uz_lockptr;	/* To keg or to self */
-	};
+	uma_keg_t	uz_keg;		/* This zone's keg if !CACHE */
 	struct uma_zone_domain	*uz_domain;	/* per-domain buckets */
 	uint32_t	uz_flags;	/* Flags inherited from kegs */
 	uint32_t	uz_size;	/* Size inherited from kegs */
 	uma_ctor	uz_ctor;	/* Constructor for each allocation */
 	uma_dtor	uz_dtor;	/* Destructor */
-	uint64_t	uz_items;	/* Total items count */
+	uint64_t	uz_spare0;
 	uint64_t	uz_max_items;	/* Maximum number of items to alloc */
-	uint32_t	uz_sleepers;	/* Number of sleepers on memory */
+	uint32_t	uz_sleepers;	/* Threads sleeping on limit */
 	uint16_t	uz_bucket_size;	/* Number of items in full bucket */
 	uint16_t	uz_bucket_size_max; /* Maximum number of bucket items */
 
@@ -434,7 +430,7 @@ struct uma_zone {
 	void		*uz_arg;	/* Import/release argument. */
 	uma_init	uz_init;	/* Initializer for each item */
 	uma_fini	uz_fini;	/* Finalizer for each item. */
-	void		*uz_spare;
+	void		*uz_spare1;
 	uint64_t	uz_bkt_count;    /* Items in bucket cache */
 	uint64_t	uz_bkt_max;	/* Maximum bucket cache size */
 
@@ -459,6 +455,8 @@ struct uma_zone {
 	counter_u64_t	uz_fails;	/* Total number of alloc failures */
 	uint64_t	uz_sleeps;	/* Total number of alloc sleeps */
 	uint64_t	uz_xdomain;	/* Total number of cross-domain frees */
+	volatile uint64_t uz_items;	/* Total items count & sleepers */
+
 	char		*uz_ctlname;	/* sysctl safe name string. */
 	struct sysctl_oid *uz_oid;	/* sysctl oid pointer. */
 	int		uz_namecnt;	/* duplicate name count. */
@@ -515,6 +513,21 @@ struct uma_zone {
     "\2ZINIT"				\
     "\1PAGEABLE"
 
+/*
+ * Macros for interpreting the uz_items field.  20 bits of sleeper count
+ * and 44 bit of item count.
+ */
+#define	UZ_ITEMS_SLEEPER_SHIFT	44LL
+#define	UZ_ITEMS_SLEEPERS_MAX	((1 << (64 - UZ_ITEMS_SLEEPER_SHIFT)) - 1)
+#define	UZ_ITEMS_COUNT_MASK	((1LL << UZ_ITEMS_SLEEPER_SHIFT) - 1)
+#define	UZ_ITEMS_COUNT(x)	((x) & UZ_ITEMS_COUNT_MASK)
+#define	UZ_ITEMS_SLEEPERS(x)	((x) >> UZ_ITEMS_SLEEPER_SHIFT)
+#define	UZ_ITEMS_SLEEPER	(1LL << UZ_ITEMS_SLEEPER_SHIFT)
+
+#define	ZONE_ASSERT_COLD(z)						\
+	KASSERT((z)->uz_bkt_count == 0,					\
+	    ("zone %s initialization after use.", (z)->uz_name))
+
 #undef UMA_ALIGN
 
 #ifdef _KERNEL
@@ -523,20 +536,22 @@ static __inline uma_slab_t hash_sfind(struct uma_hash *hash, uint8_t *data);
 
 /* Lock Macros */
 
-#define	KEG_LOCK_INIT(k, lc)					\
-	do {							\
-		if ((lc))					\
-			mtx_init(&(k)->uk_lock, (k)->uk_name,	\
-			    (k)->uk_name, MTX_DEF | MTX_DUPOK);	\
-		else						\
-			mtx_init(&(k)->uk_lock, (k)->uk_name,	\
-			    "UMA zone", MTX_DEF | MTX_DUPOK);	\
+#define	KEG_LOCKPTR(k, d)	(struct mtx *)&(k)->uk_domain[(d)].ud_lock
+#define	KEG_LOCK_INIT(k, d, lc)						\
+	do {								\
+		if ((lc))						\
+			mtx_init(KEG_LOCKPTR(k, d), (k)->uk_name,	\
+			    (k)->uk_name, MTX_DEF | MTX_DUPOK);		\
+		else							\
+			mtx_init(KEG_LOCKPTR(k, d), (k)->uk_name,	\
+			    "UMA zone", MTX_DEF | MTX_DUPOK);		\
 	} while (0)
 
-#define	KEG_LOCK_FINI(k)	mtx_destroy(&(k)->uk_lock)
-#define	KEG_LOCK(k)	mtx_lock(&(k)->uk_lock)
-#define	KEG_UNLOCK(k)	mtx_unlock(&(k)->uk_lock)
-#define	KEG_LOCK_ASSERT(k)	mtx_assert(&(k)->uk_lock, MA_OWNED)
+#define	KEG_LOCK_FINI(k, d)	mtx_destroy(KEG_LOCKPTR(k, d))
+#define	KEG_LOCK(k, d)							\
+	({ mtx_lock(KEG_LOCKPTR(k, d)); KEG_LOCKPTR(k, d); })
+#define	KEG_UNLOCK(k, d)	mtx_unlock(KEG_LOCKPTR(k, d))
+#define	KEG_LOCK_ASSERT(k, d)	mtx_assert(KEG_LOCKPTR(k, d), MA_OWNED)
 
 #define	KEG_GET(zone, keg) do {					\
 	(keg) = (zone)->uz_keg;					\
@@ -554,11 +569,11 @@ static __inline uma_slab_t hash_sfind(struct uma_hash *hash, uint8_t *data);
 			    "UMA zone", MTX_DEF | MTX_DUPOK);	\
 	} while (0)
 
-#define	ZONE_LOCK(z)	mtx_lock((z)->uz_lockptr)
-#define	ZONE_TRYLOCK(z)	mtx_trylock((z)->uz_lockptr)
-#define	ZONE_UNLOCK(z)	mtx_unlock((z)->uz_lockptr)
+#define	ZONE_LOCK(z)	mtx_lock(&(z)->uz_lock)
+#define	ZONE_TRYLOCK(z)	mtx_trylock(&(z)->uz_lock)
+#define	ZONE_UNLOCK(z)	mtx_unlock(&(z)->uz_lock)
 #define	ZONE_LOCK_FINI(z)	mtx_destroy(&(z)->uz_lock)
-#define	ZONE_LOCK_ASSERT(z)	mtx_assert((z)->uz_lockptr, MA_OWNED)
+#define	ZONE_LOCK_ASSERT(z)	mtx_assert(&(z)->uz_lock, MA_OWNED)
 
 /*
  * Find a slab within a hash table.  This is used for OFFPAGE zones to lookup
