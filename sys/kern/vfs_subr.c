@@ -2846,8 +2846,8 @@ vget_finish(struct vnode *vp, int flags, enum vgetstate vs)
 	 */
 	if (refcount_acquire_if_not_zero(&vp->v_usecount)) {
 #ifdef INVARIANTS
-		int old = atomic_fetchadd_int(&vp->v_holdcnt, -1) - 1;
-		VNASSERT(old > 0, vp, ("%s: wrong hold count", __func__));
+		int old = atomic_fetchadd_int(&vp->v_holdcnt, -1);
+		VNASSERT(old > 1, vp, ("%s: wrong hold count %d", __func__, old));
 #else
 		refcount_release(&vp->v_holdcnt);
 #endif
@@ -2872,8 +2872,8 @@ vget_finish(struct vnode *vp, int flags, enum vgetstate vs)
 	 */
 	if (refcount_acquire_if_not_zero(&vp->v_usecount)) {
 #ifdef INVARIANTS
-		int old = atomic_fetchadd_int(&vp->v_holdcnt, -1) - 1;
-		VNASSERT(old > 0, vp, ("%s: wrong hold count", __func__));
+		int old = atomic_fetchadd_int(&vp->v_holdcnt, -1);
+		VNASSERT(old > 1, vp, ("%s: wrong hold count %d", __func__, old));
 #else
 		refcount_release(&vp->v_holdcnt);
 #endif
@@ -2895,7 +2895,7 @@ vget_finish(struct vnode *vp, int flags, enum vgetstate vs)
 	refcount_acquire(&vp->v_usecount);
 	if (oweinact && VOP_ISLOCKED(vp) == LK_EXCLUSIVE &&
 	    (flags & LK_NOWAIT) == 0)
-		vinactive(vp, curthread);
+		vinactive(vp);
 	VI_UNLOCK(vp);
 	return (0);
 }
@@ -2953,7 +2953,7 @@ vrefact(struct vnode *vp)
 	CTR2(KTR_VFS, "%s: vp %p", __func__, vp);
 #ifdef INVARIANTS
 	int old = atomic_fetchadd_int(&vp->v_usecount, 1);
-	VNASSERT(old > 0, vp, ("%s: wrong use count", __func__));
+	VNASSERT(old > 0, vp, ("%s: wrong use count %d", __func__, old));
 #else
 	refcount_acquire(&vp->v_usecount);
 #endif
@@ -3061,7 +3061,7 @@ vputx(struct vnode *vp, enum vputx_op func)
 	    ("vnode with usecount and VI_OWEINACT set"));
 	if (error == 0) {
 		if (vp->v_iflag & VI_OWEINACT)
-			vinactive(vp, curthread);
+			vinactive(vp);
 		if (func != VPUTX_VUNREF)
 			VOP_UNLOCK(vp);
 	}
@@ -3189,7 +3189,7 @@ vholdnz(struct vnode *vp)
 	CTR2(KTR_VFS, "%s: vp %p", __func__, vp);
 #ifdef INVARIANTS
 	int old = atomic_fetchadd_int(&vp->v_holdcnt, 1);
-	VNASSERT(old > 0, vp, ("%s: wrong hold count", __func__));
+	VNASSERT(old > 0, vp, ("%s: wrong hold count %d", __func__, old));
 #else
 	atomic_add_int(&vp->v_holdcnt, 1);
 #endif
@@ -3280,7 +3280,7 @@ vdropl(struct vnode *vp)
  * failed lock upgrade.
  */
 void
-vinactive(struct vnode *vp, struct thread *td)
+vinactive(struct vnode *vp)
 {
 	struct vm_object *obj;
 
@@ -3308,7 +3308,7 @@ vinactive(struct vnode *vp, struct thread *td)
 		vm_object_page_clean(obj, 0, 0, 0);
 		VM_OBJECT_WUNLOCK(obj);
 	}
-	VOP_INACTIVE(vp, td);
+	VOP_INACTIVE(vp, curthread);
 	VI_LOCK(vp);
 	VNASSERT(vp->v_iflag & VI_DOINGINACT, vp,
 	    ("vinactive: lost VI_DOINGINACT"));
@@ -3604,7 +3604,7 @@ vgonel(struct vnode *vp)
 	if (oweinact || active) {
 		VI_LOCK(vp);
 		if ((vp->v_iflag & VI_DOINGINACT) == 0)
-			vinactive(vp, td);
+			vinactive(vp);
 		VI_UNLOCK(vp);
 	}
 	if (vp->v_type == VSOCK)
