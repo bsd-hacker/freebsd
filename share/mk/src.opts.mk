@@ -321,7 +321,7 @@ BROKEN_OPTIONS+=GDB
 .if ${__T:Mriscv*} != ""
 BROKEN_OPTIONS+=OFED
 .endif
-.if ${__T} != "armv6" && ${__T} != "armv7" && ${__T} != "sparc64"
+.if ${__T} != "sparc64"
 __DEFAULT_YES_OPTIONS+=LLVM_LIBUNWIND
 .else
 __DEFAULT_NO_OPTIONS+=LLVM_LIBUNWIND
