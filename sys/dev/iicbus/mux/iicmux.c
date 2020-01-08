@@ -222,10 +222,16 @@ iicmux_add_child(device_t dev, device_t child, int busidx)
 {
 	struct iicmux_softc *sc = device_get_softc(dev);
 
-	KASSERT(busidx < sc->numbuses,
-	    ("iicmux_add_child: bus idx %d too big", busidx));
-	KASSERT(sc->childdevs[busidx] == NULL,
-	    ("iicmux_add_child: bus idx %d already added", busidx));
+	if (busidx >= sc->numbuses) {
+		device_printf(dev,
+		    "iicmux_add_child: bus idx %d too big", busidx);
+		return (EINVAL);
+	}
+	if (sc->childdevs[busidx] != NULL) {
+		device_printf(dev, "iicmux_add_child: bus idx %d already added",
+		    busidx);
+		return (EINVAL);
+	}
 
 	sc->childdevs[busidx] = child;
 	if (sc->maxbus < busidx)
@@ -240,15 +246,15 @@ iicmux_attach(device_t dev, device_t busdev, int numbuses)
 	struct iicmux_softc *sc = device_get_softc(dev);
 	int i, numadded;
 
-        /*
-         * Init the softc...
-         */
-	KASSERT(numbuses <= IICMUX_MAX_BUSES,
-		("iicmux_attach: numbuses %d exceeds max %d\n",
-		numbuses, IICMUX_MAX_BUSES));
+	if (numbuses >= IICMUX_MAX_BUSES) {
+		device_printf(dev, "iicmux_attach: numbuses %d > max %d\n",
+		    numbuses, IICMUX_MAX_BUSES);
+		return (EINVAL);
+	}
 
 	sc->dev = dev;
 	sc->busdev = busdev;
+	sc->maxbus = -1;
 	sc->numbuses = numbuses;
 
 	SYSCTL_ADD_UINT(device_get_sysctl_ctx(sc->dev), 
@@ -262,7 +268,8 @@ iicmux_attach(device_t dev, device_t busdev, int numbuses)
 
 #ifdef FDT
 	phandle_t child, node, parent;
-	pcell_t idx;
+	pcell_t reg;
+	int idx;
 
 	/*
 	 * Find our FDT node.  Child nodes within our node will become our
@@ -285,11 +292,12 @@ iicmux_attach(device_t dev, device_t busdev, int numbuses)
 	 * Attach the children represented in the device tree.
 	 */
 	for (child = OF_child(parent); child != 0; child = OF_peer(child)) {
-		if (OF_getencprop(child, "reg", &idx, sizeof(idx)) == -1) {
+		if (OF_getencprop(child, "reg", &reg, sizeof(reg)) == -1) {
 			device_printf(dev,
 			    "child bus missing required 'reg' property\n");
 			continue;
 		}
+		idx = (int)reg;
 		if (idx >= sc->numbuses) {
 			device_printf(dev,
 			    "child bus 'reg' property %d exceeds the number "
@@ -314,9 +322,8 @@ iicmux_attach(device_t dev, device_t busdev, int numbuses)
 
 	for (i = 0; i < sc->numbuses; ++i) {
 		sc->childdevs[i] = device_add_child(sc->dev, "iicbus", -1);
-		if (sc->maxbus < i)
-			sc->maxbus = i;
 	}
+	sc->maxbus = sc->numbuses - 1;
 
 	return (0);
 }
