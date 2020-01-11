@@ -118,6 +118,7 @@ static void	vnlru_return_batches(struct vfsops *mnt_op);
 static void	destroy_vpollinfo(struct vpollinfo *vi);
 static int	v_inval_buf_range_locked(struct vnode *vp, struct bufobj *bo,
 		    daddr_t startlbn, daddr_t endlbn);
+static void	vnlru_recalc(void);
 
 /*
  * These fences are intended for cases where some synchronization is
@@ -194,8 +195,6 @@ static TAILQ_HEAD(freelst, vnode) vnode_free_list;
  * whenever vnlru_proc() becomes active.
  */
 static u_long wantfreevnodes;
-SYSCTL_ULONG(_vfs, OID_AUTO, wantfreevnodes, CTLFLAG_RW,
-    &wantfreevnodes, 0, "Target for minimum number of \"free\" vnodes");
 static u_long freevnodes;
 SYSCTL_ULONG(_vfs, OID_AUTO, freevnodes, CTLFLAG_RD,
     &freevnodes, 0, "Number of \"free\" vnodes");
@@ -310,33 +309,72 @@ static enum { SYNCER_RUNNING, SYNCER_SHUTTING_DOWN, SYNCER_FINAL_DELAY }
     syncer_state;
 
 /* Target for maximum number of vnodes. */
-int desiredvnodes;
-static int gapvnodes;		/* gap between wanted and desired */
-static int vhiwat;		/* enough extras after expansion */
-static int vlowat;		/* minimal extras before expansion */
-static int vstir;		/* nonzero to stir non-free vnodes */
+u_long desiredvnodes;
+static u_long gapvnodes;		/* gap between wanted and desired */
+static u_long vhiwat;		/* enough extras after expansion */
+static u_long vlowat;		/* minimal extras before expansion */
+static u_long vstir;		/* nonzero to stir non-free vnodes */
 static volatile int vsmalltrigger = 8;	/* pref to keep if > this many pages */
 
+/*
+ * Note that no attempt is made to sanitize these parameters.
+ */
 static int
-sysctl_update_desiredvnodes(SYSCTL_HANDLER_ARGS)
+sysctl_maxvnodes(SYSCTL_HANDLER_ARGS)
 {
-	int error, old_desiredvnodes;
+	u_long val;
+	int error;
 
-	old_desiredvnodes = desiredvnodes;
-	if ((error = sysctl_handle_int(oidp, arg1, arg2, req)) != 0)
+	val = desiredvnodes;
+	error = sysctl_handle_long(oidp, &val, 0, req);
+	if (error != 0 || req->newptr == NULL)
 		return (error);
-	if (old_desiredvnodes != desiredvnodes) {
-		wantfreevnodes = desiredvnodes / 4;
-		/* XXX locking seems to be incomplete. */
-		vfs_hash_changesize(desiredvnodes);
-		cache_changesize(desiredvnodes);
-	}
+
+	if (val == desiredvnodes)
+		return (0);
+	mtx_lock(&vnode_free_list_mtx);
+	desiredvnodes = val;
+	wantfreevnodes = desiredvnodes / 4;
+	vnlru_recalc();
+	mtx_unlock(&vnode_free_list_mtx);
+	/*
+	 * XXX There is no protection against multiple threads changing
+	 * desiredvnodes at the same time. Locking above only helps vnlru and
+	 * getnewvnode.
+	 */
+	vfs_hash_changesize(desiredvnodes);
+	cache_changesize(desiredvnodes);
 	return (0);
 }
 
 SYSCTL_PROC(_kern, KERN_MAXVNODES, maxvnodes,
-    CTLTYPE_INT | CTLFLAG_MPSAFE | CTLFLAG_RW, &desiredvnodes, 0,
-    sysctl_update_desiredvnodes, "I", "Target for maximum number of vnodes");
+    CTLTYPE_ULONG | CTLFLAG_MPSAFE | CTLFLAG_RW, NULL, 0, sysctl_maxvnodes,
+    "UL", "Target for maximum number of vnodes");
+
+static int
+sysctl_wantfreevnodes(SYSCTL_HANDLER_ARGS)
+{
+	u_long val;
+	int error;
+
+	val = wantfreevnodes;
+	error = sysctl_handle_long(oidp, &val, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+
+	if (val == wantfreevnodes)
+		return (0);
+	mtx_lock(&vnode_free_list_mtx);
+	wantfreevnodes = val;
+	vnlru_recalc();
+	mtx_unlock(&vnode_free_list_mtx);
+	return (0);
+}
+
+SYSCTL_PROC(_vfs, OID_AUTO, wantfreevnodes,
+    CTLTYPE_ULONG | CTLFLAG_MPSAFE | CTLFLAG_RW, NULL, 0, sysctl_wantfreevnodes,
+    "UL", "Target for minimum number of \"free\" vnodes");
+
 SYSCTL_ULONG(_kern, OID_AUTO, minvnodes, CTLFLAG_RW,
     &wantfreevnodes, 0, "Old name for vfs.wantfreevnodes (legacy)");
 static int vnlru_nowhere;
@@ -459,7 +497,7 @@ PCTRIE_DEFINE(BUF, buf, b_lblkno, buf_trie_alloc, buf_trie_free);
  * grows, the ratio of the memory size in KB to vnodes approaches 64:1.
  */
 #ifndef	MAXVNODES_MAX
-#define	MAXVNODES_MAX	(512 * 1024 * 1024 / 64)	/* 8M */
+#define	MAXVNODES_MAX	(512UL * 1024 * 1024 / 64)	/* 8M */
 #endif
 
 static MALLOC_DEFINE(M_VNODE_MARKER, "vnodemarker", "vnode marker");
@@ -582,7 +620,7 @@ vntblinit(void *dummy __unused)
 	desiredvnodes = min(physvnodes, virtvnodes);
 	if (desiredvnodes > MAXVNODES_MAX) {
 		if (bootverbose)
-			printf("Reducing kern.maxvnodes %d -> %d\n",
+			printf("Reducing kern.maxvnodes %lu -> %lu\n",
 			    desiredvnodes, MAXVNODES_MAX);
 		desiredvnodes = MAXVNODES_MAX;
 	}
@@ -590,6 +628,12 @@ vntblinit(void *dummy __unused)
 	mtx_init(&mntid_mtx, "mntid", NULL, MTX_DEF);
 	TAILQ_INIT(&vnode_free_list);
 	mtx_init(&vnode_free_list_mtx, "vnode_free_list", NULL, MTX_DEF);
+	/*
+	 * The lock is taken to appease WITNESS.
+	 */
+	mtx_lock(&vnode_free_list_mtx);
+	vnlru_recalc();
+	mtx_unlock(&vnode_free_list_mtx);
 	vnode_zone = uma_zcreate("VNODE", sizeof (struct vnode), NULL, NULL,
 	    vnode_init, vnode_fini, UMA_ALIGN_PTR, 0);
 	vnodepoll_zone = uma_zcreate("VNODEPOLL", sizeof (struct vpollinfo),
@@ -1210,6 +1254,15 @@ vnlru_free(int count, struct vfsops *mnt_op)
 	mtx_unlock(&vnode_free_list_mtx);
 }
 
+static void
+vnlru_recalc(void)
+{
+
+	mtx_assert(&vnode_free_list_mtx, MA_OWNED);
+	gapvnodes = imax(desiredvnodes - wantfreevnodes, 100);
+	vhiwat = gapvnodes / 11; /* 9% -- just under the 10% in vlrureclaim() */
+	vlowat = vhiwat / 2;
+}
 
 /* XXX some names and initialization are bad for limits and watermarks. */
 static int
@@ -1218,9 +1271,6 @@ vspace(void)
 	u_long rnumvnodes, rfreevnodes;
 	int space;
 
-	gapvnodes = imax(desiredvnodes - wantfreevnodes, 100);
-	vhiwat = gapvnodes / 11; /* 9% -- just under the 10% in vlrureclaim() */
-	vlowat = vhiwat / 2;
 	rnumvnodes = atomic_load_long(&numvnodes);
 	rfreevnodes = atomic_load_long(&freevnodes);
 	if (rnumvnodes > desiredvnodes)
@@ -1495,7 +1545,7 @@ vcheckspace(void)
  * Wait if necessary for space for a new vnode.
  */
 static int
-getnewvnode_wait(int suspended)
+vn_alloc_wait(int suspended)
 {
 
 	mtx_assert(&vnode_free_list_mtx, MA_OWNED);
@@ -1521,89 +1571,12 @@ getnewvnode_wait(int suspended)
 	return (numvnodes >= desiredvnodes ? ENFILE : 0);
 }
 
-/*
- * This hack is fragile, and probably not needed any more now that the
- * watermark handling works.
- */
-void
-getnewvnode_reserve(u_int count)
+static struct vnode *
+vn_alloc(struct mount *mp)
 {
-	u_long rnumvnodes, rfreevnodes;
-	struct thread *td;
-
-	/* Pre-adjust like the pre-adjust in getnewvnode(), with any count. */
-	/* XXX no longer so quick, but this part is not racy. */
-	mtx_lock(&vnode_free_list_mtx);
-	rnumvnodes = atomic_load_long(&numvnodes);
-	rfreevnodes = atomic_load_long(&freevnodes);
-	if (rnumvnodes + count > desiredvnodes && rfreevnodes > wantfreevnodes)
-		vnlru_free_locked(ulmin(rnumvnodes + count - desiredvnodes,
-		    rfreevnodes - wantfreevnodes), NULL);
-	mtx_unlock(&vnode_free_list_mtx);
-
-	td = curthread;
-	/* First try to be quick and racy. */
-	if (atomic_fetchadd_long(&numvnodes, count) + count <= desiredvnodes) {
-		td->td_vp_reserv += count;
-		vcheckspace();	/* XXX no longer so quick, but more racy */
-		return;
-	} else
-		atomic_subtract_long(&numvnodes, count);
-
-	mtx_lock(&vnode_free_list_mtx);
-	while (count > 0) {
-		if (getnewvnode_wait(0) == 0) {
-			count--;
-			td->td_vp_reserv++;
-			atomic_add_long(&numvnodes, 1);
-		}
-	}
-	vcheckspace();
-	mtx_unlock(&vnode_free_list_mtx);
-}
-
-/*
- * This hack is fragile, especially if desiredvnodes or wantvnodes are
- * misconfgured or changed significantly.  Reducing desiredvnodes below
- * the reserved amount should cause bizarre behaviour like reducing it
- * below the number of active vnodes -- the system will try to reduce
- * numvnodes to match, but should fail, so the subtraction below should
- * not overflow.
- */
-void
-getnewvnode_drop_reserve(void)
-{
-	struct thread *td;
-
-	td = curthread;
-	atomic_subtract_long(&numvnodes, td->td_vp_reserv);
-	td->td_vp_reserv = 0;
-}
-
-/*
- * Return the next vnode from the free list.
- */
-int
-getnewvnode(const char *tag, struct mount *mp, struct vop_vector *vops,
-    struct vnode **vpp)
-{
-	struct vnode *vp;
-	struct thread *td;
-	struct lock_object *lo;
 	static int cyclecount;
 	int error __unused;
 
-	CTR3(KTR_VFS, "%s: mp %p with tag %s", __func__, mp, tag);
-
-	KASSERT(vops->registered,
-	    ("%s: not registered vector op %p\n", __func__, vops));
-
-	vp = NULL;
-	td = curthread;
-	if (td->td_vp_reserv > 0) {
-		td->td_vp_reserv -= 1;
-		goto alloc;
-	}
 	mtx_lock(&vnode_free_list_mtx);
 	if (numvnodes < desiredvnodes)
 		cyclecount = 0;
@@ -1626,7 +1599,7 @@ getnewvnode(const char *tag, struct mount *mp, struct vop_vector *vops,
 	else if (freevnodes > 0)
 		vnlru_free_locked(1, NULL);
 	else {
-		error = getnewvnode_wait(mp != NULL && (mp->mnt_kern_flag &
+		error = vn_alloc_wait(mp != NULL && (mp->mnt_kern_flag &
 		    MNTK_SUSPEND));
 #if 0	/* XXX Not all VFS_VGET/ffs_vget callers check returns. */
 		if (error != 0) {
@@ -1638,9 +1611,41 @@ getnewvnode(const char *tag, struct mount *mp, struct vop_vector *vops,
 	vcheckspace();
 	atomic_add_long(&numvnodes, 1);
 	mtx_unlock(&vnode_free_list_mtx);
-alloc:
+	return (uma_zalloc(vnode_zone, M_WAITOK));
+}
+
+static void
+vn_free(struct vnode *vp)
+{
+
+	atomic_subtract_long(&numvnodes, 1);
+	uma_zfree(vnode_zone, vp);
+}
+
+/*
+ * Return the next vnode from the free list.
+ */
+int
+getnewvnode(const char *tag, struct mount *mp, struct vop_vector *vops,
+    struct vnode **vpp)
+{
+	struct vnode *vp;
+	struct thread *td;
+	struct lock_object *lo;
+
+	CTR3(KTR_VFS, "%s: mp %p with tag %s", __func__, mp, tag);
+
+	KASSERT(vops->registered,
+	    ("%s: not registered vector op %p\n", __func__, vops));
+
+	td = curthread;
+	if (td->td_vp_reserved != NULL) {
+		vp = td->td_vp_reserved;
+		td->td_vp_reserved = NULL;
+	} else {
+		vp = vn_alloc(mp);
+	}
 	counter_u64_add(vnodes_created, 1);
-	vp = (struct vnode *) uma_zalloc(vnode_zone, M_WAITOK);
 	/*
 	 * Locks are given the generic name "vnode" when created.
 	 * Follow the historic practice of using the filesystem
@@ -1702,6 +1707,28 @@ alloc:
 	return (0);
 }
 
+void
+getnewvnode_reserve(void)
+{
+	struct thread *td;
+
+	td = curthread;
+	MPASS(td->td_vp_reserved == NULL);
+	td->td_vp_reserved = vn_alloc(NULL);
+}
+
+void
+getnewvnode_drop_reserve(void)
+{
+	struct thread *td;
+
+	td = curthread;
+	if (td->td_vp_reserved != NULL) {
+		vn_free(td->td_vp_reserved);
+		td->td_vp_reserved = NULL;
+	}
+}
+
 static void
 freevnode(struct vnode *vp)
 {
@@ -1717,7 +1744,6 @@ freevnode(struct vnode *vp)
 	 * so as not to contaminate the freshly allocated vnode.
 	 */
 	CTR2(KTR_VFS, "%s: destroying the vnode %p", __func__, vp);
-	atomic_subtract_long(&numvnodes, 1);
 	bo = &vp->v_bufobj;
 	VNASSERT((vp->v_iflag & VI_FREE) == 0, vp,
 	    ("cleaned vnode still on the free list."));
@@ -1758,7 +1784,7 @@ freevnode(struct vnode *vp)
 	vp->v_iflag = 0;
 	vp->v_vflag = 0;
 	bo->bo_flag = 0;
-	uma_zfree(vnode_zone, vp);
+	vn_free(vp);
 }
 
 /*
@@ -2404,7 +2430,8 @@ sysctl_vfs_worklist_len(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
-SYSCTL_PROC(_vfs, OID_AUTO, worklist_len, CTLTYPE_INT | CTLFLAG_RD, NULL, 0,
+SYSCTL_PROC(_vfs, OID_AUTO, worklist_len,
+    CTLTYPE_INT | CTLFLAG_MPSAFE| CTLFLAG_RD, NULL, 0,
     sysctl_vfs_worklist_len, "I", "Syncer thread worklist length");
 
 static struct proc *updateproc;
@@ -5467,7 +5494,7 @@ sysctl_vfs_ctl(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
-SYSCTL_PROC(_vfs, OID_AUTO, ctl, CTLTYPE_OPAQUE | CTLFLAG_WR,
+SYSCTL_PROC(_vfs, OID_AUTO, ctl, CTLTYPE_OPAQUE | CTLFLAG_MPSAFE | CTLFLAG_WR,
     NULL, 0, sysctl_vfs_ctl, "",
     "Sysctl by fsid");
 
