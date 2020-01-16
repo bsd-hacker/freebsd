@@ -1275,23 +1275,6 @@ vnlru_recalc(void)
 	vlowat = vhiwat / 2;
 }
 
-/* XXX some names and initialization are bad for limits and watermarks. */
-static int
-vspace(void)
-{
-	u_long rnumvnodes, rfreevnodes;
-	int space;
-
-	rnumvnodes = atomic_load_long(&numvnodes);
-	rfreevnodes = atomic_load_long(&freevnodes);
-	if (rnumvnodes > desiredvnodes)
-		return (0);
-	space = desiredvnodes - rnumvnodes;
-	if (freevnodes > wantfreevnodes)
-		space += rfreevnodes - wantfreevnodes;
-	return (space);
-}
-
 /*
  * Attempt to recycle vnodes in a context that is always safe to block.
  * Calling vlrurecycle() from the bowels of filesystem code has some
@@ -1300,12 +1283,40 @@ vspace(void)
 static struct proc *vnlruproc;
 static int vnlruproc_sig;
 
+static bool
+vnlru_under(u_long rnumvnodes, u_long limit)
+{
+	u_long rfreevnodes, space;
+
+	if (__predict_false(rnumvnodes > desiredvnodes))
+		return (true);
+
+	space = desiredvnodes - rnumvnodes;
+	if (space < limit) {
+		rfreevnodes = atomic_load_long(&freevnodes);
+		if (rfreevnodes > wantfreevnodes)
+			space += rfreevnodes - wantfreevnodes;
+	}
+	return (space < limit);
+}
+
+static void
+vnlru_kick(void)
+{
+
+	mtx_assert(&vnode_list_mtx, MA_OWNED);
+	if (vnlruproc_sig == 0) {
+		vnlruproc_sig = 1;
+		wakeup(vnlruproc);
+	}
+}
+
 static void
 vnlru_proc(void)
 {
 	u_long rnumvnodes, rfreevnodes, target;
 	unsigned long onumvnodes;
-	int done, force, trigger, usevnodes, vsp;
+	int done, force, trigger, usevnodes;
 	bool reclaim_nc_src;
 
 	EVENTHANDLER_REGISTER(shutdown_pre_sync, kproc_shutdown, vnlruproc,
@@ -1321,8 +1332,10 @@ vnlru_proc(void)
 		 * adjusted using its sysctl, or emergency growth), first
 		 * try to reduce it by discarding from the free list.
 		 */
-		if (rnumvnodes > desiredvnodes)
+		if (rnumvnodes > desiredvnodes) {
 			vnlru_free_locked(rnumvnodes - desiredvnodes, NULL);
+			rnumvnodes = atomic_load_long(&numvnodes);
+		}
 		/*
 		 * Sleep if the vnode cache is in a good state.  This is
 		 * when it is not over-full and has space for about a 4%
@@ -1334,8 +1347,7 @@ vnlru_proc(void)
 			force = 1;
 			vstir = 0;
 		}
-		vsp = vspace();
-		if (vsp >= vlowat && force == 0) {
+		if (force == 0 && !vnlru_under(rnumvnodes, vlowat)) {
 			vnlruproc_sig = 0;
 			wakeup(&vnlruproc_sig);
 			msleep(vnlruproc, &vnode_list_mtx,
@@ -1394,8 +1406,7 @@ vnlru_proc(void)
 		 * After becoming active to expand above low water, keep
 		 * active until above high water.
 		 */
-		vsp = vspace();
-		force = vsp < vhiwat;
+		force = vnlru_under(numvnodes, vhiwat) ? 1 : 0;
 	}
 }
 
@@ -1471,59 +1482,37 @@ vtryrecycle(struct vnode *vp)
 	return (0);
 }
 
-static void
-vcheckspace(void)
-{
-	int vsp;
-
-	vsp = vspace();
-	if (vsp < vlowat && vnlruproc_sig == 0) {
-		vnlruproc_sig = 1;
-		wakeup(vnlruproc);
-	}
-}
-
 /*
- * Wait if necessary for space for a new vnode.
+ * Allocate a new vnode.
+ *
+ * The operation never returns an error. Returning an error was disabled
+ * in r145385 (dated 2005) with the following comment:
+ *
+ * XXX Not all VFS_VGET/ffs_vget callers check returns.
+ *
+ * Given the age of this commit (almost 15 years at the time of writing this
+ * comment) restoring the ability to fail requires a significant audit of
+ * all codepaths.
+ *
+ * The routine can try to free a vnode or stall for up to 1 second waiting for
+ * vnlru to clear things up, but ultimately always performs a M_WAITOK allocation.
  */
-static int
-vn_alloc_wait(int suspended)
-{
+static u_long vn_alloc_cyclecount;
 
-	mtx_assert(&vnode_list_mtx, MA_OWNED);
-	if (numvnodes >= desiredvnodes) {
-		if (suspended) {
-			/*
-			 * The file system is being suspended.  We cannot
-			 * risk a deadlock here, so allow allocation of
-			 * another vnode even if this would give too many.
-			 */
-			return (0);
-		}
-		if (vnlruproc_sig == 0) {
-			vnlruproc_sig = 1;	/* avoid unnecessary wakeups */
-			wakeup(vnlruproc);
-		}
-		msleep(&vnlruproc_sig, &vnode_list_mtx, PVFS,
-		    "vlruwk", hz);
-	}
-	/* Post-adjust like the pre-adjust in getnewvnode(). */
-	if (numvnodes + 1 > desiredvnodes && freevnodes > 1)
-		vnlru_free_locked(1, NULL);
-	return (numvnodes >= desiredvnodes ? ENFILE : 0);
-}
-
-static struct vnode *
-vn_alloc(struct mount *mp)
+static struct vnode * __noinline
+vn_alloc_hard(struct mount *mp)
 {
-	static int cyclecount;
-	int error __unused;
+	u_long rnumvnodes, rfreevnodes;
 
 	mtx_lock(&vnode_list_mtx);
-	if (numvnodes < desiredvnodes)
-		cyclecount = 0;
-	else if (cyclecount++ >= freevnodes) {
-		cyclecount = 0;
+	rnumvnodes = atomic_load_long(&numvnodes);
+	if (rnumvnodes + 1 < desiredvnodes) {
+		vn_alloc_cyclecount = 0;
+		goto alloc;
+	}
+	rfreevnodes = atomic_load_long(&freevnodes);
+	if (vn_alloc_cyclecount++ >= rfreevnodes) {
+		vn_alloc_cyclecount = 0;
 		vstir = 1;
 	}
 	/*
@@ -1536,23 +1525,41 @@ vn_alloc(struct mount *mp)
 	 * should be chosen so that we never wait or even reclaim from
 	 * the free list to below its target minimum.
 	 */
-	if (numvnodes + 1 <= desiredvnodes)
-		;
-	else if (freevnodes > 0)
+	if (rfreevnodes > 0) {
 		vnlru_free_locked(1, NULL);
-	else {
-		error = vn_alloc_wait(mp != NULL && (mp->mnt_kern_flag &
-		    MNTK_SUSPEND));
-#if 0	/* XXX Not all VFS_VGET/ffs_vget callers check returns. */
-		if (error != 0) {
-			mtx_unlock(&vnode_list_mtx);
-			return (error);
-		}
-#endif
+		goto alloc;
 	}
-	vcheckspace();
-	atomic_add_long(&numvnodes, 1);
+	if (mp == NULL || (mp->mnt_kern_flag & MNTK_SUSPEND) == 0) {
+		/*
+		 * Wait for space for a new vnode.
+		 */
+		vnlru_kick();
+		msleep(&vnlruproc_sig, &vnode_list_mtx, PVFS, "vlruwk", hz);
+		if (atomic_load_long(&numvnodes) + 1 > desiredvnodes &&
+		    atomic_load_long(&freevnodes) > 1)
+			vnlru_free_locked(1, NULL);
+	}
+alloc:
+	rnumvnodes = atomic_fetchadd_long(&numvnodes, 1) + 1;
+	if (vnlru_under(rnumvnodes, vlowat))
+		vnlru_kick();
 	mtx_unlock(&vnode_list_mtx);
+	return (uma_zalloc(vnode_zone, M_WAITOK));
+}
+
+static struct vnode *
+vn_alloc(struct mount *mp)
+{
+	u_long rnumvnodes;
+
+	if (__predict_false(vn_alloc_cyclecount != 0))
+		return (vn_alloc_hard(mp));
+	rnumvnodes = atomic_fetchadd_long(&numvnodes, 1) + 1;
+	if (__predict_false(vnlru_under(rnumvnodes, vlowat))) {
+		atomic_subtract_long(&numvnodes, 1);
+		return (vn_alloc_hard(mp));
+	}
+
 	return (uma_zalloc(vnode_zone, M_WAITOK));
 }
 
