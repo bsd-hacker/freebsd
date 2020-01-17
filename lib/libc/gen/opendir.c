@@ -273,6 +273,24 @@ _filldir(DIR *dirp, bool use_current_pos)
 	return (true);
 }
 
+static bool
+is_unionstack(int fd)
+{
+	struct statfs sfb;
+	int unionstack;
+
+	unionstack = _fcntl(fd, F_ISUNIONSTACK);
+	if (unionstack != -1)
+		return (unionstack);
+
+	/*
+	 * Temporary compat for kernels which don't provide F_ISUNIONSTACK.
+	 */
+	if (_fstatfs(fd, &sfb) < 0)
+		return (true);
+	return (strcmp(sfb.f_fstypename, "unionfs") == 0 ||
+	    (sfb.f_flags & MNT_UNION));
+}
 
 /*
  * Common routine for opendir(3), __opendir2(3) and fdopendir(3).
@@ -283,7 +301,7 @@ __opendir_common(int fd, int flags, bool use_current_pos)
 	DIR *dirp;
 	int incr;
 	int saved_errno;
-	int unionstack;
+	bool unionstack;
 
 	if ((dirp = malloc(sizeof(DIR) + sizeof(struct _telldir))) == NULL)
 		return (NULL);
@@ -310,15 +328,9 @@ __opendir_common(int fd, int flags, bool use_current_pos)
 	/*
 	 * Determine whether this directory is the top of a union stack.
 	 */
+	unionstack = false;
 	if (flags & DTF_NODUP) {
-		struct statfs sfb;
-
-		if (_fstatfs(fd, &sfb) < 0)
-			goto fail;
-		unionstack = !strcmp(sfb.f_fstypename, "unionfs")
-		    || (sfb.f_flags & MNT_UNION);
-	} else {
-		unionstack = 0;
+		unionstack = is_unionstack(fd);
 	}
 
 	if (unionstack) {
