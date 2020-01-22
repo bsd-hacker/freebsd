@@ -8154,8 +8154,10 @@ rack_output(struct tcpcb *tp)
 #ifdef KERN_TLS
 	hw_tls = (so->so_snd.sb_flags & SB_TLS_IFNET) != 0;
 #endif
-	
+
+	NET_EPOCH_ASSERT();
 	INP_WLOCK_ASSERT(inp);
+
 #ifdef TCP_OFFLOAD
 	if (tp->t_flags & TF_TOE)
 		return (tcp_offload_output(tp));

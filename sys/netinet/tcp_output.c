@@ -232,6 +232,7 @@ tcp_output(struct tcpcb *tp)
 	const bool hw_tls = false;
 #endif
 
+	NET_EPOCH_ASSERT();
 	INP_WLOCK_ASSERT(tp->t_inpcb);
 
 #ifdef TCP_OFFLOAD
