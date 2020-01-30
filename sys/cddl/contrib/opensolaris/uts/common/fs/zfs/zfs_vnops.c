@@ -4858,6 +4858,11 @@ zfs_freebsd_access(ap)
 	accmode_t accmode;
 	int error = 0;
 
+	if (ap->a_accmode == VEXEC) {
+		if (zfs_freebsd_fastaccesschk_execute(ap->a_vp, ap->a_cred) == 0)
+			return (0);
+	}
+
 	/*
 	 * ZFS itself only knowns about VREAD, VWRITE, VEXEC and VAPPEND,
 	 */
@@ -5311,6 +5316,29 @@ zfs_freebsd_inactive(ap)
 
 	zfs_inactive(vp, ap->a_td->td_ucred, NULL);
 	return (0);
+}
+
+static int
+zfs_freebsd_need_inactive(ap)
+	struct vop_need_inactive_args /* {
+		struct vnode *a_vp;
+		struct thread *a_td;
+	} */ *ap;
+{
+	vnode_t *vp = ap->a_vp;
+	znode_t	*zp = VTOZ(vp);
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+	int need;
+
+	if (vn_need_pageq_flush(vp))
+		return (1);
+
+	if (!rw_tryenter(&zfsvfs->z_teardown_inactive_lock, RW_READER))
+		return (1);
+	need = (zp->z_sa_hdl == NULL || zp->z_unlinked || zp->z_atime_dirty);
+	rw_exit(&zfsvfs->z_teardown_inactive_lock);
+
+	return (need);
 }
 
 static int
@@ -5949,6 +5977,7 @@ struct vop_vector zfs_shareops;
 struct vop_vector zfs_vnodeops = {
 	.vop_default =		&default_vnodeops,
 	.vop_inactive =		zfs_freebsd_inactive,
+	.vop_need_inactive =	zfs_freebsd_need_inactive,
 	.vop_reclaim =		zfs_freebsd_reclaim,
 	.vop_access =		zfs_freebsd_access,
 	.vop_allocate =		VOP_EINVAL,
