@@ -550,7 +550,7 @@ smp_rendezvous_cpus(cpuset_t map,
 {
 	int curcpumap, i, ncpus = 0;
 
-	/* Look comments in the !SMP case. */
+	/* See comments in the !SMP case. */
 	if (!smp_started) {
 		spinlock_enter();
 		if (setup_func != NULL)
@@ -565,7 +565,7 @@ smp_rendezvous_cpus(cpuset_t map,
 
 	/*
 	 * Make sure we come here with interrupts enabled.  Otherwise we
-	 * livelock if smp_ipi_mtx is owned by a thread which sent as an IPI.
+	 * livelock if smp_ipi_mtx is owned by a thread which sent us an IPI.
 	 */
 	MPASS(curthread->td_md.md_spinlock_count == 0);
 
@@ -803,7 +803,6 @@ smp_topo_2level(int l2share, int l2count, int l1share, int l1count,
 	return (top);
 }
 
-
 struct cpu_group *
 smp_topo_find(struct cpu_group *top, int cpu)
 {
@@ -1005,7 +1004,6 @@ sysctl_kern_smp_active(SYSCTL_HANDLER_ARGS)
 	error = SYSCTL_OUT(req, &active, sizeof(active));
 	return (error);
 }
-
 
 #ifdef SMP
 void
