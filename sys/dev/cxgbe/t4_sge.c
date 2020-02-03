@@ -589,6 +589,9 @@ t4_sge_extfree_refs(void)
 	return (refs - rels);
 }
 
+/* max 4096 */
+#define MAX_PACK_BOUNDARY 512
+
 static inline void
 setup_pad_and_pack_boundaries(struct adapter *sc)
 {
@@ -635,7 +638,10 @@ setup_pad_and_pack_boundaries(struct adapter *sc)
 	pack = fl_pack;
 	if (fl_pack < 16 || fl_pack == 32 || fl_pack > 4096 ||
 	    !powerof2(fl_pack)) {
-		pack = max(sc->params.pci.mps, CACHE_LINE_SIZE);
+		if (sc->params.pci.mps > MAX_PACK_BOUNDARY)
+			pack = MAX_PACK_BOUNDARY;
+		else
+			pack = max(sc->params.pci.mps, CACHE_LINE_SIZE);
 		MPASS(powerof2(pack));
 		if (pack < 16)
 			pack = 16;
@@ -1872,11 +1878,12 @@ get_scatter_segment(struct adapter *sc, struct sge_fl *fl, int fr_offset,
 		    fr_offset == 0 ? M_PKTHDR | M_NOFREE : M_NOFREE))
 			return (NULL);
 		fl->mbuf_inlined++;
+		if (sd->nmbuf++ == 0) {
+			clm->refcount = 1;
+			counter_u64_add(extfree_refs, 1);
+		}
 		m_extaddref(m, payload, blen, &clm->refcount, rxb_free,
 		    swz->zone, sd->cl);
-		if (sd->nmbuf++ == 0)
-			counter_u64_add(extfree_refs, 1);
-
 	} else {
 
 		/*
@@ -1890,10 +1897,12 @@ get_scatter_segment(struct adapter *sc, struct sge_fl *fl, int fr_offset,
 			return (NULL);
 		fl->mbuf_allocated++;
 		if (clm != NULL) {
+			if (sd->nmbuf++ == 0) {
+				clm->refcount = 1;
+				counter_u64_add(extfree_refs, 1);
+			}
 			m_extaddref(m, payload, blen, &clm->refcount,
 			    rxb_free, swz->zone, sd->cl);
-			if (sd->nmbuf++ == 0)
-				counter_u64_add(extfree_refs, 1);
 		} else {
 			m_cljset(m, sd->cl, swz->type);
 			sd->cl = NULL;	/* consumed, not a recycle candidate */
@@ -2040,7 +2049,9 @@ t4_eth_rx(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m0)
 	m0->m_pkthdr.numa_domain = ifp->if_numa_domain;
 #endif
 #if defined(INET) || defined(INET6)
-	if (iq->flags & IQ_LRO_ENABLED) {
+	if (iq->flags & IQ_LRO_ENABLED &&
+	    (M_HASHTYPE_GET(m0) == M_HASHTYPE_RSS_TCP_IPV4 ||
+	    M_HASHTYPE_GET(m0) == M_HASHTYPE_RSS_TCP_IPV6)) {
 		if (sort_before_lro(lro)) {
 			tcp_lro_queue_mbuf(lro, m0);
 			return (0); /* queued for sort, then LRO */
@@ -4399,7 +4410,7 @@ refill_fl(struct adapter *sc, struct sge_fl *fl, int n)
 				if (clm != NULL)
 					MPASS(clm->refcount == 1);
 #endif
-				goto recycled_fast;
+				goto recycled;
 			}
 
 			/*
@@ -4438,16 +4449,8 @@ alloc:
 		sd->cl = cl;
 		sd->cll = *cll;
 		*d = htobe64(pa | cll->hwidx);
-		clm = cl_metadata(sc, fl, cll, cl);
-		if (clm != NULL) {
 recycled:
-#ifdef INVARIANTS
-			clm->sd = sd;
-#endif
-			clm->refcount = 1;
-		}
 		sd->nmbuf = 0;
-recycled_fast:
 		d++;
 		sd++;
 		if (__predict_false(++fl->pidx % 8 == 0)) {
