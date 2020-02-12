@@ -4634,9 +4634,6 @@ sctp_add_vtag_to_timewait(uint32_t tag, uint32_t time, uint16_t lport, uint16_t 
 		SCTP_MALLOC(twait_block, struct sctp_tagblock *,
 		    sizeof(struct sctp_tagblock), SCTP_M_TIMW);
 		if (twait_block == NULL) {
-#ifdef INVARIANTS
-			panic("Can not alloc tagblock");
-#endif
 			return;
 		}
 		memset(twait_block, 0, sizeof(struct sctp_tagblock));
@@ -4743,6 +4740,31 @@ sctp_free_assoc(struct sctp_inpcb *inp, struct sctp_tcb *stcb, int from_inpcbfre
 		so = NULL;
 	else
 		so = inp->sctp_socket;
+
+	if ((inp->sctp_flags & SCTP_PCB_FLAGS_TCPTYPE) ||
+	    (inp->sctp_flags & SCTP_PCB_FLAGS_IN_TCPPOOL)) {
+		/*
+		 * For TCP type we need special handling when we are
+		 * connected. We also include the peel'ed off ones to.
+		 */
+		if (inp->sctp_flags & SCTP_PCB_FLAGS_CONNECTED) {
+			inp->sctp_flags &= ~SCTP_PCB_FLAGS_CONNECTED;
+			inp->sctp_flags |= SCTP_PCB_FLAGS_WAS_CONNECTED;
+			if (so) {
+				SOCKBUF_LOCK(&so->so_rcv);
+				so->so_state &= ~(SS_ISCONNECTING |
+				    SS_ISDISCONNECTING |
+				    SS_ISCONFIRMING |
+				    SS_ISCONNECTED);
+				so->so_state |= SS_ISDISCONNECTED;
+				socantrcvmore_locked(so);
+				socantsendmore(so);
+				sctp_sowwakeup(inp, so);
+				sctp_sorwakeup(inp, so);
+				SCTP_SOWAKEUP(so);
+			}
+		}
+	}
 
 	/*
 	 * We used timer based freeing if a reader or writer is in the way.
@@ -4870,31 +4892,6 @@ sctp_free_assoc(struct sctp_inpcb *inp, struct sctp_tcb *stcb, int from_inpcbfre
 	    (inp->sctp_flags & SCTP_PCB_FLAGS_SOCKET_GONE))
 		/* nothing around */
 		so = NULL;
-
-	if ((inp->sctp_flags & SCTP_PCB_FLAGS_TCPTYPE) ||
-	    (inp->sctp_flags & SCTP_PCB_FLAGS_IN_TCPPOOL)) {
-		/*
-		 * For TCP type we need special handling when we are
-		 * connected. We also include the peel'ed off ones to.
-		 */
-		if (inp->sctp_flags & SCTP_PCB_FLAGS_CONNECTED) {
-			inp->sctp_flags &= ~SCTP_PCB_FLAGS_CONNECTED;
-			inp->sctp_flags |= SCTP_PCB_FLAGS_WAS_CONNECTED;
-			if (so) {
-				SOCKBUF_LOCK(&so->so_rcv);
-				so->so_state &= ~(SS_ISCONNECTING |
-				    SS_ISDISCONNECTING |
-				    SS_ISCONFIRMING |
-				    SS_ISCONNECTED);
-				so->so_state |= SS_ISDISCONNECTED;
-				socantrcvmore_locked(so);
-				socantsendmore(so);
-				sctp_sowwakeup(inp, so);
-				sctp_sorwakeup(inp, so);
-				SCTP_SOWAKEUP(so);
-			}
-		}
-	}
 
 	/*
 	 * Make it invalid too, that way if its about to run it will abort
