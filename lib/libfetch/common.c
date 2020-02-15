@@ -525,62 +525,58 @@ int
 fetch_socks5_getenv(char **host, int *port)
 {
 	char *socks5env, *endptr, *ext;
+	const char *portDelim;
+	size_t slen;
 
+	portDelim = ":";
 	if ((socks5env = getenv("SOCKS5_PROXY")) == NULL || *socks5env == '\0') {
 		*host = NULL;
 		*port = -1;
 		return (-1);
 	}
 
-	/* IPv6 addresses begin and end in brackets */
+	/*
+	 * IPv6 addresses begin and end in brackets.  Set the port delimiter
+	 * accordingly and search for it so we can do appropriate validation.
+	 */
+	if (socks5env[0] == '[')
+		portDelim = "]:";
+
+	slen = strlen(socks5env);
+	ext = strstr(socks5env, portDelim);
 	if (socks5env[0] == '[') {
-		if (socks5env[strlen(socks5env) - 1] == ']') {
-			*host = strndup(socks5env, strlen(socks5env));
-			if (*host == NULL)
-				goto fail;
-			*port = 1080; /* Default port as defined in RFC1928 */
+		if (socks5env[slen - 1] == ']') {
+			*host = strndup(socks5env, slen);
+		} else if (ext != NULL) {
+			*host = strndup(socks5env, ext - socks5env + 1);
 		} else {
-			ext = strstr(socks5env, "]:");
-			if (ext == NULL) {
-				socks5_seterr(SOCKS5_ERR_BAD_PROXY_FORMAT);
-				return (0);
-			}
-			ext=ext+1;
-			*host = strndup(socks5env, ext - socks5env);
-			if (*host == NULL)
-				goto fail;
-			errno = 0;
-			*port = strtoimax(ext + 1, (char **)&endptr, 10);
-			if (*endptr != '\0' || errno != 0 || *port < 0 ||
-			    *port > 65535) {
-				socks5_seterr(SOCKS5_ERR_BAD_PORT);
-				return (0);
-			}
+			socks5_seterr(SOCKS5_ERR_BAD_PROXY_FORMAT);
+			return (0);
 		}
 	} else {
-		ext = strrchr(socks5env, ':');
-		if (ext == NULL) {
-			*host = strdup(socks5env);
-			*port = 1080;
-		} else {
-			*host = strndup(socks5env, ext-socks5env);
-			if (*host == NULL)
-				goto fail;
-			errno = 0;
-			*port = strtoimax(ext + 1, (char **)&endptr, 10);
-			if (*endptr != '\0' || errno != 0 || *port < 0 ||
-			    *port > 65535) {
-				socks5_seterr(SOCKS5_ERR_BAD_PORT);
-				return (0);
-			}
+		*host = strndup(socks5env, ext - socks5env);
+	}
+
+	if (*host == NULL) {
+		fprintf(stderr, "Failure to allocate memory, exiting.\n");
+		return (-1);
+	}
+	if (ext == NULL) {
+		*port = 1080; /* Default port as defined in RFC1928 */
+	} else {
+		ext += strlen(portDelim);
+		errno = 0;
+		*port = strtoimax(ext, (char **)&endptr, 10);
+		if (*endptr != '\0' || errno != 0 || *port < 0 ||
+		    *port > 65535) {
+			free(*host);
+			*host = NULL;
+			socks5_seterr(SOCKS5_ERR_BAD_PORT);
+			return (0);
 		}
 	}
 
 	return (2);
-
-fail:
-	fprintf(stderr, "Failure to allocate memory, exiting.\n");
-	return (-1);
 }
 
 
@@ -599,7 +595,11 @@ fetch_connect(const char *host, int port, int af, int verbose)
 
 	DEBUGF("---> %s:%d\n", host, port);
 
-	/* Check if SOCKS5_PROXY env variable is set */
+	/*
+	 * Check if SOCKS5_PROXY env variable is set.  fetch_socks5_getenv
+	 * will either set sockshost = NULL or allocate memory in all cases.
+	 */
+	sockshost = NULL;
 	if (!fetch_socks5_getenv(&sockshost, &socksport))
 		goto fail;
 
@@ -666,7 +666,7 @@ fetch_connect(const char *host, int port, int af, int verbose)
 				    "failed to connect to SOCKS5 server %s:%d",
 				    sockshost, socksport);
 			socks5_seterr(SOCKS5_ERR_CONN_REFUSED);
-			goto syserr1;
+			goto fail;
 		}
 		goto syserr;
 	}
@@ -684,9 +684,8 @@ fetch_connect(const char *host, int port, int af, int verbose)
 	return (conn);
 syserr:
 	fetch_syserr();
-syserr1:
-	goto fail;
 fail:
+	free(sockshost);
 	if (sd >= 0)
 		close(sd);
 	if (cais != NULL)
