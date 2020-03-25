@@ -1659,28 +1659,10 @@ sctp_timeout_handler(void *t)
 	KASSERT(tmr->self == tmr, ("tmr->self corrupted"));
 	KASSERT(SCTP_IS_TIMER_TYPE_VALID(tmr->type), ("Invalid timer type %d", tmr->type));
 	type = tmr->type;
-	tmr->stopped_from = 0xa001;
 	if (inp) {
 		SCTP_INP_INCR_REF(inp);
-		if ((inp->sctp_socket == NULL) &&
-		    ((type != SCTP_TIMER_TYPE_INPKILL) &&
-		    (type != SCTP_TIMER_TYPE_INIT) &&
-		    (type != SCTP_TIMER_TYPE_SEND) &&
-		    (type != SCTP_TIMER_TYPE_RECV) &&
-		    (type != SCTP_TIMER_TYPE_HEARTBEAT) &&
-		    (type != SCTP_TIMER_TYPE_SHUTDOWN) &&
-		    (type != SCTP_TIMER_TYPE_SHUTDOWNACK) &&
-		    (type != SCTP_TIMER_TYPE_SHUTDOWNGUARD) &&
-		    (type != SCTP_TIMER_TYPE_ASOCKILL))) {
-			SCTP_INP_DECR_REF(inp);
-			SCTPDBG(SCTP_DEBUG_TIMER2,
-			    "Timer type %d handler exiting due to closed socket.\n",
-			    type);
-			CURVNET_RESTORE();
-			return;
-		}
 	}
-	tmr->stopped_from = 0xa002;
+	tmr->stopped_from = 0xa001;
 	if (stcb) {
 		atomic_add_int(&stcb->asoc.refcnt, 1);
 		if (stcb->asoc.state == 0) {
@@ -1695,8 +1677,8 @@ sctp_timeout_handler(void *t)
 			return;
 		}
 	}
-	tmr->stopped_from = 0xa003;
-	SCTPDBG(SCTP_DEBUG_TIMER1, "Timer type %d goes off\n", type);
+	tmr->stopped_from = 0xa002;
+	SCTPDBG(SCTP_DEBUG_TIMER2, "Timer type %d goes off.\n", type);
 	if (!SCTP_OS_TIMER_ACTIVE(&tmr->timer)) {
 		if (inp) {
 			SCTP_INP_DECR_REF(inp);
@@ -1710,8 +1692,8 @@ sctp_timeout_handler(void *t)
 		CURVNET_RESTORE();
 		return;
 	}
-	tmr->stopped_from = 0xa004;
 
+	tmr->stopped_from = 0xa003;
 	if (stcb) {
 		SCTP_TCB_LOCK(stcb);
 		atomic_add_int(&stcb->asoc.refcnt, -1);
@@ -1733,9 +1715,9 @@ sctp_timeout_handler(void *t)
 	} else {
 		SCTP_WQ_ADDR_LOCK();
 	}
-	/* record in stopped what t-o occurred */
-	tmr->stopped_from = type;
 
+	/* Record in stopped_from which timeout occurred. */
+	tmr->stopped_from = type;
 	NET_EPOCH_ENTER(et);
 	/* mark as being serviced now */
 	if (SCTP_OS_TIMER_PENDING(&tmr->timer)) {
@@ -2108,14 +2090,14 @@ sctp_timer_start(int t_type, struct sctp_inpcb *inp, struct sctp_tcb *stcb,
 		if ((stcb->asoc.state & SCTP_STATE_ABOUT_TO_BE_FREED) &&
 		    (t_type != SCTP_TIMER_TYPE_ASOCKILL)) {
 			SCTPDBG(SCTP_DEBUG_TIMER2,
-			    "timer type %d not started: inp=%p, stcb=%p, net=%p (stcb deleted).\n",
+			    "Timer type %d not started: inp=%p, stcb=%p, net=%p (stcb deleted).\n",
 			    t_type, inp, stcb, net);
 			return;
 		}
 		/* Don't restart timer on net that's been removed. */
 		if (net != NULL && (net->dest_state & SCTP_ADDR_BEING_DELETED)) {
 			SCTPDBG(SCTP_DEBUG_TIMER2,
-			    "timer type %d not started: inp=%p, stcb=%p, net=%p (net deleted).\n",
+			    "Timer type %d not started: inp=%p, stcb=%p, net=%p (net deleted).\n",
 			    t_type, inp, stcb, net);
 			return;
 		}
@@ -2208,7 +2190,7 @@ sctp_timer_start(int t_type, struct sctp_inpcb *inp, struct sctp_tcb *stcb,
 		if ((net->dest_state & SCTP_ADDR_NOHB) &&
 		    !(net->dest_state & SCTP_ADDR_UNCONFIRMED)) {
 			SCTPDBG(SCTP_DEBUG_TIMER2,
-			    "timer type %d not started: inp=%p, stcb=%p, net=%p.\n",
+			    "Timer type %d not started: inp=%p, stcb=%p, net=%p.\n",
 			    t_type, inp, stcb, net);
 			return;
 		}
@@ -2287,7 +2269,7 @@ sctp_timer_start(int t_type, struct sctp_inpcb *inp, struct sctp_tcb *stcb,
 		}
 		if (net->dest_state & SCTP_ADDR_NO_PMTUD) {
 			SCTPDBG(SCTP_DEBUG_TIMER2,
-			    "timer type %d not started: inp=%p, stcb=%p, net=%p.\n",
+			    "Timer type %d not started: inp=%p, stcb=%p, net=%p.\n",
 			    t_type, inp, stcb, net);
 			return;
 		}
@@ -2452,7 +2434,7 @@ sctp_timer_start(int t_type, struct sctp_inpcb *inp, struct sctp_tcb *stcb,
 		 * we leave the current one up unchanged.
 		 */
 		SCTPDBG(SCTP_DEBUG_TIMER2,
-		    "timer type %d already running: inp=%p, stcb=%p, net=%p.\n",
+		    "Timer type %d already running: inp=%p, stcb=%p, net=%p.\n",
 		    t_type, inp, stcb, net);
 		return;
 	}
@@ -2474,7 +2456,7 @@ sctp_timer_start(int t_type, struct sctp_inpcb *inp, struct sctp_tcb *stcb,
 	tmr->ticks = sctp_get_tick_count();
 	if (SCTP_OS_TIMER_START(&tmr->timer, to_ticks, sctp_timeout_handler, tmr) == 0) {
 		SCTPDBG(SCTP_DEBUG_TIMER2,
-		    "timer type %d started: ticks=%u, inp=%p, stcb=%p, net=%p.\n",
+		    "Timer type %d started: ticks=%u, inp=%p, stcb=%p, net=%p.\n",
 		    t_type, to_ticks, inp, stcb, net);
 	} else {
 		/*
@@ -2482,7 +2464,7 @@ sctp_timer_start(int t_type, struct sctp_inpcb *inp, struct sctp_tcb *stcb,
 		 * above.
 		 */
 		SCTPDBG(SCTP_DEBUG_TIMER2,
-		    "timer type %d restarted: ticks=%u, inp=%p, stcb=%p, net=%p.\n",
+		    "Timer type %d restarted: ticks=%u, inp=%p, stcb=%p, net=%p.\n",
 		    t_type, to_ticks, inp, stcb, net);
 	}
 	return;
@@ -2739,7 +2721,7 @@ sctp_timer_stop(int t_type, struct sctp_inpcb *inp, struct sctp_tcb *stcb,
 		 * return.
 		 */
 		SCTPDBG(SCTP_DEBUG_TIMER2,
-		    "shared timer type %d not running: inp=%p, stcb=%p, net=%p.\n",
+		    "Shared timer type %d not running: inp=%p, stcb=%p, net=%p.\n",
 		    t_type, inp, stcb, net);
 		return;
 	}
@@ -2763,14 +2745,14 @@ sctp_timer_stop(int t_type, struct sctp_inpcb *inp, struct sctp_tcb *stcb,
 		    ("sctp_timer_stop of type %d: net = %p, tmr->net = %p",
 		    t_type, net, tmr->net));
 		SCTPDBG(SCTP_DEBUG_TIMER2,
-		    "timer type %d stopped: inp=%p, stcb=%p, net=%p.\n",
+		    "Timer type %d stopped: inp=%p, stcb=%p, net=%p.\n",
 		    t_type, inp, stcb, net);
 		tmr->ep = NULL;
 		tmr->tcb = NULL;
 		tmr->net = NULL;
 	} else {
 		SCTPDBG(SCTP_DEBUG_TIMER2,
-		    "timer type %d not stopped: inp=%p, stcb=%p, net=%p.\n",
+		    "Timer type %d not stopped: inp=%p, stcb=%p, net=%p.\n",
 		    t_type, inp, stcb, net);
 	}
 	return;
