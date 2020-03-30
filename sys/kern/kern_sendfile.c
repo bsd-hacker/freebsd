@@ -36,16 +36,14 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/capsicum.h>
 #include <sys/kernel.h>
-#include <netinet/in.h>
 #include <sys/lock.h>
 #include <sys/ktls.h>
 #include <sys/mutex.h>
-#include <sys/sysproto.h>
 #include <sys/malloc.h>
-#include <sys/proc.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/mbuf.h>
+#include <sys/proc.h>
 #include <sys/protosw.h>
 #include <sys/rwlock.h>
 #include <sys/sf_buf.h>
@@ -53,9 +51,11 @@ __FBSDID("$FreeBSD$");
 #include <sys/socketvar.h>
 #include <sys/syscallsubr.h>
 #include <sys/sysctl.h>
+#include <sys/sysproto.h>
 #include <sys/vnode.h>
 
 #include <net/vnet.h>
+#include <netinet/in.h>
 #include <netinet/tcp.h>
 
 #include <security/audit/audit.h>
@@ -64,6 +64,8 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm.h>
 #include <vm/vm_object.h>
 #include <vm/vm_pager.h>
+
+static MALLOC_DEFINE(M_SENDFILE, "sendfile", "sendfile dynamic memory");
 
 #define	EXT_FLAG_SYNC		EXT_FLAG_VENDOR1
 #define	EXT_FLAG_NOCACHE	EXT_FLAG_VENDOR2
@@ -254,6 +256,17 @@ fixspace(int old, int new, off_t off, int *space)
 }
 
 /*
+ * Wait for all in-flight ios to complete, we must not unwire pages
+ * under them.
+ */
+static void
+sendfile_iowait(struct sf_io *sfio, const char *wmesg)
+{
+	while (atomic_load_int(&sfio->nios) != 1)
+		pause(wmesg, 1);
+}
+
+/*
  * I/O completion callback.
  */
 static void
@@ -283,7 +296,7 @@ sendfile_iodone(void *arg, vm_page_t *pg, int count, int error)
 		 * to the socket yet.
 		 */
 		MPASS((curthread->td_pflags & TDP_KTHREAD) == 0);
-		free(sfio, M_TEMP);
+		free(sfio, M_SENDFILE);
 		return;
 	}
 
@@ -338,7 +351,7 @@ sendfile_iodone(void *arg, vm_page_t *pg, int count, int error)
 out_with_ref:
 #endif
 	CURVNET_RESTORE();
-	free(sfio, M_TEMP);
+	free(sfio, M_SENDFILE);
 }
 
 /*
@@ -435,6 +448,8 @@ sendfile_swapin(vm_object_t obj, struct sf_io *sfio, int *nios, off_t off,
 		    i + count == npages ? &rhpages : NULL,
 		    &sendfile_iodone, sfio);
 		if (__predict_false(rv != VM_PAGER_OK)) {
+			sendfile_iowait(sfio, "sferrio");
+
 			/*
 			 * Perform full pages recovery before returning EIO.
 			 * Pages from 0 to npages are wired.
@@ -640,7 +655,7 @@ vn_sendfile(struct file *fp, int sockfd, struct uio *hdr_uio,
 	SFSTAT_ADD(sf_rhpages_requested, SF_READAHEAD(flags));
 
 	if (flags & SF_SYNC) {
-		sfs = malloc(sizeof *sfs, M_TEMP, M_WAITOK | M_ZERO);
+		sfs = malloc(sizeof(*sfs), M_SENDFILE, M_WAITOK | M_ZERO);
 		mtx_init(&sfs->mtx, "sendfile", NULL, MTX_DEF);
 		cv_init(&sfs->cv, "sendfile");
 	}
@@ -826,7 +841,7 @@ retry_space:
 		    npages, rhpages);
 
 		sfio = malloc(sizeof(struct sf_io) +
-		    npages * sizeof(vm_page_t), M_TEMP, M_WAITOK);
+		    npages * sizeof(vm_page_t), M_SENDFILE, M_WAITOK);
 		refcount_init(&sfio->nios, 1);
 		sfio->obj = obj;
 		sfio->error = 0;
@@ -965,6 +980,7 @@ retry_space:
 			    m != NULL ? SFB_NOWAIT : SFB_CATCH);
 			if (sf == NULL) {
 				SFSTAT_INC(sf_allocfail);
+				sendfile_iowait(sfio, "sfnosf");
 				for (int j = i; j < npages; j++)
 					vm_page_unwire(pa[j], PQ_INACTIVE);
 				if (m == NULL)
@@ -1135,7 +1151,7 @@ out:
 		KASSERT(sfs->count == 0, ("sendfile sync still busy"));
 		cv_destroy(&sfs->cv);
 		mtx_destroy(&sfs->mtx);
-		free(sfs, M_TEMP);
+		free(sfs, M_SENDFILE);
 	}
 #ifdef KERN_TLS
 	if (tls != NULL)
