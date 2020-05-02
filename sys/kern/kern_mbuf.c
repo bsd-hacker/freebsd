@@ -311,9 +311,6 @@ static void	mb_reclaim(uma_zone_t, int);
 /* Ensure that MSIZE is a power of 2. */
 CTASSERT((((MSIZE - 1) ^ MSIZE) + 1) >> 1 == MSIZE);
 
-_Static_assert(offsetof(struct mbuf, m_ext) ==
-    offsetof(struct mbuf, m_ext_pgs.m_ext),
-    "m_ext offset mismatch between mbuf and ext_pgs");
 _Static_assert(sizeof(struct mbuf) <= MSIZE,
     "size of mbuf exceeds MSIZE");
 /*
@@ -856,7 +853,7 @@ int
 mb_unmapped_compress(struct mbuf *m)
 {
 	volatile u_int *refcnt;
-	struct mbuf m_temp;
+	char buf[MLEN];
 
 	/*
 	 * Assert that 'm' does not have a packet header.  If 'm' had
@@ -879,11 +876,7 @@ mb_unmapped_compress(struct mbuf *m)
 	if (*refcnt != 1)
 		return (EBUSY);
 
-	m_init(&m_temp, M_NOWAIT, MT_DATA, 0);
-
-	/* copy data out of old mbuf */
-	m_copydata(m, 0, m->m_len, mtod(&m_temp, char *));
-	m_temp.m_len = m->m_len;
+	m_copydata(m, 0, m->m_len, buf);
 
 	/* Free the backing pages. */
 	m->m_ext.ext_free(m);
@@ -892,8 +885,8 @@ mb_unmapped_compress(struct mbuf *m)
 	m->m_flags &= ~(M_EXT | M_RDONLY | M_NOMAP);
 	m->m_data = m->m_dat;
 
-	/* copy data back into m */
-	m_copydata(&m_temp, 0, m_temp.m_len, mtod(m, char *));
+	/* Copy data back into m. */
+	bcopy(buf, mtod(m, char *), m->m_len);
 
 	return (0);
 }
@@ -984,7 +977,7 @@ _mb_unmapped_to_ext(struct mbuf *m)
 				goto fail;
 			m_new->m_len = seglen;
 			prev = top = m_new;
-			memcpy(mtod(m_new, void *), &ext_pgs->m_epg_hdr[segoff],
+			memcpy(mtod(m_new, void *), &m->m_epg_hdr[segoff],
 			    seglen);
 		}
 	}
@@ -1002,7 +995,7 @@ _mb_unmapped_to_ext(struct mbuf *m)
 		seglen = min(seglen, len);
 		len -= seglen;
 
-		pg = PHYS_TO_VM_PAGE(ext_pgs->m_epg_pa[i]);
+		pg = PHYS_TO_VM_PAGE(m->m_epg_pa[i]);
 		m_new = m_get(M_NOWAIT, MT_DATA);
 		if (m_new == NULL)
 			goto fail;
@@ -1036,7 +1029,7 @@ _mb_unmapped_to_ext(struct mbuf *m)
 		else
 			prev->m_next = m_new;
 		m_new->m_len = len;
-		memcpy(mtod(m_new, void *), &ext_pgs->m_epg_trail[off], len);
+		memcpy(mtod(m_new, void *), &m->m_epg_trail[off], len);
 	}
 
 	if (ref_inc != 0) {
@@ -1154,8 +1147,9 @@ mb_alloc_ext_pgs(int how, m_ext_free_t ext_free)
 
 #ifdef INVARIANT_SUPPORT
 void
-mb_ext_pgs_check(struct mbuf_ext_pgs *ext_pgs)
+mb_ext_pgs_check(struct mbuf *m)
 {
+	struct mbuf_ext_pgs *ext_pgs = &m->m_ext_pgs;
 
 	/*
 	 * NB: This expects a non-empty buffer (npgs > 0 and
@@ -1163,7 +1157,7 @@ mb_ext_pgs_check(struct mbuf_ext_pgs *ext_pgs)
 	 */
 	KASSERT(ext_pgs->npgs > 0,
 	    ("ext_pgs with no valid pages: %p", ext_pgs));
-	KASSERT(ext_pgs->npgs <= nitems(ext_pgs->m_epg_pa),
+	KASSERT(ext_pgs->npgs <= nitems(m->m_epg_pa),
 	    ("ext_pgs with too many pages: %p", ext_pgs));
 	KASSERT(ext_pgs->nrdy <= ext_pgs->npgs,
 	    ("ext_pgs with too many ready pages: %p", ext_pgs));
@@ -1178,9 +1172,9 @@ mb_ext_pgs_check(struct mbuf_ext_pgs *ext_pgs)
 		    PAGE_SIZE, ("ext_pgs with single page too large: %p",
 		    ext_pgs));
 	}
-	KASSERT(ext_pgs->hdr_len <= sizeof(ext_pgs->m_epg_hdr),
+	KASSERT(ext_pgs->hdr_len <= sizeof(m->m_epg_hdr),
 	    ("ext_pgs with too large header length: %p", ext_pgs));
-	KASSERT(ext_pgs->trail_len <= sizeof(ext_pgs->m_epg_trail),
+	KASSERT(ext_pgs->trail_len <= sizeof(m->m_epg_trail),
 	    ("ext_pgs with too large header length: %p", ext_pgs));
 }
 #endif

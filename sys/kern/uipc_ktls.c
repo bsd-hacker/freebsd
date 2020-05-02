@@ -1374,7 +1374,7 @@ ktls_frame(struct mbuf *top, struct ktls_session *tls, int *enq_cnt,
 		m->m_len += pgs->hdr_len + pgs->trail_len;
 
 		/* Populate the TLS header. */
-		tlshdr = (void *)pgs->m_epg_hdr;
+		tlshdr = (void *)m->m_epg_hdr;
 		tlshdr->tls_vmajor = tls->params.tls_vmajor;
 
 		/*
@@ -1387,7 +1387,7 @@ ktls_frame(struct mbuf *top, struct ktls_session *tls, int *enq_cnt,
 			tlshdr->tls_type = TLS_RLTYPE_APP;
 			/* save the real record type for later */
 			pgs->record_type = record_type;
-			pgs->m_epg_trail[0] = record_type;
+			m->m_epg_trail[0] = record_type;
 		} else {
 			tlshdr->tls_vminor = tls->params.tls_vminor;
 			tlshdr->tls_type = record_type;
@@ -1436,7 +1436,7 @@ ktls_enqueue_to_free(struct mbuf_ext_pgs *pgs)
 	bool running;
 
 	/* Mark it for freeing. */
-	pgs->mbuf = NULL;
+	pgs->flags |= EPG_FLAG_2FREE;
 	wq = &ktls_wq[pgs->tls->wq_index];
 	mtx_lock(&wq->mtx);
 	STAILQ_INSERT_TAIL(&wq->head, pgs, stailq);
@@ -1463,7 +1463,6 @@ ktls_enqueue(struct mbuf *m, struct socket *so, int page_count)
 	KASSERT(pgs->tls->mode == TCP_TLS_MODE_SW, ("!SW TLS mbuf"));
 
 	pgs->enc_cnt = page_count;
-	pgs->mbuf = m;
 
 	/*
 	 * Save a pointer to the socket.  The caller is responsible
@@ -1496,12 +1495,11 @@ ktls_encrypt(struct mbuf_ext_pgs *pgs)
 
 	so = pgs->so;
 	tls = pgs->tls;
-	top = pgs->mbuf;
+	top = __containerof(pgs, struct mbuf, m_ext_pgs);
 	KASSERT(tls != NULL, ("tls = NULL, top = %p, pgs = %p\n", top, pgs));
 	KASSERT(so != NULL, ("so = NULL, top = %p, pgs = %p\n", top, pgs));
 #ifdef INVARIANTS
 	pgs->so = NULL;
-	pgs->mbuf = NULL;
 #endif
 	total_pages = pgs->enc_cnt;
 	npages = 0;
@@ -1545,14 +1543,14 @@ ktls_encrypt(struct mbuf_ext_pgs *pgs)
 		 * (from sendfile), anonymous wired pages are
 		 * allocated and assigned to the destination iovec.
 		 */
-		is_anon = (pgs->flags & MBUF_PEXT_FLAG_ANON) != 0;
+		is_anon = (pgs->flags & EPG_FLAG_ANON) != 0;
 
 		off = pgs->first_pg_off;
 		for (i = 0; i < pgs->npgs; i++, off = 0) {
 			len = mbuf_ext_pg_len(pgs, i, off);
 			src_iov[i].iov_len = len;
 			src_iov[i].iov_base =
-			    (char *)(void *)PHYS_TO_DMAP(pgs->m_epg_pa[i]) +
+			    (char *)(void *)PHYS_TO_DMAP(m->m_epg_pa[i]) +
 				off;
 
 			if (is_anon) {
@@ -1576,8 +1574,8 @@ retry_page:
 		npages += i;
 
 		error = (*tls->sw_encrypt)(tls,
-		    (const struct tls_record_layer *)pgs->m_epg_hdr,
-		    pgs->m_epg_trail, src_iov, dst_iov, i, pgs->seqno,
+		    (const struct tls_record_layer *)m->m_epg_hdr,
+		    m->m_epg_trail, src_iov, dst_iov, i, pgs->seqno,
 		    pgs->record_type);
 		if (error) {
 			counter_u64_add(ktls_offload_failed_crypto, 1);
@@ -1595,13 +1593,13 @@ retry_page:
 
 			/* Replace them with the new pages. */
 			for (i = 0; i < pgs->npgs; i++)
-				pgs->m_epg_pa[i] = parray[i];
+				m->m_epg_pa[i] = parray[i];
 
 			/* Use the basic free routine. */
 			m->m_ext.ext_free = mb_free_mext_pgs;
 
 			/* Pages are now writable. */
-			pgs->flags |= MBUF_PEXT_FLAG_ANON;
+			pgs->flags |= EPG_FLAG_ANON;
 		}
 
 		/*
@@ -1654,14 +1652,14 @@ ktls_work_thread(void *ctx)
 		mtx_unlock(&wq->mtx);
 
 		STAILQ_FOREACH_SAFE(p, &local_head, stailq, n) {
-			if (p->mbuf != NULL) {
-				ktls_encrypt(p);
-				counter_u64_add(ktls_cnt_on, -1);
-			} else {
+			if (p->flags & EPG_FLAG_2FREE) {
 				tls = p->tls;
 				ktls_free(tls);
 				m = __containerof(p, struct mbuf, m_ext_pgs);
 				uma_zfree(zone_mbuf, m);
+			} else {
+				ktls_encrypt(p);
+				counter_u64_add(ktls_cnt_on, -1);
 			}
 		}
 	}
