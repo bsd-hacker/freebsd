@@ -610,7 +610,7 @@ write_tx_sgl(void *dst, struct mbuf *start, struct mbuf *stop, int nsegs, int n)
 
 	i = -1;
 	for (m = start; m != stop; m = m->m_next) {
-		if (m->m_flags & M_NOMAP)
+		if (m->m_flags & M_EXTPG)
 			rc = sglist_append_mbuf_epg(&sg, m,
 			    mtod(m, vm_offset_t), m->m_len);
 		else
@@ -731,9 +731,9 @@ t4_push_frames(struct adapter *sc, struct toepcb *toep, int drop)
 		for (m = sndptr; m != NULL; m = m->m_next) {
 			int n;
 
-			if (m->m_flags & M_NOMAP) {
+			if (m->m_flags & M_EXTPG) {
 #ifdef KERN_TLS
-				if (m->m_ext_pgs.tls != NULL) {
+				if (m->m_epg_tls != NULL) {
 					toep->flags |= TPF_KTLS;
 					if (plen == 0) {
 						SOCKBUF_UNLOCK(sb);
@@ -772,7 +772,7 @@ t4_push_frames(struct adapter *sc, struct toepcb *toep, int drop)
 				break;
 			}
 
-			if (m->m_flags & M_NOMAP)
+			if (m->m_flags & M_EXTPG)
 				nomap_mbuf_seen = true;
 			if (max_nsegs_1mbuf < n)
 				max_nsegs_1mbuf = n;
@@ -1927,14 +1927,14 @@ aiotx_free_pgs(struct mbuf *m)
 	struct kaiocb *job;
 	vm_page_t pg;
 
-	MBUF_EXT_PGS_ASSERT(m);
+	M_ASSERTEXTPG(m);
 	job = m->m_ext.ext_arg1;
 #ifdef VERBOSE_TRACES
 	CTR3(KTR_CXGBE, "%s: completed %d bytes for tid %d", __func__,
 	    m->m_len, jobtotid(job));
 #endif
 
-	for (int i = 0; i < m->m_ext_pgs.npgs; i++) {
+	for (int i = 0; i < m->m_epg_npgs; i++) {
 		pg = PHYS_TO_VM_PAGE(m->m_epg_pa[i]);
 		vm_page_unwire(pg, PQ_ACTIVE);
 	}
@@ -1989,15 +1989,15 @@ alloc_aiotx_mbuf(struct kaiocb *job, int len)
 			break;
 		}
 
-		m->m_ext_pgs.first_pg_off = pgoff;
-		m->m_ext_pgs.npgs = npages;
+		m->m_epg_1st_off = pgoff;
+		m->m_epg_npgs = npages;
 		if (npages == 1) {
 			KASSERT(mlen + pgoff <= PAGE_SIZE,
 			    ("%s: single page is too large (off %d len %d)",
 			    __func__, pgoff, mlen));
-			m->m_ext_pgs.last_pg_len = mlen;
+			m->m_epg_last_len = mlen;
 		} else {
-			m->m_ext_pgs.last_pg_len = mlen - (PAGE_SIZE - pgoff) -
+			m->m_epg_last_len = mlen - (PAGE_SIZE - pgoff) -
 			    (npages - 2) * PAGE_SIZE;
 		}
 		for (i = 0; i < npages; i++)

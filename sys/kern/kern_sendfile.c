@@ -188,7 +188,6 @@ sendfile_free_mext(struct mbuf *m)
 static void
 sendfile_free_mext_pg(struct mbuf *m)
 {
-	struct mbuf_ext_pgs *ext_pgs;
 	vm_page_t pg;
 	int flags, i;
 	bool cache_last;
@@ -197,11 +196,10 @@ sendfile_free_mext_pg(struct mbuf *m)
 	    ("%s: m %p !M_EXT or !EXT_PGS", __func__, m));
 
 	cache_last = m->m_ext.ext_flags & EXT_FLAG_CACHE_LAST;
-	ext_pgs = &m->m_ext_pgs;
 	flags = (m->m_ext.ext_flags & EXT_FLAG_NOCACHE) != 0 ? VPR_TRYFREE : 0;
 
-	for (i = 0; i < ext_pgs->npgs; i++) {
-		if (cache_last && i == ext_pgs->npgs - 1)
+	for (i = 0; i < m->m_epg_npgs; i++) {
+		if (cache_last && i == m->m_epg_npgs - 1)
 			flags = 0;
 		pg = PHYS_TO_VM_PAGE(m->m_epg_pa[i]);
 		vm_page_release(pg, flags);
@@ -367,7 +365,7 @@ sendfile_iodone(void *arg, vm_page_t *pa, int count, int error)
 #if defined(KERN_TLS) && defined(INVARIANTS)
 	if ((sfio->m->m_flags & M_EXT) != 0 &&
 	    sfio->m->m_ext.ext_type == EXT_PGS)
-		KASSERT(sfio->tls == sfio->m->m_ext_pgs.tls,
+		KASSERT(sfio->tls == sfio->m->m_epg_tls,
 		    ("TLS session mismatch"));
 	else
 		KASSERT(sfio->tls == NULL,
@@ -692,7 +690,6 @@ vn_sendfile(struct file *fp, int sockfd, struct uio *hdr_uio,
 #ifdef KERN_TLS
 	struct ktls_session *tls;
 #endif
-	struct mbuf_ext_pgs *ext_pgs;
 	struct mbuf *m, *mh, *mhtail;
 	struct sf_buf *sf;
 	struct shmfd *shmfd;
@@ -848,7 +845,7 @@ retry_space:
 #ifdef KERN_TLS
 			if (tls != NULL)
 				mh = m_uiotombuf(hdr_uio, M_WAITOK, space,
-				    tls->params.max_frame_len, M_NOMAP);
+				    tls->params.max_frame_len, M_EXTPG);
 			else
 #endif
 				mh = m_uiotombuf(hdr_uio, M_WAITOK,
@@ -1029,7 +1026,6 @@ retry_space:
 						sfs->count++;
 						mtx_unlock(&sfs->mtx);
 					}
-					ext_pgs = &m0->m_ext_pgs;
 					ext_pgs_idx = 0;
 
 					/* Append to mbuf chain. */
@@ -1038,18 +1034,18 @@ retry_space:
 					else
 						m = m0;
 					mtail = m0;
-					ext_pgs->first_pg_off =
+					m0->m_epg_1st_off =
 					    vmoff(i, off) & PAGE_MASK;
 				}
 				if (nios) {
 					mtail->m_flags |= M_NOTREADY;
-					ext_pgs->nrdy++;
+					m0->m_epg_nrdy++;
 				}
 
 				m0->m_epg_pa[ext_pgs_idx] = VM_PAGE_TO_PHYS(pga);
-				ext_pgs->npgs++;
+				m0->m_epg_npgs++;
 				xfs = xfsize(i, npages, off, space);
-				ext_pgs->last_pg_len = xfs;
+				m0->m_epg_last_len = xfs;
 				MBUF_EXT_PGS_ASSERT_SANITY(m0);
 				mtail->m_len += xfs;
 				mtail->m_ext.ext_size += PAGE_SIZE;

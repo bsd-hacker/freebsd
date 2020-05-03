@@ -833,8 +833,8 @@ mb_free_notready(struct mbuf *m, int count)
 	for (i = 0; i < count && m != NULL; i++) {
 		if ((m->m_flags & M_EXT) != 0 &&
 		    m->m_ext.ext_type == EXT_PGS) {
-			m->m_ext_pgs.nrdy--;
-			if (m->m_ext_pgs.nrdy != 0)
+			m->m_epg_nrdy--;
+			if (m->m_epg_nrdy != 0)
 				continue;
 		}
 		m = m_free(m);
@@ -882,7 +882,7 @@ mb_unmapped_compress(struct mbuf *m)
 	m->m_ext.ext_free(m);
 
 	/* Turn 'm' into a "normal" mbuf. */
-	m->m_flags &= ~(M_EXT | M_RDONLY | M_NOMAP);
+	m->m_flags &= ~(M_EXT | M_RDONLY | M_EXTPG);
 	m->m_data = m->m_dat;
 
 	/* Copy data back into m. */
@@ -934,7 +934,6 @@ mb_unmapped_free_mext(struct mbuf *m)
 static struct mbuf *
 _mb_unmapped_to_ext(struct mbuf *m)
 {
-	struct mbuf_ext_pgs *ext_pgs;
 	struct mbuf *m_new, *top, *prev, *mref;
 	struct sf_buf *sf;
 	vm_page_t pg;
@@ -942,10 +941,9 @@ _mb_unmapped_to_ext(struct mbuf *m)
 	volatile u_int *refcnt;
 	u_int ref_inc = 0;
 
-	MBUF_EXT_PGS_ASSERT(m);
-	ext_pgs = &m->m_ext_pgs;
+	M_ASSERTEXTPG(m);
 	len = m->m_len;
-	KASSERT(ext_pgs->tls == NULL, ("%s: can't convert TLS mbuf %p",
+	KASSERT(m->m_epg_tls == NULL, ("%s: can't convert TLS mbuf %p",
 	    __func__, m));
 
 	/* See if this is the mbuf that holds the embedded refcount. */
@@ -963,11 +961,11 @@ _mb_unmapped_to_ext(struct mbuf *m)
 	off = mtod(m, vm_offset_t);
 
 	top = NULL;
-	if (ext_pgs->hdr_len != 0) {
-		if (off >= ext_pgs->hdr_len) {
-			off -= ext_pgs->hdr_len;
+	if (m->m_epg_hdrlen != 0) {
+		if (off >= m->m_epg_hdrlen) {
+			off -= m->m_epg_hdrlen;
 		} else {
-			seglen = ext_pgs->hdr_len - off;
+			seglen = m->m_epg_hdrlen - off;
 			segoff = off;
 			seglen = min(seglen, len);
 			off = 0;
@@ -981,8 +979,8 @@ _mb_unmapped_to_ext(struct mbuf *m)
 			    seglen);
 		}
 	}
-	pgoff = ext_pgs->first_pg_off;
-	for (i = 0; i < ext_pgs->npgs && len > 0; i++) {
+	pgoff = m->m_epg_1st_off;
+	for (i = 0; i < m->m_epg_npgs && len > 0; i++) {
 		pglen = m_epg_pagelen(m, i, pgoff);
 		if (off >= pglen) {
 			off -= pglen;
@@ -1018,9 +1016,9 @@ _mb_unmapped_to_ext(struct mbuf *m)
 		pgoff = 0;
 	};
 	if (len != 0) {
-		KASSERT((off + len) <= ext_pgs->trail_len,
+		KASSERT((off + len) <= m->m_epg_trllen,
 		    ("off + len > trail (%d + %d > %d)", off, len,
-		    ext_pgs->trail_len));
+		    m->m_epg_trllen));
 		m_new = m_get(M_NOWAIT, MT_DATA);
 		if (m_new == NULL)
 			goto fail;
@@ -1073,7 +1071,7 @@ mb_unmapped_to_ext(struct mbuf *top)
 	for (m = top; m != NULL; m = next) {
 		/* m might be freed, so cache the next pointer. */
 		next = m->m_next;
-		if (m->m_flags & M_NOMAP) {
+		if (m->m_flags & M_EXTPG) {
 			if (prev != NULL) {
 				/*
 				 * Remove 'm' from the new chain so
@@ -1119,24 +1117,22 @@ struct mbuf *
 mb_alloc_ext_pgs(int how, m_ext_free_t ext_free)
 {
 	struct mbuf *m;
-	struct mbuf_ext_pgs *ext_pgs;
 
 	m = m_get(how, MT_DATA);
 	if (m == NULL)
 		return (NULL);
 
-	ext_pgs = &m->m_ext_pgs;
-	ext_pgs->npgs = 0;
-	ext_pgs->nrdy = 0;
-	ext_pgs->first_pg_off = 0;
-	ext_pgs->last_pg_len = 0;
-	ext_pgs->flags = 0;
-	ext_pgs->hdr_len = 0;
-	ext_pgs->trail_len = 0;
-	ext_pgs->tls = NULL;
-	ext_pgs->so = NULL;
+	m->m_epg_npgs = 0;
+	m->m_epg_nrdy = 0;
+	m->m_epg_1st_off = 0;
+	m->m_epg_last_len = 0;
+	m->m_epg_flags = 0;
+	m->m_epg_hdrlen = 0;
+	m->m_epg_trllen = 0;
+	m->m_epg_tls = NULL;
+	m->m_epg_so = NULL;
 	m->m_data = NULL;
-	m->m_flags |= (M_EXT | M_RDONLY | M_NOMAP);
+	m->m_flags |= (M_EXT | M_RDONLY | M_EXTPG);
 	m->m_ext.ext_type = EXT_PGS;
 	m->m_ext.ext_flags = EXT_FLAG_EMBREF;
 	m->m_ext.ext_count = 1;
@@ -1144,40 +1140,6 @@ mb_alloc_ext_pgs(int how, m_ext_free_t ext_free)
 	m->m_ext.ext_free = ext_free;
 	return (m);
 }
-
-#ifdef INVARIANT_SUPPORT
-void
-mb_ext_pgs_check(struct mbuf *m)
-{
-	struct mbuf_ext_pgs *ext_pgs = &m->m_ext_pgs;
-
-	/*
-	 * NB: This expects a non-empty buffer (npgs > 0 and
-	 * last_pg_len > 0).
-	 */
-	KASSERT(ext_pgs->npgs > 0,
-	    ("ext_pgs with no valid pages: %p", ext_pgs));
-	KASSERT(ext_pgs->npgs <= nitems(m->m_epg_pa),
-	    ("ext_pgs with too many pages: %p", ext_pgs));
-	KASSERT(ext_pgs->nrdy <= ext_pgs->npgs,
-	    ("ext_pgs with too many ready pages: %p", ext_pgs));
-	KASSERT(ext_pgs->first_pg_off < PAGE_SIZE,
-	    ("ext_pgs with too large page offset: %p", ext_pgs));
-	KASSERT(ext_pgs->last_pg_len > 0,
-	    ("ext_pgs with zero last page length: %p", ext_pgs));
-	KASSERT(ext_pgs->last_pg_len <= PAGE_SIZE,
-	    ("ext_pgs with too large last page length: %p", ext_pgs));
-	if (ext_pgs->npgs == 1) {
-		KASSERT(ext_pgs->first_pg_off + ext_pgs->last_pg_len <=
-		    PAGE_SIZE, ("ext_pgs with single page too large: %p",
-		    ext_pgs));
-	}
-	KASSERT(ext_pgs->hdr_len <= sizeof(m->m_epg_hdr),
-	    ("ext_pgs with too large header length: %p", ext_pgs));
-	KASSERT(ext_pgs->trail_len <= sizeof(m->m_epg_trail),
-	    ("ext_pgs with too large header length: %p", ext_pgs));
-}
-#endif
 
 /*
  * Clean up after mbufs with M_EXT storage attached to them if the
@@ -1253,7 +1215,7 @@ mb_free_ext(struct mbuf *m)
 			    ("%s: ext_free not set", __func__));
 			mref->m_ext.ext_free(mref);
 #ifdef KERN_TLS
-			tls = mref->m_ext_pgs.tls;
+			tls = mref->m_epg_tls;
 			if (tls != NULL &&
 			    !refcount_release_if_not_last(&tls->refcount))
 				ktls_enqueue_to_free(mref);

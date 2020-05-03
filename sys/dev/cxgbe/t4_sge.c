@@ -2417,17 +2417,17 @@ count_mbuf_ext_pgs(struct mbuf *m, int skip, vm_paddr_t *nextaddr)
 	int i, len, off, pglen, pgoff, seglen, segoff;
 	int nsegs = 0;
 
-	MBUF_EXT_PGS_ASSERT(m);
+	M_ASSERTEXTPG(m);
 	off = mtod(m, vm_offset_t);
 	len = m->m_len;
 	off += skip;
 	len -= skip;
 
-	if (m->m_ext_pgs.hdr_len != 0) {
-		if (off >= m->m_ext_pgs.hdr_len) {
-			off -= m->m_ext_pgs.hdr_len;
+	if (m->m_epg_hdrlen != 0) {
+		if (off >= m->m_epg_hdrlen) {
+			off -= m->m_epg_hdrlen;
 		} else {
-			seglen = m->m_ext_pgs.hdr_len - off;
+			seglen = m->m_epg_hdrlen - off;
 			segoff = off;
 			seglen = min(seglen, len);
 			off = 0;
@@ -2439,8 +2439,8 @@ count_mbuf_ext_pgs(struct mbuf *m, int skip, vm_paddr_t *nextaddr)
 			*nextaddr = paddr + seglen;
 		}
 	}
-	pgoff = m->m_ext_pgs.first_pg_off;
-	for (i = 0; i < m->m_ext_pgs.npgs && len > 0; i++) {
+	pgoff = m->m_epg_1st_off;
+	for (i = 0; i < m->m_epg_npgs && len > 0; i++) {
 		pglen = m_epg_pagelen(m, i, pgoff);
 		if (off >= pglen) {
 			off -= pglen;
@@ -2459,7 +2459,7 @@ count_mbuf_ext_pgs(struct mbuf *m, int skip, vm_paddr_t *nextaddr)
 		pgoff = 0;
 	};
 	if (len != 0) {
-		seglen = min(len, m->m_ext_pgs.trail_len - off);
+		seglen = min(len, m->m_epg_trllen - off);
 		len -= seglen;
 		paddr = pmap_kextract((vm_offset_t)&m->m_epg_trail[off]);
 		if (*nextaddr != paddr)
@@ -2497,7 +2497,7 @@ count_mbuf_nsegs(struct mbuf *m, int skip, uint8_t *cflags)
 			skip -= len;
 			continue;
 		}
-		if ((m->m_flags & M_NOMAP) != 0) {
+		if ((m->m_flags & M_EXTPG) != 0) {
 			*cflags |= MC_NOMAP;
 			nsegs += count_mbuf_ext_pgs(m, skip, &nextaddr);
 			skip = 0;
@@ -5836,7 +5836,7 @@ write_ethofld_wr(struct cxgbe_rate_tag *cst, struct fw_eth_tx_eo_wr *wr,
 				immhdrs -= m0->m_len;
 				continue;
 			}
-			if (m0->m_flags & M_NOMAP)
+			if (m0->m_flags & M_EXTPG)
 				sglist_append_mbuf_epg(&sg, m0,
 				    mtod(m0, vm_offset_t), m0->m_len);
                         else
