@@ -33,7 +33,6 @@
 
 #include <sys/malloc.h>
 #include <sys/errno.h>
-#include <crypto/blowfish/blowfish.h>
 #include <crypto/des/des.h>
 #include <crypto/rijndael/rijndael.h>
 #include <crypto/camellia/camellia.h>
@@ -77,7 +76,6 @@ extern struct enc_xform enc_xform_aes_icm;
 extern struct enc_xform enc_xform_aes_nist_gcm;
 extern struct enc_xform enc_xform_aes_nist_gmac;
 extern struct enc_xform enc_xform_aes_xts;
-extern struct enc_xform enc_xform_arc4;
 extern struct enc_xform enc_xform_camellia;
 extern struct enc_xform enc_xform_chacha20;
 extern struct enc_xform enc_xform_ccm;

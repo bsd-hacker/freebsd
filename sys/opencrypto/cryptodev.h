@@ -81,8 +81,6 @@
 #define	SHA2_256_HASH_LEN	32
 #define	SHA2_384_HASH_LEN	48
 #define	SHA2_512_HASH_LEN	64
-#define	MD5_KPDK_HASH_LEN	16
-#define	SHA1_KPDK_HASH_LEN	20
 #define	AES_GMAC_HASH_LEN	16
 #define	POLY1305_HASH_LEN	16
 #define	AES_CBC_MAC_HASH_LEN	16
@@ -117,18 +115,15 @@
 #define	NULL_BLOCK_LEN		4	/* IPsec to maintain alignment */
 #define	DES_BLOCK_LEN		8
 #define	DES3_BLOCK_LEN		8
-#define	BLOWFISH_BLOCK_LEN	8
 #define	RIJNDAEL128_BLOCK_LEN	16
 #define	AES_BLOCK_LEN		16
 #define	AES_ICM_BLOCK_LEN	1
-#define	ARC4_BLOCK_LEN		1
 #define	CAMELLIA_BLOCK_LEN	16
 #define	CHACHA20_NATIVE_BLOCK_LEN	64
 #define	EALG_MAX_BLOCK_LEN	CHACHA20_NATIVE_BLOCK_LEN /* Keep this updated */
 
 /* IV Lengths */
 
-#define	ARC4_IV_LEN		1
 #define	AES_GCM_IV_LEN		12
 #define	AES_CCM_IV_LEN		12
 #define	AES_XTS_IV_LEN		8
@@ -141,16 +136,12 @@
 #define	DES_MAX_KEY		DES_MIN_KEY
 #define	TRIPLE_DES_MIN_KEY	24
 #define	TRIPLE_DES_MAX_KEY	TRIPLE_DES_MIN_KEY
-#define	BLOWFISH_MIN_KEY	5
-#define	BLOWFISH_MAX_KEY	56 /* 448 bits, max key */
 #define	RIJNDAEL_MIN_KEY	16
 #define	RIJNDAEL_MAX_KEY	32
 #define	AES_MIN_KEY		RIJNDAEL_MIN_KEY
 #define	AES_MAX_KEY		RIJNDAEL_MAX_KEY
 #define	AES_XTS_MIN_KEY		(2 * AES_MIN_KEY)
 #define	AES_XTS_MAX_KEY		(2 * AES_MAX_KEY)
-#define	ARC4_MIN_KEY		1
-#define	ARC4_MAX_KEY		32
 #define	CAMELLIA_MIN_KEY	8
 #define	CAMELLIA_MAX_KEY	32
 
