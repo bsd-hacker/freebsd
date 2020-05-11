@@ -50,8 +50,6 @@ __FBSDID("$FreeBSD$");
 #include <crypto/blowfish/blowfish.h>
 #include <crypto/sha1.h>
 #include <opencrypto/rmd160.h>
-#include <opencrypto/cast.h>
-#include <opencrypto/skipjack.h>
 #include <sys/md5.h>
 
 #include <opencrypto/cryptodev.h>
@@ -980,9 +978,6 @@ swcr_setup_auth(struct swcr_session *ses,
 		if (csp->csp_mode == CSP_MODE_DIGEST)
 			ses->swcr_process = swcr_authcompute;
 		break;
-#ifdef notdef
-	case CRYPTO_MD5:
-#endif
 	case CRYPTO_SHA1:
 	case CRYPTO_SHA2_224:
 	case CRYPTO_SHA2_256:

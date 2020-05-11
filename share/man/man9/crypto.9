@@ -17,7 +17,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd March 27, 2020
+.Dd May 11, 2020
 .Dt CRYPTO 9
 .Os
 .Sh NAME
@@ -106,7 +106,6 @@ The following authentication algorithms are supported:
 .It Dv CRYPTO_AES_NIST_GMAC
 .It Dv CRYPTO_BLAKE2B
 .It Dv CRYPTO_BLAKE2S
-.It Dv CRYPTO_MD5
 .It Dv CRYPTO_MD5_HMAC
 .It Dv CRYPTO_MD5_KPDK
 .It Dv CRYPTO_NULL_HMAC
@@ -135,12 +134,10 @@ The following encryption algorithms are supported:
 .It Dv CRYPTO_ARC4
 .It Dv CRYPTO_BLF_CBC
 .It Dv CRYPTO_CAMELLIA_CBC
-.It Dv CRYPTO_CAST_CBC
 .It Dv CRYPTO_CHACHA20
 .It Dv CRYPTO_DES_CBC
 .It Dv CRYPTO_3DES_CBC
 .It Dv CRYPTO_NULL_CBC
-.It Dv CRYPTO_SKIPJACK_CBC
 .El
 .Pp
 The following authenticated encryption with additional data (AEAD)
