@@ -260,6 +260,27 @@ fail_tag:
 	return (error);
 }
 
+/*
+ * This function should generate unique key for the whole driver.
+ * If the key was already genereated in the previous call (for example
+ * for another adapter), then it should be returned instead.
+ */
+void
+ena_rss_key_fill(void *key, size_t size)
+{
+	static bool key_generated;
+	static uint8_t default_key[ENA_HASH_KEY_SIZE];
+
+	KASSERT(size <= ENA_HASH_KEY_SIZE, ("Requested more bytes than ENA RSS key can hold"));
+
+	if (!key_generated) {
+		arc4random_buf(default_key, ENA_HASH_KEY_SIZE);
+		key_generated = true;
+	}
+
+	memcpy(key, default_key, size);
+}
+
 static void
 ena_free_pci_resources(struct ena_adapter *adapter)
 {
@@ -393,8 +414,6 @@ ena_init_io_rings(struct ena_adapter *adapter)
 		txr->ring_size = adapter->tx_ring_size;
 		txr->tx_max_header_size = ena_dev->tx_max_header_size;
 		txr->tx_mem_queue_type = ena_dev->tx_mem_queue_type;
-		txr->smoothed_interval =
-		    ena_com_get_nonadaptive_moderation_interval_tx(ena_dev);
 
 		/* Allocate a buf ring */
 		txr->buf_ring_size = adapter->buf_ring_size;
@@ -407,8 +426,6 @@ ena_init_io_rings(struct ena_adapter *adapter)
 
 		/* RX specific ring state */
 		rxr->ring_size = adapter->rx_ring_size;
-		rxr->smoothed_interval =
-		    ena_com_get_nonadaptive_moderation_interval_rx(ena_dev);
 
 		/* Alloc RX statistics. */
 		ena_alloc_counters((counter_u64_t *)&rxr->rx_stats,
@@ -742,8 +759,7 @@ ena_free_tx_resources(struct ena_adapter *adapter, int qid)
 	free(tx_ring->free_tx_ids, M_DEVBUF);
 	tx_ring->free_tx_ids = NULL;
 
-	ENA_MEM_FREE(adapter->ena_dev->dmadev,
-	    tx_ring->push_buf_intermediate_buf);
+	free(tx_ring->push_buf_intermediate_buf, M_DEVBUF);
 	tx_ring->push_buf_intermediate_buf = NULL;
 }
 
@@ -1088,10 +1104,9 @@ ena_refill_rx_bufs(struct ena_ring *rx_ring, uint32_t num)
 		     rx_ring->qid, i, num);
 	}
 
-	if (likely(i != 0)) {
-		wmb();
+	if (likely(i != 0))
 		ena_com_write_sq_doorbell(rx_ring->ena_com_io_sq);
-	}
+
 	rx_ring->next_to_use = next_to_use;
 	return (i);
 }
@@ -1873,6 +1888,8 @@ ena_get_counter(if_t ifp, ift_counter cnt)
 		return (counter_u64_fetch(stats->tx_bytes));
 	case IFCOUNTER_IQDROPS:
 		return (counter_u64_fetch(stats->rx_drops));
+	case IFCOUNTER_OQDROPS:
+		return (counter_u64_fetch(stats->tx_drops));
 	default:
 		return (if_get_counter_default(ifp, cnt));
 	}
@@ -2695,12 +2712,16 @@ static void ena_keep_alive_wd(void *adapter_data,
 	struct ena_admin_aenq_keep_alive_desc *desc;
 	sbintime_t stime;
 	uint64_t rx_drops;
+	uint64_t tx_drops;
 
 	desc = (struct ena_admin_aenq_keep_alive_desc *)aenq_e;
 
 	rx_drops = ((uint64_t)desc->rx_drops_high << 32) | desc->rx_drops_low;
+	tx_drops = ((uint64_t)desc->tx_drops_high << 32) | desc->tx_drops_low;
 	counter_u64_zero(adapter->hw_stats.rx_drops);
 	counter_u64_add(adapter->hw_stats.rx_drops, rx_drops);
+	counter_u64_zero(adapter->hw_stats.tx_drops);
+	counter_u64_add(adapter->hw_stats.tx_drops, tx_drops);
 
 	stime = getsbinuptime();
 	atomic_store_rel_64(&adapter->keep_alive_timestamp, stime);
@@ -2917,7 +2938,7 @@ check_for_empty_rx_ring(struct ena_adapter *adapter)
 	for (i = 0; i < adapter->num_queues; i++) {
 		rx_ring = &adapter->rx_ring[i];
 
-		refill_required = ena_com_free_desc(rx_ring->ena_com_io_sq);
+		refill_required = ena_com_free_q_entries(rx_ring->ena_com_io_sq);
 		if (unlikely(refill_required == (rx_ring->ring_size - 1))) {
 			rx_ring->empty_rx_queue++;
 
