@@ -1,7 +1,7 @@
 /*-
  * BSD LICENSE
  *
- * Copyright (c) 2015-2019 Amazon.com, Inc. or its affiliates.
+ * Copyright (c) 2015-2020 Amazon.com, Inc. or its affiliates.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -3694,8 +3694,6 @@ ena_detach(device_t pdev)
 #ifdef DEV_NETMAP
 	netmap_detach(adapter->ifp);
 #endif /* DEV_NETMAP */
-
-	ena_free_all_io_rings_resources(adapter);
 
 	ena_free_counters((counter_u64_t *)&adapter->hw_stats,
 	    sizeof(struct ena_hw_stats));
