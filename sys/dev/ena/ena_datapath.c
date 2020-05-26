@@ -49,7 +49,7 @@ static struct mbuf* ena_rx_mbuf(struct ena_ring *, struct ena_com_rx_buf_info *,
     struct ena_com_rx_ctx *, uint16_t *);
 static inline void ena_rx_checksum(struct ena_ring *, struct ena_com_rx_ctx *,
     struct mbuf *);
-static void	ena_tx_csum(struct ena_com_tx_ctx *, struct mbuf *);
+static void	ena_tx_csum(struct ena_com_tx_ctx *, struct mbuf *, bool);
 static int	ena_check_and_collapse_mbuf(struct ena_ring *tx_ring,
     struct mbuf **mbuf);
 static int	ena_xmit_mbuf(struct ena_ring *, struct mbuf **);
@@ -138,9 +138,9 @@ ena_mq_start(if_t ifp, struct mbuf *m)
 	 * It should improve performance.
 	 */
 	if (M_HASHTYPE_GET(m) != M_HASHTYPE_NONE) {
-		i = m->m_pkthdr.flowid % adapter->num_queues;
+		i = m->m_pkthdr.flowid % adapter->num_io_queues;
 	} else {
-		i = curcpu % adapter->num_queues;
+		i = curcpu % adapter->num_io_queues;
 	}
 	tx_ring = &adapter->tx_ring[i];
 
@@ -169,7 +169,7 @@ ena_qflush(if_t ifp)
 	struct ena_ring *tx_ring = adapter->tx_ring;
 	int i;
 
-	for(i = 0; i < adapter->num_queues; ++i, ++tx_ring)
+	for(i = 0; i < adapter->num_io_queues; ++i, ++tx_ring)
 		if (!drbr_empty(ifp, tx_ring->br)) {
 			ENA_RING_MTX_LOCK(tx_ring);
 			drbr_flush(ifp, tx_ring->br);
@@ -201,8 +201,7 @@ validate_tx_req_id(struct ena_ring *tx_ring, uint16_t req_id)
 	counter_u64_add(tx_ring->tx_stats.bad_req_id, 1);
 
 	/* Trigger device reset */
-	adapter->reset_reason = ENA_REGS_RESET_INV_TX_REQ_ID;
-	ENA_FLAG_SET_ATOMIC(ENA_FLAG_TRIGGER_RESET, adapter);
+	ena_trigger_reset(adapter, ENA_REGS_RESET_INV_TX_REQ_ID);
 
 	return (EFAULT);
 }
@@ -670,16 +669,14 @@ error:
 	counter_u64_add(rx_ring->rx_stats.bad_desc_num, 1);
 
 	/* Too many desc from the device. Trigger reset */
-	if (likely(!ENA_FLAG_ISSET(ENA_FLAG_TRIGGER_RESET, adapter))) {
-		adapter->reset_reason = ENA_REGS_RESET_TOO_MANY_RX_DESCS;
-		ENA_FLAG_SET_ATOMIC(ENA_FLAG_TRIGGER_RESET, adapter);
-	}
+	ena_trigger_reset(adapter, ENA_REGS_RESET_TOO_MANY_RX_DESCS);
 
 	return (0);
 }
 
 static void
-ena_tx_csum(struct ena_com_tx_ctx *ena_tx_ctx, struct mbuf *mbuf)
+ena_tx_csum(struct ena_com_tx_ctx *ena_tx_ctx, struct mbuf *mbuf,
+    bool disable_meta_caching)
 {
 	struct ena_com_tx_meta *ena_meta;
 	struct ether_vlan_header *eh;
@@ -707,7 +704,12 @@ ena_tx_csum(struct ena_com_tx_ctx *ena_tx_ctx, struct mbuf *mbuf)
 		offload = true;
 
 	if (!offload) {
-		ena_tx_ctx->meta_valid = 0;
+		if (disable_meta_caching) {
+			memset(ena_meta, 0, sizeof(*ena_meta));
+			ena_tx_ctx->meta_valid = 1;
+		} else {
+			ena_tx_ctx->meta_valid = 0;
+		}
 		return;
 	}
 
@@ -993,7 +995,7 @@ ena_xmit_mbuf(struct ena_ring *tx_ring, struct mbuf **mbuf)
 	ena_tx_ctx.header_len = header_len;
 
 	/* Set flags and meta data */
-	ena_tx_csum(&ena_tx_ctx, *mbuf);
+	ena_tx_csum(&ena_tx_ctx, *mbuf, adapter->disable_meta_caching);
 
 	if (tx_ring->acum_pkts == DB_THRESHOLD ||
 	    ena_com_is_doorbell_needed(tx_ring->ena_com_io_sq, &ena_tx_ctx)) {
