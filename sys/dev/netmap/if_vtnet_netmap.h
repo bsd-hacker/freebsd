@@ -196,9 +196,11 @@ vtnet_netmap_txsync(struct netmap_kring *kring, int flags)
 }
 
 /*
- * Publish (up to) num netmap receive buffers to the host,
- * starting from the first one that the user made available
- * (kring->nr_hwcur).
+ * Publish 'num 'netmap receive buffers to the host, starting
+ * from the next available one (rx->vtnrx_nm_refill).
+ * Return a positive error code on error, and 0 on success.
+ * If we could not publish all of the buffers that's an error,
+ * since the netmap ring and the virtqueue would go out of sync.
  */
 static int
 vtnet_netmap_kring_refill(struct netmap_kring *kring, u_int num)
@@ -208,7 +210,7 @@ vtnet_netmap_kring_refill(struct netmap_kring *kring, u_int num)
 	struct netmap_ring *ring = kring->ring;
 	u_int ring_nr = kring->ring_id;
 	u_int const lim = kring->nkr_num_slots - 1;
-	u_int nm_i = kring->nr_hwcur;
+	u_int nm_i;
 
 	/* device-specific */
 	struct vtnet_softc *sc = ifp->if_softc;
@@ -219,7 +221,8 @@ vtnet_netmap_kring_refill(struct netmap_kring *kring, u_int num)
 	struct sglist_seg ss[2];
 	struct sglist sg = { ss, 0, 0, 2 };
 
-	for (; num > 0; nm_i = nm_next(nm_i, lim), num--) {
+	for (nm_i = rxq->vtnrx_nm_refill; num > 0;
+	    nm_i = nm_next(nm_i, lim), num--) {
 		struct netmap_slot *slot = &ring->slot[nm_i];
 		uint64_t paddr;
 		void *addr = PNMB(na, slot, &paddr);
@@ -227,7 +230,7 @@ vtnet_netmap_kring_refill(struct netmap_kring *kring, u_int num)
 
 		if (addr == NETMAP_BUF_BASE(na)) { /* bad buf */
 			if (netmap_ring_reinit(kring))
-				return -1;
+				return EFAULT;
 		}
 
 		slot->flags &= ~NS_BUF_CHANGED;
@@ -240,14 +243,14 @@ vtnet_netmap_kring_refill(struct netmap_kring *kring, u_int num)
 		err = virtqueue_enqueue(vq, /*cookie=*/rxq, &sg,
 				/*readable=*/0, /*writeable=*/sg.sg_nseg);
 		if (unlikely(err)) {
-			if (err != ENOSPC)
-				nm_prerr("virtqueue_enqueue(%s) failed: %d",
-					kring->name, err);
+			nm_prerr("virtqueue_enqueue(%s) failed: %d",
+				kring->name, err);
 			break;
 		}
 	}
+	rxq->vtnrx_nm_refill = nm_i;
 
-	return nm_i;
+	return num == 0 ? 0 : ENOSPC;
 }
 
 /*
@@ -274,11 +277,14 @@ vtnet_netmap_rxq_populate(struct vtnet_rxq *rxq)
 	/* Expose all the RX netmap buffers we can. In case of no indirect
 	 * buffers, the number of netmap slots in the RX ring matches the
 	 * maximum number of 2-elements sglist that the RX virtqueue can
-	 * accommodate (minus 1 to avoid netmap ring wraparound). */
+	 * accommodate. We need to start from kring->nr_hwcur, which is 0
+	 * on netmap register and may be different from 0 if a virtio
+	 * re-init happens while the device is in use by netmap. */
+	rxq->vtnrx_nm_refill = kring->nr_hwcur;
 	error = vtnet_netmap_kring_refill(kring, na->num_rx_desc - 1);
 	virtqueue_notify(rxq->vtnrx_vq);
 
-	return error < 0 ? ENXIO : 0;
+	return error;
 }
 
 /* Reconcile kernel and user view of the receive ring. */
@@ -304,8 +310,11 @@ vtnet_netmap_rxsync(struct netmap_kring *kring, int flags)
 	/*
 	 * First part: import newly received packets.
 	 * Only accept our own buffers (matching the token). We should only get
-	 * matching buffers. We may need to stop early to avoid hwtail to overrun
-	 * hwcur.
+	 * matching buffers. The hwtail should never overrun hwcur, because
+	 * we publish only N-1 receive buffers (and non N).
+	 * In any case we must not leave this routine with the interrupts
+	 * disabled, pending packets in the VQ and hwtail == (hwcur - 1),
+	 * otherwise the pending packets could stall.
 	 */
 	if (netmap_no_pendintr || force_update) {
 		uint32_t hwtail_lim = nm_prev(kring->nr_hwcur, lim);
@@ -314,10 +323,17 @@ vtnet_netmap_rxsync(struct netmap_kring *kring, int flags)
 		vtnet_rxq_disable_intr(rxq);
 
 		nm_i = kring->nr_hwtail;
-		while (nm_i != hwtail_lim) {
+		for (;;) {
 			int len;
 			token = virtqueue_dequeue(vq, &len);
 			if (token == NULL) {
+				/*
+				 * Enable the interrupts again and double-check
+				 * for more work. We can go on until we win the
+				 * race condition, since we are not replenishing
+				 * in the meanwhile, and thus we will process at
+				 * most N-1 slots.
+				 */
 				if (interrupts && vtnet_rxq_enable_intr(rxq)) {
 					vtnet_rxq_disable_intr(rxq);
 					continue;
@@ -327,6 +343,11 @@ vtnet_netmap_rxsync(struct netmap_kring *kring, int flags)
 			if (unlikely(token != (void *)rxq)) {
 				nm_prerr("BUG: RX token mismatch");
 			} else {
+				if (nm_i == hwtail_lim) {
+					KASSERT(false, ("hwtail would "
+					    "overrun hwcur"));
+				}
+
 				/* Skip the virtio-net header. */
 				len -= sc->vtnet_hdr_size;
 				if (unlikely(len < 0)) {
@@ -342,28 +363,30 @@ vtnet_netmap_rxsync(struct netmap_kring *kring, int flags)
 		kring->nr_hwtail = nm_i;
 		kring->nr_kflags &= ~NKR_PENDINTR;
 	}
-	nm_prdis("[B] h %d c %d hwcur %d hwtail %d", ring->head, ring->cur,
-				kring->nr_hwcur, kring->nr_hwtail);
 
 	/*
 	 * Second part: skip past packets that userspace has released.
 	 */
 	nm_i = kring->nr_hwcur; /* netmap ring index */
 	if (nm_i != head) {
-		int howmany = head - nm_i;
-		int nm_j;
+		int released;
+		int error;
 
-		if (howmany < 0)
-			howmany += kring->nkr_num_slots;
-		nm_j = vtnet_netmap_kring_refill(kring, howmany);
-		if (nm_j < 0)
-			return nm_j;
-		kring->nr_hwcur = nm_j;
+		released = head - nm_i;
+		if (released < 0)
+			released += kring->nkr_num_slots;
+		error = vtnet_netmap_kring_refill(kring, released);
+		if (error) {
+			nm_prerr("Failed to replenish RX VQ with %u sgs",
+			    released);
+			return error;
+		}
+		kring->nr_hwcur = head;
 		virtqueue_notify(vq);
 	}
 
-	nm_prdis("[C] h %d c %d t %d hwcur %d hwtail %d", ring->head, ring->cur,
-		ring->tail, kring->nr_hwcur, kring->nr_hwtail);
+	nm_prdis("h %d c %d t %d hwcur %d hwtail %d", kring->rhead,
+	    kring->rcur, kring->rtail, kring->nr_hwcur, kring->nr_hwtail);
 
 	return 0;
 }
