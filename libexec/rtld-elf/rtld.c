@@ -721,7 +721,8 @@ _rtld(Elf_Addr *sp, func_ptr_type *exit_proc, Obj_Entry **objp)
     preload_tail = globallist_curr(TAILQ_LAST(&obj_list, obj_entry_q));
 
     dbg("loading needed objects");
-    if (load_needed_objects(obj_main, 0) == -1)
+    if (load_needed_objects(obj_main, ld_tracing != NULL ? RTLD_LO_TRACE :
+      0) == -1)
 	rtld_die();
 
     /* Make a list of all objects loaded at startup. */
@@ -2611,12 +2612,13 @@ do_load_object(int fd, const char *name, char *path, struct stat *sbp,
     obj->path = path;
     if (!digest_dynamic(obj, 0))
 	goto errp;
-    if (obj->z_pie) {
+    dbg("%s valid_hash_sysv %d valid_hash_gnu %d dynsymcount %d", obj->path,
+	obj->valid_hash_sysv, obj->valid_hash_gnu, obj->dynsymcount);
+    if (obj->z_pie && (flags & RTLD_LO_TRACE) == 0) {
+	dbg("refusing to load PIE executable \"%s\"", obj->path);
 	_rtld_error("Cannot load PIE binary %s as DSO", obj->path);
 	goto errp;
     }
-    dbg("%s valid_hash_sysv %d valid_hash_gnu %d dynsymcount %d", obj->path,
-	obj->valid_hash_sysv, obj->valid_hash_gnu, obj->dynsymcount);
     if (obj->z_noopen && (flags & (RTLD_LO_DLOPEN | RTLD_LO_TRACE)) ==
       RTLD_LO_DLOPEN) {
 	dbg("refusing to load non-loadable \"%s\"", obj->path);
@@ -3437,6 +3439,9 @@ dlopen_object(const char *name, int fd, Obj_Entry *refobj, int lo_flags,
     RtldLockState mlockstate;
     int result;
 
+    dbg("dlopen_object name \"%s\" fd %d refobj \"%s\" lo_flags %#x mode %#x",
+      name != NULL ? name : "<null>", fd, refobj == NULL ? "<null>" :
+      refobj->path, lo_flags, mode);
     objlist_init(&initlist);
 
     if (lockstate == NULL && !(lo_flags & RTLD_LO_EARLY)) {
@@ -3472,7 +3477,7 @@ dlopen_object(const char *name, int fd, Obj_Entry *refobj, int lo_flags,
 	    }
 	    if (result != -1)
 		result = load_needed_objects(obj, lo_flags & (RTLD_LO_DLOPEN |
-		    RTLD_LO_EARLY | RTLD_LO_IGNSTLS));
+		  RTLD_LO_EARLY | RTLD_LO_IGNSTLS | RTLD_LO_TRACE));
 	    init_dag(obj);
 	    ref_dag(obj);
 	    if (result != -1)
