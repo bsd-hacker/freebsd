@@ -1,4 +1,4 @@
-/* libyywrap - flex run-time support library "yywrap" function */
+/* libmain - flex run-time support library "main" function */
 
 /*  This file is part of flex. */
 
@@ -21,8 +21,16 @@
 /*  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR */
 /*  PURPOSE. */
 
-int     yywrap (void);
-int     yywrap (void)
+#include <stdlib.h>
+
+extern int yylex (void);
+
+int     main (int argc, char *argv[])
 {
-	return 1;
+	(void)argc;
+	(void)argv;
+
+	while (yylex () != 0) ;
+
+	exit(0);
 }

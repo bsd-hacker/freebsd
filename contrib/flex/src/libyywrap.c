@@ -1,4 +1,4 @@
-/* libmain - flex run-time support library "main" function */
+/* libyywrap - flex run-time support library "yywrap" function */
 
 /*  This file is part of flex. */
 
@@ -21,13 +21,9 @@
 /*  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR */
 /*  PURPOSE. */
 
-extern int yylex ();
+int     yywrap (void);
 
-int     main (argc, argv)
-     int     argc;
-     char   *argv[];
+int     yywrap (void)
 {
-	while (yylex () != 0) ;
-
-	return 0;
+	return 1;
 }

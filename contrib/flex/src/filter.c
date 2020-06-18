@@ -47,9 +47,9 @@ struct filter *filter_create_ext (struct filter *chain, const char *cmd,
 	va_list ap;
 
 	/* allocate and initialize new filter */
-	f = (struct filter *) flex_alloc (sizeof (struct filter));
+	f = malloc(sizeof(struct filter));
 	if (!f)
-		flexerror (_("flex_alloc failed (f) in filter_create_ext"));
+		flexerror(_("malloc failed (f) in filter_create_ext"));
 	memset (f, 0, sizeof (*f));
 	f->filter_func = NULL;
 	f->extra = NULL;
@@ -66,23 +66,16 @@ struct filter *filter_create_ext (struct filter *chain, const char *cmd,
 
 	/* allocate argv, and populate it with the argument list. */
 	max_args = 8;
-	f->argv =
-		(const char **) flex_alloc (sizeof (char *) *
-					    (max_args + 1));
+	f->argv = malloc(sizeof(char *) * (size_t) (max_args + 1));
 	if (!f->argv)
-		flexerror (_("flex_alloc failed (f->argv) in filter_create_ext"));
+		flexerror(_("malloc failed (f->argv) in filter_create_ext"));
 	f->argv[f->argc++] = cmd;
 
 	va_start (ap, cmd);
 	while ((s = va_arg (ap, const char *)) != NULL) {
 		if (f->argc >= max_args) {
 			max_args += 8;
-			f->argv =
-				(const char **) flex_realloc (f->argv,
-							      sizeof (char
-								      *) *
-							      (max_args +
-							       1));
+			f->argv = realloc(f->argv, sizeof(char*) * (size_t) (max_args + 1));
 		}
 		f->argv[f->argc++] = s;
 	}
@@ -107,9 +100,9 @@ struct filter *filter_create_int (struct filter *chain,
 	struct filter *f;
 
 	/* allocate and initialize new filter */
-	f = (struct filter *) flex_alloc (sizeof (struct filter));
+	f = malloc(sizeof(struct filter));
 	if (!f)
-		flexerror (_("flex_alloc failed in filter_create_int"));
+		flexerror(_("malloc failed in filter_create_int"));
 	memset (f, 0, sizeof (*f));
 	f->next = NULL;
 	f->argc = 0;
@@ -174,6 +167,8 @@ clearerr(stdin);
 			flexfatal (_("dup2(pipes[0],0)"));
 		close (pipes[0]);
         fseek (stdin, 0, SEEK_CUR);
+        ungetc(' ', stdin); /* still an evil hack, but one that works better */
+        (void)fgetc(stdin); /* on NetBSD than the fseek attempt does */
 
 		/* run as a filter, either internally or by exec */
 		if (chain->filter_func) {
@@ -181,16 +176,16 @@ clearerr(stdin);
 
 			if ((r = chain->filter_func (chain)) == -1)
 				flexfatal (_("filter_func failed"));
-			exit (0);
+			FLEX_EXIT (0);
 		}
 		else {
 			execvp (chain->argv[0],
 				(char **const) (chain->argv));
-            lerrsf_fatal ( _("exec of %s failed"),
+            lerr_fatal ( _("exec of %s failed"),
                     chain->argv[0]);
 		}
 
-		exit (1);
+		FLEX_EXIT (1);
 	}
 
 	/* Parent */
@@ -288,9 +283,9 @@ int filter_tee_header (struct filter *chain)
 	fprintf (to_c, "m4_define( [[M4_YY_OUTFILE_NAME]],[[%s]])m4_dnl\n",
 		 outfilename ? outfilename : "<stdout>");
 
-	buf = (char *) flex_alloc (readsz);
+	buf = malloc((size_t) readsz);
 	if (!buf)
-		flexerror (_("flex_alloc failed in filter_tee_header"));
+		flexerror(_("malloc failed in filter_tee_header"));
 	while (fgets (buf, readsz, stdin)) {
 		fputs (buf, to_c);
 		if (write_header)
@@ -301,7 +296,8 @@ int filter_tee_header (struct filter *chain)
 		fprintf (to_h, "\n");
 
 		/* write a fake line number. It will get fixed by the linedir filter. */
-		fprintf (to_h, "#line 4000 \"M4_YY_OUTFILE_NAME\"\n");
+		if (gen_line_dirs)
+			fprintf (to_h, "#line 4000 \"M4_YY_OUTFILE_NAME\"\n");
 
 		fprintf (to_h, "#undef %sIN_HEADER\n", prefix);
 		fprintf (to_h, "#endif /* %sHEADER_H */\n", prefix);
@@ -309,26 +305,26 @@ int filter_tee_header (struct filter *chain)
 
 		fflush (to_h);
 		if (ferror (to_h))
-			lerrsf (_("error writing output file %s"),
+			lerr (_("error writing output file %s"),
 				(char *) chain->extra);
 
 		else if (fclose (to_h))
-			lerrsf (_("error closing output file %s"),
+			lerr (_("error closing output file %s"),
 				(char *) chain->extra);
 	}
 
 	fflush (to_c);
 	if (ferror (to_c))
-		lerrsf (_("error writing output file %s"),
+		lerr (_("error writing output file %s"),
 			outfilename ? outfilename : "<stdout>");
 
 	else if (fclose (to_c))
-		lerrsf (_("error closing output file %s"),
+		lerr (_("error closing output file %s"),
 			outfilename ? outfilename : "<stdout>");
 
 	while (wait (0) > 0) ;
 
-	exit (0);
+	FLEX_EXIT (0);
 	return 0;
 }
 
@@ -341,7 +337,7 @@ int filter_tee_header (struct filter *chain)
 int filter_fix_linedirs (struct filter *chain)
 {
 	char   *buf;
-	const int readsz = 512;
+	const size_t readsz = 512;
 	int     lineno = 1;
 	bool    in_gen = true;	/* in generated code */
 	bool    last_was_blank = false;
@@ -349,11 +345,11 @@ int filter_fix_linedirs (struct filter *chain)
 	if (!chain)
 		return 0;
 
-	buf = (char *) flex_alloc (readsz);
+	buf = malloc(readsz);
 	if (!buf)
-		flexerror (_("flex_alloc failed in filter_fix_linedirs"));
+		flexerror(_("malloc failed in filter_fix_linedirs"));
 
-	while (fgets (buf, readsz, stdin)) {
+	while (fgets (buf, (int) readsz, stdin)) {
 
 		regmatch_t m[10];
 
@@ -361,11 +357,9 @@ int filter_fix_linedirs (struct filter *chain)
 		if (buf[0] == '#'
 			&& regexec (&regex_linedir, buf, 3, m, 0) == 0) {
 
-			int     num;
 			char   *fname;
 
 			/* extract the line number and filename */
-			num = regmatch_strtol (&m[1], buf, NULL, 0);
 			fname = regmatch_dup (&m[2], buf);
 
 			if (strcmp (fname,
@@ -397,7 +391,7 @@ int filter_fix_linedirs (struct filter *chain)
 				/* Adjust the line directives. */
 				in_gen = true;
 				snprintf (buf, readsz, "#line %d \"%s\"\n",
-					  lineno + 1, filename);
+					  lineno, filename);
 			}
 			else {
 				/* it's a #line directive for code we didn't write */
@@ -428,11 +422,11 @@ int filter_fix_linedirs (struct filter *chain)
 	}
 	fflush (stdout);
 	if (ferror (stdout))
-		lerrsf (_("error writing output file %s"),
+		lerr (_("error writing output file %s"),
 			outfilename ? outfilename : "<stdout>");
 
 	else if (fclose (stdout))
-		lerrsf (_("error closing output file %s"),
+		lerr (_("error closing output file %s"),
 			outfilename ? outfilename : "<stdout>");
 
 	return 0;
