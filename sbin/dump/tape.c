@@ -75,19 +75,19 @@ static	char *nexttape;
 static	FILE *popenfp = NULL;
 
 static	int atomic(ssize_t (*)(), int, char *, int);
-static	void dominion(int, int);
-static	void enminion(void);
+static	void worker(int, int);
+static	void enworker(void);
 static	void flushtape(void);
 static	void killall(void);
 static	void rollforward(void);
 
 /*
  * Concurrent dump mods (Caltech) - disk block reading and tape writing
- * are exported to several minion processes.  While one minion writes the
+ * are exported to several worker processes.  While one worker writes the
  * tape, the others read disk blocks; they pass control of the tape in
  * a ring via signals. The parent process traverses the file system and
- * sends writeheader()'s and lists of daddr's to the minions via pipes.
- * The following structure defines the instruction packets sent to minions.
+ * sends writeheader()'s and lists of daddr's to the workers via pipes.
+ * The following structure defines the instruction packets sent to workers.
  */
 struct req {
 	ufs2_daddr_t dblk;
@@ -95,20 +95,20 @@ struct req {
 };
 static int reqsiz;
 
-#define MINIONS 3		/* 1 minion writing, 1 reading, 1 for slack */
-static struct minion {
+#define WORKERS 3		/* 1 worker writing, 1 reading, 1 for slack */
+static struct worker {
 	int64_t tapea;		/* header number at start of this chunk */
 	int64_t firstrec;	/* record number of this block */
 	int count;		/* count to next header (used for TS_TAPE */
 				/* after EOT) */
 	int inode;		/* inode that we are currently dealing with */
-	int fd;			/* FD for this minion */
-	int pid;		/* PID for this minion */
-	int sent;		/* 1 == we've sent this minion requests */
+	int fd;			/* FD for this worker */
+	int pid;		/* PID for this worker */
+	int sent;		/* 1 == we've sent this worker requests */
 	char (*tblock)[TP_BSIZE]; /* buffer for data blocks */
 	struct req *req;	/* buffer for requests */
-} minions[MINIONS+1];
-static struct minion *mlp;
+} workers[WORKERS+1];
+static struct worker *mlp;
 
 static char	(*nextblock)[TP_BSIZE];
 
@@ -116,9 +116,9 @@ static int master;	/* pid of master, for sending error signals */
 static int tenths;	/* length of tape used per block written */
 static volatile sig_atomic_t caught; /* have we caught the signal to proceed? */
 static volatile sig_atomic_t ready; /* reached the lock point without having */
-			/* received the SIGUSR2 signal from the prev minion? */
+			/* received the SIGUSR2 signal from the prev worker? */
 static jmp_buf jmpbuf;	/* where to jump to if we are ready when the */
-			/* SIGUSR2 arrives from the previous minion */
+			/* SIGUSR2 arrives from the previous worker */
 
 int
 alloctape(void)
@@ -143,16 +143,16 @@ alloctape(void)
 	 * packets, so flushtape() can write them together with one write().
 	 * Align tape buffer on page boundary to speed up tape write().
 	 */
-	for (i = 0; i <= MINIONS; i++) {
+	for (i = 0; i <= WORKERS; i++) {
 		buf = (char *)
 		    malloc((unsigned)(reqsiz + writesize + pgoff + TP_BSIZE));
 		if (buf == NULL)
 			return(0);
-		minions[i].tblock = (char (*)[TP_BSIZE])
+		workers[i].tblock = (char (*)[TP_BSIZE])
 		    (((long)&buf[ntrec + 1] + pgoff) &~ pgoff);
-		minions[i].req = (struct req *)minions[i].tblock - ntrec - 1;
+		workers[i].req = (struct req *)workers[i].tblock - ntrec - 1;
 	}
-	mlp = &minions[0];
+	mlp = &workers[0];
 	mlp->count = 1;
 	mlp->tapea = 0;
 	mlp->firstrec = 0;
@@ -242,10 +242,10 @@ flushtape(void)
 
 	lastfirstrec = mlp->firstrec;
 
-	if (++mlp >= &minions[MINIONS])
-		mlp = &minions[0];
+	if (++mlp >= &workers[WORKERS])
+		mlp = &workers[0];
 
-	/* Read results back from next minion */
+	/* Read results back from next worker */
 	if (mlp->sent) {
 		if (atomic(read, mlp->fd, (char *)&got, sizeof got)
 		    != sizeof got) {
@@ -262,15 +262,15 @@ flushtape(void)
 			 * Drain the results, don't care what the values were.
 			 * If we read them here then trewind won't...
 			 */
-			for (i = 0; i < MINIONS; i++) {
-				if (minions[i].sent) {
-					if (atomic(read, minions[i].fd,
+			for (i = 0; i < WORKERS; i++) {
+				if (workers[i].sent) {
+					if (atomic(read, workers[i].fd,
 					    (char *)&got, sizeof got)
 					    != sizeof got) {
 						perror("  DUMP: error reading command pipe in master");
 						dumpabort(0);
 					}
-					minions[i].sent = 0;
+					workers[i].sent = 0;
 				}
 			}
 
@@ -312,7 +312,7 @@ trewind(void)
 	int f;
 	int got;
 
-	for (f = 0; f < MINIONS; f++) {
+	for (f = 0; f < WORKERS; f++) {
 		/*
 		 * Drain the results, but unlike EOT we DO (or should) care
 		 * what the return values were, since if we detect EOT after
@@ -321,22 +321,22 @@ trewind(void)
 		 *
 		 * fixme: punt for now.
 		 */
-		if (minions[f].sent) {
-			if (atomic(read, minions[f].fd, (char *)&got, sizeof got)
+		if (workers[f].sent) {
+			if (atomic(read, workers[f].fd, (char *)&got, sizeof got)
 			    != sizeof got) {
 				perror("  DUMP: error reading command pipe in master");
 				dumpabort(0);
 			}
-			minions[f].sent = 0;
+			workers[f].sent = 0;
 			if (got != writesize) {
 				msg("EOT detected in last 2 tape records!\n");
 				msg("Use a longer tape, decrease the size estimate\n");
 				quit("or use no size estimate at all.\n");
 			}
 		}
-		(void) close(minions[f].fd);
+		(void) close(workers[f].fd);
 	}
-	while (wait((int *)NULL) >= 0)	/* wait for any signals from minions */
+	while (wait((int *)NULL) >= 0)	/* wait for any signals from workers */
 		/* void */;
 
 	if (pipeout)
@@ -396,25 +396,25 @@ void
 rollforward(void)
 {
 	struct req *p, *q, *prev;
-	struct minion *tmlp;
+	struct worker *tmlp;
 	int i, size, got;
 	int64_t savedtapea;
 	union u_spcl *ntb, *otb;
-	tmlp = &minions[MINIONS];
+	tmlp = &workers[WORKERS];
 	ntb = (union u_spcl *)tmlp->tblock[1];
 
 	/*
-	 * Each of the N minions should have requests that need to
-	 * be replayed on the next tape.  Use the extra minion buffers
-	 * (minions[MINIONS]) to construct request lists to be sent to
-	 * each minion in turn.
+	 * Each of the N workers should have requests that need to
+	 * be replayed on the next tape.  Use the extra worker buffers
+	 * (workers[WORKERS]) to construct request lists to be sent to
+	 * each worker in turn.
 	 */
-	for (i = 0; i < MINIONS; i++) {
+	for (i = 0; i < WORKERS; i++) {
 		q = &tmlp->req[1];
 		otb = (union u_spcl *)mlp->tblock;
 
 		/*
-		 * For each request in the current minion, copy it to tmlp.
+		 * For each request in the current worker, copy it to tmlp.
 		 */
 
 		prev = NULL;
@@ -451,8 +451,8 @@ rollforward(void)
 			dumpabort(0);
 		}
 		mlp->sent = 1;
-		if (++mlp >= &minions[MINIONS])
-			mlp = &minions[0];
+		if (++mlp >= &workers[WORKERS])
+			mlp = &workers[0];
 
 		q->count = 1;
 
@@ -482,7 +482,7 @@ rollforward(void)
 	trecno = 1;
 
 	/*
-	 * Clear the first minions' response.  One hopes that it
+	 * Clear the first workers' response.  One hopes that it
 	 * worked ok, otherwise the tape is much too short!
 	 */
 	if (mlp->sent) {
@@ -634,7 +634,7 @@ restore_check_point:
 			}
 		}
 
-		enminion();  /* Share open tape file descriptor with minions */
+		enworker();  /* Share open tape file descriptor with workers */
 		if (popenout)
 			close(tapefd);	/* Give up our copy of it. */
 		signal(SIGINFO, infosch);
@@ -687,7 +687,7 @@ Exit(status)
 }
 
 /*
- * proceed - handler for SIGUSR2, used to synchronize IO between the minions.
+ * proceed - handler for SIGUSR2, used to synchronize IO between the workers.
  */
 void
 proceed(int signo __unused)
@@ -699,45 +699,45 @@ proceed(int signo __unused)
 }
 
 void
-enminion(void)
+enworker(void)
 {
 	int cmd[2];
 	int i, j;
 
 	master = getpid();
 
-	signal(SIGTERM, dumpabort);  /* Minion sends SIGTERM on dumpabort() */
+	signal(SIGTERM, dumpabort);  /* Worker sends SIGTERM on dumpabort() */
 	signal(SIGPIPE, sigpipe);
-	signal(SIGUSR1, tperror);    /* Minion sends SIGUSR1 on tape errors */
-	signal(SIGUSR2, proceed);    /* Minion sends SIGUSR2 to next minion */
+	signal(SIGUSR1, tperror);    /* Worker sends SIGUSR1 on tape errors */
+	signal(SIGUSR2, proceed);    /* Worker sends SIGUSR2 to next worker */
 
-	for (i = 0; i < MINIONS; i++) {
-		if (i == mlp - &minions[0]) {
+	for (i = 0; i < WORKERS; i++) {
+		if (i == mlp - &workers[0]) {
 			caught = 1;
 		} else {
 			caught = 0;
 		}
 
 		if (socketpair(AF_UNIX, SOCK_STREAM, 0, cmd) < 0 ||
-		    (minions[i].pid = fork()) < 0)
-			quit("too many minions, %d (recompile smaller): %s\n",
+		    (workers[i].pid = fork()) < 0)
+			quit("too many workers, %d (recompile smaller): %s\n",
 			    i, strerror(errno));
 
-		minions[i].fd = cmd[1];
-		minions[i].sent = 0;
-		if (minions[i].pid == 0) { 	    /* Minion starts up here */
+		workers[i].fd = cmd[1];
+		workers[i].sent = 0;
+		if (workers[i].pid == 0) { 	    /* Worker starts up here */
 			for (j = 0; j <= i; j++)
-			        (void) close(minions[j].fd);
+			        (void) close(workers[j].fd);
 			signal(SIGINT, SIG_IGN);    /* Master handles this */
-			dominion(cmd[0], i);
+			worker(cmd[0], i);
 			Exit(X_FINOK);
 		}
 	}
 
-	for (i = 0; i < MINIONS; i++)
-		(void) atomic(write, minions[i].fd,
-			      (char *) &minions[(i + 1) % MINIONS].pid,
-		              sizeof minions[0].pid);
+	for (i = 0; i < WORKERS; i++)
+		(void) atomic(write, workers[i].fd,
+			      (char *) &workers[(i + 1) % WORKERS].pid,
+		              sizeof workers[0].pid);
 
 	master = 0;
 }
@@ -747,10 +747,10 @@ killall(void)
 {
 	int i;
 
-	for (i = 0; i < MINIONS; i++)
-		if (minions[i].pid > 0) {
-			(void) kill(minions[i].pid, SIGKILL);
-			minions[i].sent = 0;
+	for (i = 0; i < WORKERS; i++)
+		if (workers[i].pid > 0) {
+			(void) kill(workers[i].pid, SIGKILL);
+			workers[i].sent = 0;
 		}
 }
 
@@ -762,24 +762,24 @@ killall(void)
  * get the lock back for the next cycle by swapping descriptors.
  */
 static void
-dominion(int cmd, int minion_number)
+worker(int cmd, int worker_number)
 {
 	int nread;
-	int nextminion, size, wrote, eot_count;
+	int nextworker, size, wrote, eot_count;
 
 	/*
 	 * Need our own seek pointer.
 	 */
 	(void) close(diskfd);
 	if ((diskfd = open(disk, O_RDONLY)) < 0)
-		quit("minion couldn't reopen disk: %s\n", strerror(errno));
+		quit("worker couldn't reopen disk: %s\n", strerror(errno));
 
 	/*
-	 * Need the pid of the next minion in the loop...
+	 * Need the pid of the next worker in the loop...
 	 */
-	if ((nread = atomic(read, cmd, (char *)&nextminion, sizeof nextminion))
-	    != sizeof nextminion) {
-		quit("master/minion protocol botched - didn't get pid of next minion.\n");
+	if ((nread = atomic(read, cmd, (char *)&nextworker, sizeof nextworker))
+	    != sizeof nextworker) {
+		quit("master/worker protocol botched - didn't get pid of next worker.\n");
 	}
 
 	/*
@@ -797,7 +797,7 @@ dominion(int cmd, int minion_number)
 				if (p->count != 1 || atomic(read, cmd,
 				    (char *)mlp->tblock[trecno],
 				    TP_BSIZE) != TP_BSIZE)
-				       quit("master/minion protocol botched.\n");
+				       quit("master/worker protocol botched.\n");
 			}
 		}
 		if (setjmp(jmpbuf) == 0) {
@@ -823,7 +823,7 @@ dominion(int cmd, int minion_number)
 				wrote = write(tapefd, mlp->tblock[0]+size,
 				    writesize-size);
 #ifdef WRITEDEBUG
-			printf("minion %d wrote %d\n", minion_number, wrote);
+			printf("worker %d wrote %d\n", worker_number, wrote);
 #endif
 			if (wrote < 0)
 				break;
@@ -834,8 +834,8 @@ dominion(int cmd, int minion_number)
 
 #ifdef WRITEDEBUG
 		if (size != writesize)
-		 printf("minion %d only wrote %d out of %d bytes and gave up.\n",
-		     minion_number, size, writesize);
+		 printf("worker %d only wrote %d out of %d bytes and gave up.\n",
+		     worker_number, size, writesize);
 #endif
 
 		/*
@@ -862,10 +862,10 @@ dominion(int cmd, int minion_number)
 		}
 
 		/*
-		 * If partial write, don't want next minion to go.
+		 * If partial write, don't want next worker to go.
 		 * Also jolts him awake.
 		 */
-		(void) kill(nextminion, SIGUSR2);
+		(void) kill(nextworker, SIGUSR2);
 	}
 	if (nread != 0)
 		quit("error reading command pipe: %s\n", strerror(errno));
