@@ -444,6 +444,7 @@ hmac_init_pad(struct auth_hash *axf, const char *key, int klen, void *auth_ctx,
 
 	axf->Init(auth_ctx);
 	axf->Update(auth_ctx, hmac_key, axf->blocksize);
+	explicit_bzero(hmac_key, sizeof(hmac_key));
 }
 
 void
@@ -897,8 +898,7 @@ crypto_deletesession(crypto_session_t cses)
 
 	cap = cses->cap;
 
-	explicit_bzero(cses->softc, cap->cc_session_size);
-	free(cses->softc, M_CRYPTO_DATA);
+	zfree(cses->softc, M_CRYPTO_DATA);
 	uma_zfree(cryptoses_zone, cses);
 
 	CRYPTO_DRIVER_LOCK();

@@ -587,7 +587,7 @@ cxgbe_tls_tag_alloc(struct ifnet *ifp, union if_snd_tag_alloc_params *params,
 	}
 
 	vi = ifp->if_softc;
-	sc = vi->pi->adapter;
+	sc = vi->adapter;
 
 	tlsp = alloc_tlspcb(ifp, vi, M_WAITOK);
 
@@ -2337,8 +2337,7 @@ cxgbe_tls_tag_free(struct m_snd_tag *mst)
 	if (tlsp->tx_key_addr >= 0)
 		free_keyid(tlsp, tlsp->tx_key_addr);
 
-	explicit_bzero(&tlsp->keyctx, sizeof(&tlsp->keyctx));
-	free(tlsp, M_CXGBE);
+	zfree(tlsp, M_CXGBE);
 }
 
 void
