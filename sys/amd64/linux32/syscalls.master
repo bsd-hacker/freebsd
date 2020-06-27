@@ -1217,40 +1217,94 @@
 	}
 225	AUE_NULL	UNIMPL	linux_readahead
 226	AUE_NULL	STD {
-		int linux_setxattr(void);
+		int linux_setxattr(
+		    const char *path,
+		    const char *name,
+		    const char *value,
+		    l_size_t size,
+		    l_int flags
+		);
 	}
 227	AUE_NULL	STD {
-		int linux_lsetxattr(void);
+		int linux_lsetxattr(
+		    const char *path,
+		    const char *name,
+		    const char *value,
+		    l_size_t size,
+		    l_int flags
+		);
 	}
 228	AUE_NULL	STD {
-		int linux_fsetxattr(void);
+		int linux_fsetxattr(
+		    l_int fd,
+		    const char *name,
+		    const char *value,
+		    l_size_t size,
+		    l_int flags
+		);
 	}
 229	AUE_NULL	STD {
-		int linux_getxattr(void);
+		int linux_getxattr(
+		    const char *path,
+		    const char *name,
+		    char *value,
+		    l_size_t size
+		);
 	}
 230	AUE_NULL	STD {
-		int linux_lgetxattr(void);
+		int linux_lgetxattr(
+		    const char *path,
+		    const char *name,
+		    char *value,
+		    l_size_t size
+		);
 	}
 231	AUE_NULL	STD {
-		int linux_fgetxattr(void);
+		int linux_fgetxattr(
+		    l_int fd,
+		    const char *name,
+		    char *value,
+		    l_size_t size
+		);
 	}
 232	AUE_NULL	STD {
-		int linux_listxattr(void);
+		int linux_listxattr(
+		    const char *path,
+		    const char *list,
+		    l_size_t size
+		);
 	}
 233	AUE_NULL	STD {
-		int linux_llistxattr(void);
+		int linux_llistxattr(
+		    const char *path,
+		    const char *list,
+		    l_size_t size
+		);
 	}
 234	AUE_NULL	STD {
-		int linux_flistxattr(void);
+		int linux_flistxattr(
+		    l_int fd,
+		    const char *list,
+		    l_size_t size
+		);
 	}
 235	AUE_NULL	STD {
-		int linux_removexattr(void);
+		int linux_removexattr(
+		    const char *path,
+		    const char *name
+		);
 	}
 236	AUE_NULL	STD {
-		int linux_lremovexattr(void);
+		int linux_lremovexattr(
+		    const char *path,
+		    const char *name
+		);
 	}
 237	AUE_NULL	STD {
-		int linux_fremovexattr(void);
+		int linux_fremovexattr(
+		    l_int fd,
+		    const char *name
+		);
 	}
 238	AUE_NULL	STD {
 		int linux_tkill(
@@ -1454,22 +1508,48 @@
 	}
 ; Linux 2.6.6:
 277	AUE_NULL	STD {
-		int linux_mq_open(void);
+		int linux_mq_open(
+		    const char *name,
+		    l_int oflag,
+		    l_mode_t mode,
+		    struct mq_attr *attr
+		);
 	}
 278	AUE_NULL	STD {
-		int linux_mq_unlink(void);
+		int linux_mq_unlink(
+		    const char *name
+		);
 	}
 279	AUE_NULL	STD {
-		int linux_mq_timedsend(void);
+		int linux_mq_timedsend(
+		    l_mqd_t mqd,
+		    const char *msg_ptr,
+		    l_size_t msg_len,
+		    l_uint msg_prio,
+		    const struct l_timespec *abs_timeout
+		);
 	}
 280	AUE_NULL	STD {
-		int linux_mq_timedreceive(void);
+		int linux_mq_timedreceive(
+		    l_mqd_t mqd,
+		    char *msg_ptr,
+		    l_size_t msg_len,
+		    l_uint *msg_prio,
+		    const struct l_timespec *abs_timeout
+		);
 	}
 281	AUE_NULL	STD {
-		int linux_mq_notify(void);
+		int linux_mq_notify(
+		    l_mqd_t mqd,
+		    const struct l_timespec *abs_timeout
+		);
 	}
 282	AUE_NULL	STD {
-		int linux_mq_getsetattr(void);
+		int linux_mq_getsetattr(
+		    l_mqd_t mqd,
+		    const struct mq_attr *attr,
+		    struct mq_attr *oattr
+		);
 	}
 283	AUE_NULL	STD {
 		int linux_kexec_load(void);
