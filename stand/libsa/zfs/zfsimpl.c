@@ -1111,14 +1111,20 @@ vdev_from_nvlist(spa_t *spa, uint64_t top_guid, const nvlist_t *nvlist)
 				return (rc);
 			}
 			rc = vdev_init(guid, kids, &vdev);
-			if (rc != 0)
+			if (rc != 0) {
+				nvlist_destroy(kids);
 				return (rc);
+			}
 
 			vdev->v_spa = spa;
 			vdev->v_top = top_vdev;
 			vdev_insert(top_vdev, vdev);
 
 			rc = nvlist_next(kids);
+			if (rc != 0) {
+				nvlist_destroy(kids);
+				return (rc);
+			}
 		}
 	} else {
 		/*
@@ -1228,6 +1234,8 @@ vdev_update_from_nvlist(uint64_t top_guid, const nvlist_t *nvlist)
 				vdev_set_initial_state(vdev, kids);
 
 			rc = nvlist_next(kids);
+			if (rc != 0)
+				break;
 		}
 	} else {
 		rc = 0;
@@ -1290,7 +1298,9 @@ vdev_init_from_nvlist(spa_t *spa, const nvlist_t *nvlist)
 			rc = vdev_update_from_nvlist(guid, kids);
 		if (rc != 0)
 			break;
-		nvlist_next(kids);
+		rc = nvlist_next(kids);
+		if (rc != 0)
+			break;
 	}
 	nvlist_destroy(kids);
 
@@ -1325,34 +1335,6 @@ spa_find_by_name(const char *name)
 
 	return (NULL);
 }
-
-#ifdef BOOT2
-static spa_t *
-spa_get_primary(void)
-{
-
-	return (STAILQ_FIRST(&zfs_pools));
-}
-
-static vdev_t *
-spa_get_primary_vdev(const spa_t *spa)
-{
-	vdev_t *vdev;
-	vdev_t *kid;
-
-	if (spa == NULL)
-		spa = spa_get_primary();
-	if (spa == NULL)
-		return (NULL);
-	vdev = spa->spa_root_vdev;
-	if (vdev == NULL)
-		return (NULL);
-	for (kid = STAILQ_FIRST(&vdev->v_children); kid != NULL;
-	    kid = STAILQ_FIRST(&vdev->v_children))
-		vdev = kid;
-	return (vdev);
-}
-#endif
 
 static spa_t *
 spa_create(uint64_t guid, const char *name)
