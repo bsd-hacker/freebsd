@@ -404,31 +404,74 @@ mmc_announce_periph(struct cam_periph *periph)
 	printf("XPT info: CLK %04X, ...\n", cts.proto_specific.mmc.ios.clock);
 }
 
+void
+mmccam_start_discovery(struct cam_sim *sim) {
+	union ccb *ccb;
+	uint32_t pathid;
+
+	pathid = cam_sim_path(sim);
+	ccb = xpt_alloc_ccb_nowait();
+	if (ccb == NULL) {
+		return;
+	}
+
+	/*
+	 * We create a rescan request for BUS:0:0, since the card
+	 * will be at lun 0.
+	 */
+	if (xpt_create_path(&ccb->ccb_h.path, NULL, pathid,
+		/* target */ 0, /* lun */ 0) != CAM_REQ_CMP) {
+		xpt_free_ccb(ccb);
+		return;
+	}
+	xpt_rescan(ccb);
+}
+
 /* This func is called per attached device :-( */
 void
 mmc_print_ident(struct mmc_params *ident_data)
 {
-        printf("Relative addr: %08x\n", ident_data->card_rca);
-        printf("Card features: <");
-        if (ident_data->card_features & CARD_FEATURE_MMC)
-                printf("MMC ");
-        if (ident_data->card_features & CARD_FEATURE_MEMORY)
-                printf("Memory ");
-        if (ident_data->card_features & CARD_FEATURE_SDHC)
-                printf("High-Capacity ");
-        if (ident_data->card_features & CARD_FEATURE_SD20)
-                printf("SD2.0-Conditions ");
-        if (ident_data->card_features & CARD_FEATURE_SDIO)
-                printf("SDIO ");
-        printf(">\n");
+	struct sbuf *sb;
+	bool space = false;
 
-        if (ident_data->card_features & CARD_FEATURE_MEMORY)
-                printf("Card memory OCR: %08x\n", ident_data->card_ocr);
+	sb = sbuf_new_auto();
+	sbuf_printf(sb, "Relative addr: %08x\n", ident_data->card_rca);
+	sbuf_printf(sb, "Card features: <");
+	if (ident_data->card_features & CARD_FEATURE_MMC) {
+		sbuf_printf(sb, "MMC");
+		space = true;
+	}
+	if (ident_data->card_features & CARD_FEATURE_MEMORY) {
+		sbuf_printf(sb, "%sMemory", space ? " " : "");
+		space = true;
+	}
+	if (ident_data->card_features & CARD_FEATURE_SDHC) {
+		sbuf_printf(sb, "%sHigh-Capacity", space ? " " : "");
+		space = true;
+	}
+	if (ident_data->card_features & CARD_FEATURE_SD20) {
+		sbuf_printf(sb, "%sSD2.0-Conditions", space ? " " : "");
+		space = true;
+	}
+	if (ident_data->card_features & CARD_FEATURE_SDIO) {
+		sbuf_printf(sb, "%sSDIO", space ? " " : "");
+		space = true;
+	}
+	sbuf_printf(sb, ">\n");
 
-        if (ident_data->card_features & CARD_FEATURE_SDIO) {
-                printf("Card IO OCR: %08x\n", ident_data->io_ocr);
-                printf("Number of funcitions: %u\n", ident_data->sdio_func_count);
-        }
+	if (ident_data->card_features & CARD_FEATURE_MEMORY)
+		sbuf_printf(sb, "Card memory OCR: %08x\n",
+		    ident_data->card_ocr);
+
+	if (ident_data->card_features & CARD_FEATURE_SDIO) {
+		sbuf_printf(sb, "Card IO OCR: %08x\n", ident_data->io_ocr);
+		sbuf_printf(sb, "Number of functions: %u\n",
+		    ident_data->sdio_func_count);
+	}
+
+	sbuf_finish(sb);
+	printf("%s", sbuf_data(sb));
+	sbuf_clear(sb);
 }
 
 static void
