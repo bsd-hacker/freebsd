@@ -2890,24 +2890,24 @@ cache_fpl_handle_root(struct nameidata *ndp, struct vnode **dpp)
  * need restoring in case fast path lookup fails.
  */
 struct nameidata_saved {
-	int cn_flags;
 	long cn_namelen;
 	char *cn_nameptr;
 	size_t ni_pathlen;
+	int cn_flags;
 };
 
 struct cache_fpl {
-	int line;
-	enum cache_fpl_status status;
-	bool in_smr;
 	struct nameidata *ndp;
-	struct nameidata_saved snd;
 	struct componentname *cnp;
-	struct vnode *dvp;
-	seqc_t dvp_seqc;
-	struct vnode *tvp;
-	seqc_t tvp_seqc;
 	struct pwd *pwd;
+	struct vnode *dvp;
+	struct vnode *tvp;
+	seqc_t dvp_seqc;
+	seqc_t tvp_seqc;
+	struct nameidata_saved snd;
+	int line;
+	enum cache_fpl_status status:8;
+	bool in_smr;
 };
 
 static void
@@ -3448,7 +3448,7 @@ cache_fplookup_mp_supported(struct mount *mp)
  * By the end of successful walk we are guaranteed the reached state was
  * indeed present at least at some point which matches the regular lookup.
  */
-static int
+static int __noinline
 cache_fplookup_climb_mount(struct cache_fpl *fpl)
 {
 	struct mount *mp, *prev_mp;
@@ -3457,9 +3457,8 @@ cache_fplookup_climb_mount(struct cache_fpl *fpl)
 
 	vp = fpl->tvp;
 	vp_seqc = fpl->tvp_seqc;
-	if (vp->v_type != VDIR)
-		return (0);
 
+	VNPASS(vp->v_type == VDIR || vp->v_type == VBAD, vp);
 	mp = atomic_load_ptr(&vp->v_mountedhere);
 	if (mp == NULL)
 		return (0);
@@ -3501,6 +3500,26 @@ cache_fplookup_climb_mount(struct cache_fpl *fpl)
 	fpl->tvp = vp;
 	fpl->tvp_seqc = vp_seqc;
 	return (0);
+}
+
+static bool
+cache_fplookup_need_climb_mount(struct cache_fpl *fpl)
+{
+	struct mount *mp;
+	struct vnode *vp;
+
+	vp = fpl->tvp;
+
+	/*
+	 * Hack: while this is a union, the pointer tends to be NULL so save on
+	 * a branch.
+	 */
+	mp = atomic_load_ptr(&vp->v_mountedhere);
+	if (mp == NULL)
+		return (false);
+	if (vp->v_type == VDIR)
+		return (true);
+	return (false);
 }
 
 /*
@@ -3689,9 +3708,11 @@ cache_fplookup_impl(struct vnode *dvp, struct cache_fpl *fpl)
 
 		VNPASS(!seqc_in_modify(fpl->tvp_seqc), fpl->tvp);
 
-		error = cache_fplookup_climb_mount(fpl);
-		if (__predict_false(error != 0)) {
-			break;
+		if (cache_fplookup_need_climb_mount(fpl)) {
+			error = cache_fplookup_climb_mount(fpl);
+			if (__predict_false(error != 0)) {
+				break;
+			}
 		}
 
 		VNPASS(!seqc_in_modify(fpl->tvp_seqc), fpl->tvp);
