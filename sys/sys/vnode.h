@@ -638,6 +638,7 @@ int	cache_lookup(struct vnode *dvp, struct vnode **vpp,
 	    struct componentname *cnp, struct timespec *tsp, int *ticksp);
 void	cache_vnode_init(struct vnode *vp);
 void	cache_purge(struct vnode *vp);
+void	cache_purge_vgone(struct vnode *vp);
 void	cache_purge_negative(struct vnode *vp);
 void	cache_purgevfs(struct mount *mp, bool force);
 int	change_dir(struct vnode *vp, struct thread *td);
@@ -763,6 +764,8 @@ int	vn_io_fault_uiomove(char *data, int xfersize, struct uio *uio);
 int	vn_io_fault_pgmove(vm_page_t ma[], vm_offset_t offset, int xfersize,
 	    struct uio *uio);
 
+void	vn_seqc_write_begin_unheld_locked(struct vnode *vp);
+void	vn_seqc_write_begin_unheld(struct vnode *vp);
 void	vn_seqc_write_begin_locked(struct vnode *vp);
 void	vn_seqc_write_begin(struct vnode *vp);
 void	vn_seqc_write_end_locked(struct vnode *vp);
