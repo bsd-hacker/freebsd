@@ -1513,7 +1513,7 @@ success:
 		}
 		vs = vget_prep_smr(*vpp);
 		vfs_smr_exit();
-		if (vs == VGET_NONE) {
+		if (__predict_false(vs == VGET_NONE)) {
 			*vpp = NULL;
 			goto retry;
 		}
@@ -2001,6 +2001,7 @@ cache_enter_time(struct vnode *dvp, struct vnode *vp, struct componentname *cnp,
 	return;
 out_unlock_free:
 	cache_enter_unlock(&cel);
+	atomic_add_long(&numcache, -1);
 	cache_free(ncp);
 	return;
 }
@@ -3198,7 +3199,7 @@ cache_fplookup_partial_setup(struct cache_fpl *fpl)
 	dvp_seqc = fpl->dvp_seqc;
 
 	dvs = vget_prep_smr(dvp);
-	if (dvs == VGET_NONE) {
+	if (__predict_false(dvs == VGET_NONE)) {
 		cache_fpl_smr_exit(fpl);
 		return (cache_fpl_aborted(fpl));
 	}
@@ -3219,6 +3220,7 @@ cache_fplookup_partial_setup(struct cache_fpl *fpl)
 	}
 
 	fpl->ndp->ni_startdir = dvp;
+
 	return (0);
 }
 
@@ -3257,8 +3259,8 @@ cache_fplookup_final_child(struct cache_fpl *fpl, enum vgetstate tvs)
 static int __noinline
 cache_fplookup_final_withparent(struct cache_fpl *fpl)
 {
-	enum vgetstate dvs, tvs;
 	struct componentname *cnp;
+	enum vgetstate dvs, tvs;
 	struct vnode *dvp, *tvp;
 	seqc_t dvp_seqc, tvp_seqc;
 	int error;
@@ -3275,11 +3277,11 @@ cache_fplookup_final_withparent(struct cache_fpl *fpl)
 	 * This is less efficient than it can be for simplicity.
 	 */
 	dvs = vget_prep_smr(dvp);
-	if (dvs == VGET_NONE) {
+	if (__predict_false(dvs == VGET_NONE)) {
 		return (cache_fpl_aborted(fpl));
 	}
 	tvs = vget_prep_smr(tvp);
-	if (tvs == VGET_NONE) {
+	if (__predict_false(tvs == VGET_NONE)) {
 		cache_fpl_smr_exit(fpl);
 		vget_abort(dvp, dvs);
 		return (cache_fpl_aborted(fpl));
@@ -3341,7 +3343,7 @@ cache_fplookup_final(struct cache_fpl *fpl)
 		return (cache_fplookup_final_withparent(fpl));
 
 	tvs = vget_prep_smr(tvp);
-	if (tvs == VGET_NONE) {
+	if (__predict_false(tvs == VGET_NONE)) {
 		return (cache_fpl_partial(fpl));
 	}
 
@@ -3353,6 +3355,25 @@ cache_fplookup_final(struct cache_fpl *fpl)
 
 	cache_fpl_smr_exit(fpl);
 	return (cache_fplookup_final_child(fpl, tvs));
+}
+
+static int __noinline
+cache_fplookup_dot(struct cache_fpl *fpl)
+{
+	struct vnode *dvp;
+
+	dvp = fpl->dvp;
+
+	fpl->tvp = dvp;
+	fpl->tvp_seqc = vn_seqc_read_any(dvp);
+	if (seqc_in_modify(fpl->tvp_seqc)) {
+		return (cache_fpl_aborted(fpl));
+	}
+
+	counter_u64_add(dothits, 1);
+	SDT_PROBE3(vfs, namecache, lookup, hit, dvp, ".", dvp);
+
+	return (0);
 }
 
 static int
@@ -3370,12 +3391,7 @@ cache_fplookup_next(struct cache_fpl *fpl)
 	dvp = fpl->dvp;
 
 	if (__predict_false(cnp->cn_namelen == 1 && cnp->cn_nameptr[0] == '.')) {
-		fpl->tvp = dvp;
-		fpl->tvp_seqc = vn_seqc_read_any(dvp);
-		if (seqc_in_modify(fpl->tvp_seqc)) {
-			return (cache_fpl_aborted(fpl));
-		}
-		return (0);
+		return (cache_fplookup_dot(fpl));
 	}
 
 	hash = cache_get_hash(cnp->cn_nameptr, cnp->cn_namelen, dvp);
@@ -3483,29 +3499,29 @@ cache_fplookup_climb_mount(struct cache_fpl *fpl)
 
 	prev_mp = NULL;
 	for (;;) {
-		if (!vfs_op_thread_enter(mp)) {
+		if (!vfs_op_thread_enter_crit(mp)) {
 			if (prev_mp != NULL)
-				vfs_op_thread_exit(prev_mp);
+				vfs_op_thread_exit_crit(prev_mp);
 			return (cache_fpl_partial(fpl));
 		}
 		if (prev_mp != NULL)
-			vfs_op_thread_exit(prev_mp);
+			vfs_op_thread_exit_crit(prev_mp);
 		if (!vn_seqc_consistent(vp, vp_seqc)) {
-			vfs_op_thread_exit(mp);
+			vfs_op_thread_exit_crit(mp);
 			return (cache_fpl_partial(fpl));
 		}
 		if (!cache_fplookup_mp_supported(mp)) {
-			vfs_op_thread_exit(mp);
+			vfs_op_thread_exit_crit(mp);
 			return (cache_fpl_partial(fpl));
 		}
 		vp = atomic_load_ptr(&mp->mnt_rootvnode);
 		if (vp == NULL || VN_IS_DOOMED(vp)) {
-			vfs_op_thread_exit(mp);
+			vfs_op_thread_exit_crit(mp);
 			return (cache_fpl_partial(fpl));
 		}
 		vp_seqc = vn_seqc_read_any(vp);
 		if (seqc_in_modify(vp_seqc)) {
-			vfs_op_thread_exit(mp);
+			vfs_op_thread_exit_crit(mp);
 			return (cache_fpl_partial(fpl));
 		}
 		prev_mp = mp;
@@ -3514,7 +3530,7 @@ cache_fplookup_climb_mount(struct cache_fpl *fpl)
 			break;
 	}
 
-	vfs_op_thread_exit(prev_mp);
+	vfs_op_thread_exit_crit(prev_mp);
 	fpl->tvp = vp;
 	fpl->tvp_seqc = vp_seqc;
 	return (0);
@@ -3571,7 +3587,7 @@ cache_fplookup_parse(struct cache_fpl *fpl)
 	for (cp = cnp->cn_nameptr; *cp != 0 && *cp != '/'; cp++)
 		continue;
 	cnp->cn_namelen = cp - cnp->cn_nameptr;
-	if (cnp->cn_namelen > NAME_MAX) {
+	if (__predict_false(cnp->cn_namelen > NAME_MAX)) {
 		cache_fpl_smr_exit(fpl);
 		return (cache_fpl_handled(fpl, ENAMETOOLONG));
 	}
@@ -3652,6 +3668,33 @@ cache_fplookup_parse_advance(struct cache_fpl *fpl)
 	}
 }
 
+static int __noinline
+cache_fplookup_failed_vexec(struct cache_fpl *fpl, int error)
+{
+
+	switch (error) {
+	case EAGAIN:
+		/*
+		 * Can happen when racing against vgone.
+		 * */
+	case EOPNOTSUPP:
+		cache_fpl_partial(fpl);
+		break;
+	default:
+		/*
+		 * See the API contract for VOP_FPLOOKUP_VEXEC.
+		 */
+		if (!vn_seqc_consistent(fpl->dvp, fpl->dvp_seqc)) {
+			error = cache_fpl_aborted(fpl);
+		} else {
+			cache_fpl_smr_exit(fpl);
+			cache_fpl_handled(fpl, error);
+		}
+		break;
+	}
+	return (error);
+}
+
 static int
 cache_fplookup_impl(struct vnode *dvp, struct cache_fpl *fpl)
 {
@@ -3699,23 +3742,7 @@ cache_fplookup_impl(struct vnode *dvp, struct cache_fpl *fpl)
 
 		error = VOP_FPLOOKUP_VEXEC(fpl->dvp, cnp->cn_cred, cnp->cn_thread);
 		if (__predict_false(error != 0)) {
-			switch (error) {
-			case EAGAIN:
-			case EOPNOTSUPP: /* can happen when racing against vgone */
-				cache_fpl_partial(fpl);
-				break;
-			default:
-				/*
-				 * See the API contract for VOP_FPLOOKUP_VEXEC.
-				 */
-				if (!vn_seqc_consistent(fpl->dvp, fpl->dvp_seqc)) {
-					error = cache_fpl_aborted(fpl);
-				} else {
-					cache_fpl_smr_exit(fpl);
-					cache_fpl_handled(fpl, error);
-				}
-				break;
-			}
+			error = cache_fplookup_failed_vexec(fpl, error);
 			break;
 		}
 
@@ -3764,6 +3791,7 @@ out:
 			cache_fpl_smr_exit(fpl);
 		return (CACHE_FPL_FAILED);
 	case CACHE_FPL_STATUS_HANDLED:
+		MPASS(error != CACHE_FPL_FAILED);
 		cache_fpl_smr_assert_not_entered(fpl);
 		if (__predict_false(error != 0)) {
 			ndp->ni_dvp = NULL;
