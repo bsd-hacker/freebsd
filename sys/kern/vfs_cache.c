@@ -122,9 +122,9 @@ _Static_assert(sizeof(struct negstate) <= sizeof(struct vnode *),
     "the state must fit in a union with a pointer without growing it");
 
 struct	namecache {
-	CK_LIST_ENTRY(namecache) nc_hash;/* hash chain */
 	LIST_ENTRY(namecache) nc_src;	/* source vnode list */
 	TAILQ_ENTRY(namecache) nc_dst;	/* destination vnode list */
+	CK_SLIST_ENTRY(namecache) nc_hash;/* hash chain */
 	struct	vnode *nc_dvp;		/* vnode of parent of name */
 	union {
 		struct	vnode *nu_vp;	/* vnode the name refers to */
@@ -142,6 +142,8 @@ struct	namecache {
  * to be stored.  The nc_dotdottime field is used when a cache entry is mapping
  * both a non-dotdot directory name plus dotdot for the directory's
  * parent.
+ *
+ * See below for alignment requirement.
  */
 struct	namecache_ts {
 	struct	timespec nc_time;	/* timespec provided by fs */
@@ -149,6 +151,14 @@ struct	namecache_ts {
 	int	nc_ticks;		/* ticks value when entry was added */
 	struct namecache nc_nc;
 };
+
+/*
+ * At least mips n32 performs 64-bit accesses to timespec as found
+ * in namecache_ts and requires them to be aligned. Since others
+ * may be in the same spot suffer a little bit and enforce the
+ * alignment for everyone. Note this is a nop for 64-bit platforms.
+ */
+#define CACHE_ZONE_ALIGNMENT	UMA_ALIGNOF(time_t)
 
 #define	nc_vp		n_un.nu_vp
 #define	nc_neg		n_un.nu_neg
@@ -254,7 +264,7 @@ VFS_SMR_DECLARE;
  */
 #define NCHHASH(hash) \
 	(&nchashtbl[(hash) & nchash])
-static __read_mostly CK_LIST_HEAD(nchashhead, namecache) *nchashtbl;/* Hash Table */
+static __read_mostly CK_SLIST_HEAD(nchashhead, namecache) *nchashtbl;/* Hash Table */
 static u_long __read_mostly	nchash;			/* size of hash table */
 SYSCTL_ULONG(_debug, OID_AUTO, nchash, CTLFLAG_RD, &nchash, 0,
     "Size of namecache hash table");
@@ -284,8 +294,8 @@ static struct neglist __read_mostly	*neglists;
 static struct neglist ncneg_hot;
 static u_long numhotneg;
 
-#define	numneglists (ncneghash + 1)
-static u_int __read_mostly	ncneghash;
+#define ncneghash	3
+#define	numneglists	(ncneghash + 1)
 static inline struct neglist *
 NCP2NEGLIST(struct namecache *ncp)
 {
@@ -510,6 +520,15 @@ cache_get_hash(char *name, u_char len, struct vnode *dvp)
 	return (fnv_32_buf(name, len, dvp->v_nchash));
 }
 
+static inline struct nchashhead *
+NCP2BUCKET(struct namecache *ncp)
+{
+	uint32_t hash;
+
+	hash = cache_get_hash(ncp->nc_name, ncp->nc_nlen, ncp->nc_dvp);
+	return (NCHHASH(hash));
+}
+
 static inline struct rwlock *
 NCP2BUCKETLOCK(struct namecache *ncp)
 {
@@ -677,7 +696,7 @@ retry:
 	}
 	/* Scan hash tables counting entries */
 	for (ncpp = nchashtbl, i = 0; i < n_nchash; ncpp++, i++)
-		CK_LIST_FOREACH(ncp, ncpp, nc_hash)
+		CK_SLIST_FOREACH(ncp, ncpp, nc_hash)
 			cntbuf[i]++;
 	cache_unlock_all_buckets();
 	for (error = 0, i = 0; i < n_nchash; i++)
@@ -710,7 +729,7 @@ sysctl_debug_hashstat_nchash(SYSCTL_HANDLER_ARGS)
 	/* Scan hash tables for applicable entries */
 	for (ncpp = nchashtbl; n_nchash > 0; n_nchash--, ncpp++) {
 		count = 0;
-		CK_LIST_FOREACH(ncp, ncpp, nc_hash) {
+		CK_SLIST_FOREACH(ncp, ncpp, nc_hash) {
 			count++;
 		}
 		if (count)
@@ -942,6 +961,7 @@ cache_negative_zap_one(void)
 static void
 cache_zap_locked(struct namecache *ncp)
 {
+	struct nchashhead *ncpp;
 
 	if (!(ncp->nc_flag & NCF_NEGATIVE))
 		cache_assert_vnode_locked(ncp->nc_vp);
@@ -953,7 +973,8 @@ cache_zap_locked(struct namecache *ncp)
 
 	cache_ncp_invalidate(ncp);
 
-	CK_LIST_REMOVE(ncp, nc_hash);
+	ncpp = NCP2BUCKET(ncp);
+	CK_SLIST_REMOVE(ncpp, ncp, namecache, nc_hash);
 	if (!(ncp->nc_flag & NCF_NEGATIVE)) {
 		SDT_PROBE3(vfs, namecache, zap, done, ncp->nc_dvp,
 		    ncp->nc_name, ncp->nc_vp);
@@ -1112,7 +1133,7 @@ cache_zap_unlocked_bucket(struct namecache *ncp, struct componentname *cnp,
 	cache_sort_vnodes(&dvlp, &vlp);
 	cache_lock_vnodes(dvlp, vlp);
 	rw_wlock(blp);
-	CK_LIST_FOREACH(rncp, (NCHHASH(hash)), nc_hash) {
+	CK_SLIST_FOREACH(rncp, (NCHHASH(hash)), nc_hash) {
 		if (rncp == ncp && rncp->nc_dvp == dvp &&
 		    rncp->nc_nlen == cnp->cn_namelen &&
 		    !bcmp(rncp->nc_name, cnp->cn_nameptr, rncp->nc_nlen))
@@ -1326,12 +1347,12 @@ retry_dotdot:
 	hash = cache_get_hash(cnp->cn_nameptr, cnp->cn_namelen, dvp);
 	blp = HASH2BUCKETLOCK(hash);
 retry:
-	if (CK_LIST_EMPTY(NCHHASH(hash)))
+	if (CK_SLIST_EMPTY(NCHHASH(hash)))
 		goto out_no_entry;
 
 	rw_wlock(blp);
 
-	CK_LIST_FOREACH(ncp, (NCHHASH(hash)), nc_hash) {
+	CK_SLIST_FOREACH(ncp, (NCHHASH(hash)), nc_hash) {
 		if (ncp->nc_dvp == dvp && ncp->nc_nlen == cnp->cn_namelen &&
 		    !bcmp(ncp->nc_name, cnp->cn_nameptr, ncp->nc_nlen))
 			break;
@@ -1475,7 +1496,7 @@ retry_hashed:
 		rw_rlock(blp);
 	}
 
-	CK_LIST_FOREACH(ncp, (NCHHASH(hash)), nc_hash) {
+	CK_SLIST_FOREACH(ncp, (NCHHASH(hash)), nc_hash) {
 		if (ncp->nc_dvp == dvp && ncp->nc_nlen == cnp->cn_namelen &&
 		    !bcmp(ncp->nc_name, cnp->cn_nameptr, ncp->nc_nlen))
 			break;
@@ -1922,7 +1943,7 @@ cache_enter_time(struct vnode *dvp, struct vnode *vp, struct componentname *cnp,
 	 * the same path name.
 	 */
 	ncpp = NCHHASH(hash);
-	CK_LIST_FOREACH(n2, ncpp, nc_hash) {
+	CK_SLIST_FOREACH(n2, ncpp, nc_hash) {
 		if (n2->nc_dvp == dvp &&
 		    n2->nc_nlen == cnp->cn_namelen &&
 		    !bcmp(n2->nc_name, cnp->cn_nameptr, n2->nc_nlen)) {
@@ -2011,7 +2032,7 @@ cache_enter_time(struct vnode *dvp, struct vnode *vp, struct componentname *cnp,
 	 * Insert the new namecache entry into the appropriate chain
 	 * within the cache entries table.
 	 */
-	CK_LIST_INSERT_HEAD(ncpp, ncp, nc_hash);
+	CK_SLIST_INSERT_HEAD(ncpp, ncp, nc_hash);
 
 	atomic_thread_fence_rel();
 	/*
@@ -2043,6 +2064,28 @@ cache_roundup_2(u_int val)
 	return (res);
 }
 
+static struct nchashhead *
+nchinittbl(u_long elements, u_long *hashmask)
+{
+	struct nchashhead *hashtbl;
+	u_long hashsize, i;
+
+	hashsize = cache_roundup_2(desiredvnodes * 2) / 2;
+
+	hashtbl = malloc((u_long)hashsize * sizeof(*hashtbl), M_VFSCACHE, M_WAITOK);
+	for (i = 0; i < hashsize; i++)
+		CK_SLIST_INIT(&hashtbl[i]);
+	*hashmask = hashsize - 1;
+	return (hashtbl);
+}
+
+static void
+ncfreetbl(struct nchashhead *hashtbl)
+{
+
+	free(hashtbl, M_VFSCACHE);
+}
+
 /*
  * Name cache initialization, from vfs_init() when we are booting
  */
@@ -2053,19 +2096,19 @@ nchinit(void *dummy __unused)
 
 	cache_zone_small = uma_zcreate("S VFS Cache",
 	    sizeof(struct namecache) + CACHE_PATH_CUTOFF + 1,
-	    NULL, NULL, NULL, NULL, UMA_ALIGNOF(struct namecache),
+	    NULL, NULL, NULL, NULL, CACHE_ZONE_ALIGNMENT,
 	    UMA_ZONE_ZINIT);
 	cache_zone_small_ts = uma_zcreate("STS VFS Cache",
 	    sizeof(struct namecache_ts) + CACHE_PATH_CUTOFF + 1,
-	    NULL, NULL, NULL, NULL, UMA_ALIGNOF(struct namecache_ts),
+	    NULL, NULL, NULL, NULL, CACHE_ZONE_ALIGNMENT,
 	    UMA_ZONE_ZINIT);
 	cache_zone_large = uma_zcreate("L VFS Cache",
 	    sizeof(struct namecache) + NAME_MAX + 1,
-	    NULL, NULL, NULL, NULL, UMA_ALIGNOF(struct namecache),
+	    NULL, NULL, NULL, NULL, CACHE_ZONE_ALIGNMENT,
 	    UMA_ZONE_ZINIT);
 	cache_zone_large_ts = uma_zcreate("LTS VFS Cache",
 	    sizeof(struct namecache_ts) + NAME_MAX + 1,
-	    NULL, NULL, NULL, NULL, UMA_ALIGNOF(struct namecache_ts),
+	    NULL, NULL, NULL, NULL, CACHE_ZONE_ALIGNMENT,
 	    UMA_ZONE_ZINIT);
 
 	VFS_SMR_ZONE_SET(cache_zone_small);
@@ -2074,7 +2117,7 @@ nchinit(void *dummy __unused)
 	VFS_SMR_ZONE_SET(cache_zone_large_ts);
 
 	ncsize = desiredvnodes * ncsizefactor;
-	nchashtbl = hashinit(desiredvnodes * 2, M_VFSCACHE, &nchash);
+	nchashtbl = nchinittbl(desiredvnodes * 2, &nchash);
 	ncbuckethash = cache_roundup_2(mp_ncpus * mp_ncpus) - 1;
 	if (ncbuckethash < 7) /* arbitrarily chosen to avoid having one lock */
 		ncbuckethash = 7;
@@ -2091,7 +2134,6 @@ nchinit(void *dummy __unused)
 		mtx_init(&vnodelocks[i], "ncvn", NULL, MTX_DUPOK | MTX_RECURSE);
 	ncpurgeminvnodes = numbucketlocks * 2;
 
-	ncneghash = 3;
 	neglists = malloc(sizeof(*neglists) * numneglists, M_VFSCACHE,
 	    M_WAITOK | M_ZERO);
 	for (i = 0; i < numneglists; i++) {
@@ -2130,10 +2172,10 @@ cache_changesize(u_long newmaxvnodes)
 	if (newmaxvnodes < numbucketlocks)
 		newmaxvnodes = numbucketlocks;
 
-	new_nchashtbl = hashinit(newmaxvnodes, M_VFSCACHE, &new_nchash);
+	new_nchashtbl = nchinittbl(newmaxvnodes, &new_nchash);
 	/* If same hash table size, nothing to do */
 	if (nchash == new_nchash) {
-		free(new_nchashtbl, M_VFSCACHE);
+		ncfreetbl(new_nchashtbl);
 		return;
 	}
 	/*
@@ -2148,17 +2190,17 @@ cache_changesize(u_long newmaxvnodes)
 	nchashtbl = new_nchashtbl;
 	nchash = new_nchash;
 	for (i = 0; i <= old_nchash; i++) {
-		while ((ncp = CK_LIST_FIRST(&old_nchashtbl[i])) != NULL) {
+		while ((ncp = CK_SLIST_FIRST(&old_nchashtbl[i])) != NULL) {
 			hash = cache_get_hash(ncp->nc_name, ncp->nc_nlen,
 			    ncp->nc_dvp);
-			CK_LIST_REMOVE(ncp, nc_hash);
-			CK_LIST_INSERT_HEAD(NCHHASH(hash), ncp, nc_hash);
+			CK_SLIST_REMOVE(&old_nchashtbl[i], ncp, namecache, nc_hash);
+			CK_SLIST_INSERT_HEAD(NCHHASH(hash), ncp, nc_hash);
 		}
 	}
 	ncsize = newncsize;
 	cache_unlock_all_buckets();
 	cache_unlock_all_vnodes();
-	free(old_nchashtbl, M_VFSCACHE);
+	ncfreetbl(old_nchashtbl);
 }
 
 /*
@@ -2308,7 +2350,7 @@ cache_purgevfs(struct mount *mp, bool force)
 		for (j = i; j < n_nchash; j += numbucketlocks) {
 retry:
 			bucket = &nchashtbl[j];
-			CK_LIST_FOREACH_SAFE(ncp, bucket, nc_hash, nnp) {
+			CK_SLIST_FOREACH_SAFE(ncp, bucket, nc_hash, nnp) {
 				cache_assert_bucket_locked(ncp, RA_WLOCKED);
 				if (ncp->nc_dvp->v_mount != mp)
 					continue;
@@ -3224,7 +3266,7 @@ cache_fplookup_negative_promote(struct cache_fpl *fpl, struct namecache *oncp,
 	 * In particular at this point there can be a new ncp which matches the
 	 * search but hashes to a different neglist.
 	 */
-	CK_LIST_FOREACH(ncp, (NCHHASH(hash)), nc_hash) {
+	CK_SLIST_FOREACH(ncp, (NCHHASH(hash)), nc_hash) {
 		if (ncp == oncp)
 			break;
 	}
@@ -3574,7 +3616,7 @@ cache_fplookup_next(struct cache_fpl *fpl)
 
 	hash = cache_get_hash(cnp->cn_nameptr, cnp->cn_namelen, dvp);
 
-	CK_LIST_FOREACH(ncp, (NCHHASH(hash)), nc_hash) {
+	CK_SLIST_FOREACH(ncp, (NCHHASH(hash)), nc_hash) {
 		if (ncp->nc_dvp == dvp && ncp->nc_nlen == cnp->cn_namelen &&
 		    !bcmp(ncp->nc_name, cnp->cn_nameptr, ncp->nc_nlen))
 			break;
