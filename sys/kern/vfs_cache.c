@@ -3701,8 +3701,6 @@ cache_fplookup_mp_supported(struct mount *mp)
 		return (false);
 	if ((mp->mnt_kern_flag & MNTK_FPLOOKUP) == 0)
 		return (false);
-	if ((mp->mnt_flag & MNT_UNION) != 0)
-		return (false);
 	return (true);
 }
 
@@ -3812,8 +3810,6 @@ cache_fplookup_parse(struct cache_fpl *fpl)
 	struct nameidata *ndp;
 	struct componentname *cnp;
 	char *cp;
-	char *prev_ni_next;             /* saved ndp->ni_next */
-	size_t prev_ni_pathlen;         /* saved ndp->ni_pathlen */
 
 	ndp = fpl->ndp;
 	cnp = fpl->cnp;
@@ -3833,11 +3829,9 @@ cache_fplookup_parse(struct cache_fpl *fpl)
 		cache_fpl_smr_exit(fpl);
 		return (cache_fpl_handled(fpl, ENAMETOOLONG));
 	}
-	prev_ni_pathlen = ndp->ni_pathlen;
 	ndp->ni_pathlen -= cnp->cn_namelen;
 	KASSERT(ndp->ni_pathlen <= PATH_MAX,
 	    ("%s: ni_pathlen underflow to %zd\n", __func__, ndp->ni_pathlen));
-	prev_ni_next = ndp->ni_next;
 	ndp->ni_next = cp;
 
 	/*
