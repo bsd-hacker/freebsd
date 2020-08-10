@@ -159,6 +159,17 @@ struct	namecache_ts {
  * alignment for everyone. Note this is a nop for 64-bit platforms.
  */
 #define CACHE_ZONE_ALIGNMENT	UMA_ALIGNOF(time_t)
+#define	CACHE_PATH_CUTOFF	39
+
+#define CACHE_ZONE_SMALL_SIZE		(sizeof(struct namecache) + CACHE_PATH_CUTOFF + 1)
+#define CACHE_ZONE_SMALL_TS_SIZE	(sizeof(struct namecache_ts) + CACHE_PATH_CUTOFF + 1)
+#define CACHE_ZONE_LARGE_SIZE		(sizeof(struct namecache) + NAME_MAX + 1)
+#define CACHE_ZONE_LARGE_TS_SIZE	(sizeof(struct namecache_ts) + NAME_MAX + 1)
+
+_Static_assert((CACHE_ZONE_SMALL_SIZE % (CACHE_ZONE_ALIGNMENT + 1)) == 0, "bad zone size");
+_Static_assert((CACHE_ZONE_SMALL_TS_SIZE % (CACHE_ZONE_ALIGNMENT + 1)) == 0, "bad zone size");
+_Static_assert((CACHE_ZONE_LARGE_SIZE % (CACHE_ZONE_ALIGNMENT + 1)) == 0, "bad zone size");
+_Static_assert((CACHE_ZONE_LARGE_TS_SIZE % (CACHE_ZONE_ALIGNMENT + 1)) == 0, "bad zone size");
 
 #define	nc_vp		n_un.nu_vp
 #define	nc_neg		n_un.nu_neg
@@ -338,8 +349,6 @@ static uma_zone_t __read_mostly cache_zone_small;
 static uma_zone_t __read_mostly cache_zone_small_ts;
 static uma_zone_t __read_mostly cache_zone_large;
 static uma_zone_t __read_mostly cache_zone_large_ts;
-
-#define	CACHE_PATH_CUTOFF	35
 
 static struct namecache *
 cache_alloc(int len, int ts)
@@ -2095,22 +2104,14 @@ nchinit(void *dummy __unused)
 {
 	u_int i;
 
-	cache_zone_small = uma_zcreate("S VFS Cache",
-	    sizeof(struct namecache) + CACHE_PATH_CUTOFF + 1,
-	    NULL, NULL, NULL, NULL, CACHE_ZONE_ALIGNMENT,
-	    UMA_ZONE_ZINIT);
-	cache_zone_small_ts = uma_zcreate("STS VFS Cache",
-	    sizeof(struct namecache_ts) + CACHE_PATH_CUTOFF + 1,
-	    NULL, NULL, NULL, NULL, CACHE_ZONE_ALIGNMENT,
-	    UMA_ZONE_ZINIT);
-	cache_zone_large = uma_zcreate("L VFS Cache",
-	    sizeof(struct namecache) + NAME_MAX + 1,
-	    NULL, NULL, NULL, NULL, CACHE_ZONE_ALIGNMENT,
-	    UMA_ZONE_ZINIT);
-	cache_zone_large_ts = uma_zcreate("LTS VFS Cache",
-	    sizeof(struct namecache_ts) + NAME_MAX + 1,
-	    NULL, NULL, NULL, NULL, CACHE_ZONE_ALIGNMENT,
-	    UMA_ZONE_ZINIT);
+	cache_zone_small = uma_zcreate("S VFS Cache", CACHE_ZONE_SMALL_SIZE,
+	    NULL, NULL, NULL, NULL, CACHE_ZONE_ALIGNMENT, UMA_ZONE_ZINIT);
+	cache_zone_small_ts = uma_zcreate("STS VFS Cache", CACHE_ZONE_SMALL_TS_SIZE,
+	    NULL, NULL, NULL, NULL, CACHE_ZONE_ALIGNMENT, UMA_ZONE_ZINIT);
+	cache_zone_large = uma_zcreate("L VFS Cache", CACHE_ZONE_LARGE_SIZE,
+	    NULL, NULL, NULL, NULL, CACHE_ZONE_ALIGNMENT, UMA_ZONE_ZINIT);
+	cache_zone_large_ts = uma_zcreate("LTS VFS Cache", CACHE_ZONE_LARGE_TS_SIZE,
+	    NULL, NULL, NULL, NULL, CACHE_ZONE_ALIGNMENT, UMA_ZONE_ZINIT);
 
 	VFS_SMR_ZONE_SET(cache_zone_small);
 	VFS_SMR_ZONE_SET(cache_zone_small_ts);
@@ -3145,7 +3146,7 @@ cache_fpl_handled_impl(struct cache_fpl *fpl, int error, int line)
 
 #define CACHE_FPL_SUPPORTED_CN_FLAGS \
 	(LOCKLEAF | LOCKPARENT | WANTPARENT | NOCACHE | FOLLOW | LOCKSHARED | SAVENAME | \
-	 WILLBEDIR | ISOPEN | NOMACCHECK | AUDITVNODE1 | AUDITVNODE2)
+	 SAVESTART | WILLBEDIR | ISOPEN | NOMACCHECK | AUDITVNODE1 | AUDITVNODE2)
 
 #define CACHE_FPL_INTERNAL_CN_FLAGS \
 	(ISDOTDOT | MAKEENTRY | ISLASTCN)
@@ -3653,7 +3654,7 @@ cache_fplookup_next(struct cache_fpl *fpl)
 		/*
 		 * If they want to create an entry we need to replace this one.
 		 */
-		if (__predict_false(fpl->cnp->cn_nameiop == CREATE)) {
+		if (__predict_false(fpl->cnp->cn_nameiop != LOOKUP)) {
 			return (cache_fpl_partial(fpl));
 		}
 		negstate = NCP2NEGSTATE(ncp);
@@ -4124,6 +4125,9 @@ cache_fplookup(struct nameidata *ndp, enum cache_fpl_status *status,
 	fpl.ndp = ndp;
 	fpl.cnp = &ndp->ni_cnd;
 	MPASS(curthread == fpl.cnp->cn_thread);
+
+	if ((fpl.cnp->cn_flags & SAVESTART) != 0)
+		MPASS(fpl.cnp->cn_nameiop != LOOKUP);
 
 	if (!cache_can_fplookup(&fpl)) {
 		SDT_PROBE3(vfs, fplookup, lookup, done, ndp, fpl.line, fpl.status);
