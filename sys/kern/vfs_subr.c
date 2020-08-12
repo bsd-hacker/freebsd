@@ -2920,36 +2920,14 @@ vget_finish_ref(struct vnode *vp, enum vgetstate vs)
 	}
 }
 
-/*
- * Increase the reference (use) and hold count of a vnode.
- * This will also remove the vnode from the free list if it is presently free.
- */
 void
 vref(struct vnode *vp)
 {
-	int old;
+	enum vgetstate vs;
 
 	CTR2(KTR_VFS, "%s: vp %p", __func__, vp);
-	if (refcount_acquire_if_not_zero(&vp->v_usecount)) {
-		VNODE_REFCOUNT_FENCE_ACQ();
-		VNASSERT(vp->v_holdcnt > 0, vp,
-		    ("%s: active vnode not held", __func__));
-		return;
-	}
-	vhold(vp);
-	/*
-	 * See the comment in vget_finish.
-	 */
-	old = atomic_fetchadd_int(&vp->v_usecount, 1);
-	VNASSERT(old >= 0, vp, ("%s: wrong use count %d", __func__, old));
-	if (old != 0) {
-#ifdef INVARIANTS
-		old = atomic_fetchadd_int(&vp->v_holdcnt, -1);
-		VNASSERT(old > 1, vp, ("%s: wrong hold count %d", __func__, old));
-#else
-		refcount_release(&vp->v_holdcnt);
-#endif
-	}
+	vs = vget_prep(vp);
+	vget_finish_ref(vp, vs);
 }
 
 void
@@ -2972,35 +2950,6 @@ vrefact(struct vnode *vp)
 #else
 	refcount_acquire(&vp->v_usecount);
 #endif
-}
-
-void
-vrefactn(struct vnode *vp, u_int n)
-{
-
-	CTR2(KTR_VFS, "%s: vp %p", __func__, vp);
-#ifdef INVARIANTS
-	int old = atomic_fetchadd_int(&vp->v_usecount, n);
-	VNASSERT(old > 0, vp, ("%s: wrong use count %d", __func__, old));
-#else
-	atomic_add_int(&vp->v_usecount, n);
-#endif
-}
-
-/*
- * Return reference count of a vnode.
- *
- * The results of this call are only guaranteed when some mechanism is used to
- * stop other processes from gaining references to the vnode.  This may be the
- * case if the caller holds the only reference.  This is also useful when stale
- * data is acceptable as race conditions may be accounted for by some other
- * means.
- */
-int
-vrefcnt(struct vnode *vp)
-{
-
-	return (vp->v_usecount);
 }
 
 void
