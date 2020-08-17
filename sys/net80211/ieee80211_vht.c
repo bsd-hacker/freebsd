@@ -161,7 +161,13 @@ ieee80211_vht_vattach(struct ieee80211vap *vap)
 	    IEEE80211_FVHT_VHT
 	    | IEEE80211_FVHT_USEVHT40
 	    | IEEE80211_FVHT_USEVHT80;
+#if 0
 	/* XXX TODO: enable VHT80+80, VHT160 capabilities */
+	if (XXX TODO FIXME)
+		vap->iv_flags_vht |= IEEE80211_FVHT_USEVHT160;
+	if (XXX TODO FIXME)
+		vap->iv_flags_vht |= IEEE80211_FVHT_USEVHT80P80;
+#endif
 
 	memcpy(&vap->iv_vht_mcsinfo, &ic->ic_vht_mcsinfo,
 	    sizeof(struct ieee80211_vht_mcs_info));
@@ -699,7 +705,7 @@ ieee80211_vht_get_chwidth_ie(struct ieee80211_channel *c)
 	if (IEEE80211_IS_CHAN_VHT160(c)) {
 		return IEEE80211_VHT_CHANWIDTH_160MHZ;
 	}
-	if (IEEE80211_IS_CHAN_VHT80_80(c)) {
+	if (IEEE80211_IS_CHAN_VHT80P80(c)) {
 		return IEEE80211_VHT_CHANWIDTH_80P80MHZ;
 	}
 	if (IEEE80211_IS_CHAN_VHT80(c)) {
@@ -811,7 +817,7 @@ ieee80211_vht_adjust_channel(struct ieee80211com *ic,
 		c = findvhtchan(ic, chan, IEEE80211_CHAN_VHT80);
 
 	if ((c == NULL) && (flags & IEEE80211_FVHT_USEVHT80P80))
-		c = findvhtchan(ic, chan, IEEE80211_CHAN_VHT80_80);
+		c = findvhtchan(ic, chan, IEEE80211_CHAN_VHT80P80);
 
 	if ((c == NULL) && (flags & IEEE80211_FVHT_USEVHT80))
 		c = findvhtchan(ic, chan, IEEE80211_CHAN_VHT80);
