@@ -2669,13 +2669,17 @@ void PPCInstrInfo::fixupIsDeadOrKill(MachineInstr *StartMI, MachineInstr *EndMI,
   assert((StartMI->getParent() == EndMI->getParent()) &&
          "Instructions are not in same basic block");
 
-  // If before RA, StartMI may be def through copy, we need to adjust it to the
+  // If before RA, StartMI may be def through COPY, we need to adjust it to the
   // real def. See function getForwardingDefMI.
-  if (MRI.isSSA() && StartMI->findRegisterUseOperandIdx(RegNo) < 0 &&
-      StartMI->findRegisterDefOperandIdx(RegNo) < 0) {
-    assert(Register::isVirtualRegister(RegNo) && "Must be a virtual register");
-    // Get real def and ignore copies.
-    StartMI = MRI.getVRegDef(RegNo);
+  if (MRI.isSSA()) {
+    bool Reads, Writes;
+    std::tie(Reads, Writes) = StartMI->readsWritesVirtualRegister(RegNo);
+    if (!Reads && !Writes) {
+      assert(Register::isVirtualRegister(RegNo) &&
+             "Must be a virtual register");
+      // Get real def and ignore copies.
+      StartMI = MRI.getVRegDef(RegNo);
+    }
   }
 
   bool IsKillSet = false;
