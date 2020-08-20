@@ -97,6 +97,10 @@ SDT_PROBE_DEFINE2(vfs, namecache, lookup, hit__negative,
     "struct vnode *", "char *");
 SDT_PROBE_DEFINE2(vfs, namecache, lookup, miss, "struct vnode *",
     "char *");
+SDT_PROBE_DEFINE2(vfs, namecache, removecnp, hit, "struct vnode *",
+    "struct componentname *");
+SDT_PROBE_DEFINE2(vfs, namecache, removecnp, miss, "struct vnode *",
+    "struct componentname *");
 SDT_PROBE_DEFINE1(vfs, namecache, purge, done, "struct vnode *");
 SDT_PROBE_DEFINE1(vfs, namecache, purge_negative, done, "struct vnode *");
 SDT_PROBE_DEFINE1(vfs, namecache, purgevfs, done, "struct mount *");
@@ -1306,8 +1310,7 @@ cache_lookup_dot(struct vnode *dvp, struct vnode **vpp, struct componentname *cn
 }
 
 static __noinline int
-cache_lookup_nomakeentry(struct vnode *dvp, struct vnode **vpp,
-    struct componentname *cnp, struct timespec *tsp, int *ticksp)
+cache_remove_cnp(struct vnode *dvp, struct componentname *cnp)
 {
 	struct namecache *ncp;
 	struct rwlock *blp;
@@ -1317,18 +1320,16 @@ cache_lookup_nomakeentry(struct vnode *dvp, struct vnode **vpp,
 
 	if (cnp->cn_namelen == 2 &&
 	    cnp->cn_nameptr[0] == '.' && cnp->cn_nameptr[1] == '.') {
-		counter_u64_add(dotdothits, 1);
 		dvlp = VP2VNODELOCK(dvp);
 		dvlp2 = NULL;
 		mtx_lock(dvlp);
 retry_dotdot:
 		ncp = dvp->v_cache_dd;
 		if (ncp == NULL) {
-			SDT_PROBE3(vfs, namecache, lookup, miss, dvp,
-			    "..", NULL);
 			mtx_unlock(dvlp);
 			if (dvlp2 != NULL)
 				mtx_unlock(dvlp2);
+			SDT_PROBE2(vfs, namecache, removecnp, miss, dvp, cnp);
 			return (0);
 		}
 		if ((ncp->nc_flag & NCF_ISDOTDOT) != 0) {
@@ -1350,7 +1351,8 @@ retry_dotdot:
 			if (dvlp2 != NULL)
 				mtx_unlock(dvlp2);
 		}
-		return (0);
+		SDT_PROBE2(vfs, namecache, removecnp, hit, dvp, cnp);
+		return (1);
 	}
 
 	hash = cache_get_hash(cnp->cn_nameptr, cnp->cn_namelen, dvp);
@@ -1381,9 +1383,10 @@ retry:
 	}
 	counter_u64_add(numposzaps, 1);
 	cache_free(ncp);
-	return (0);
+	SDT_PROBE2(vfs, namecache, removecnp, hit, dvp, cnp);
+	return (1);
 out_no_entry:
-	SDT_PROBE3(vfs, namecache, lookup, miss, dvp, cnp->cn_nameptr, NULL);
+	SDT_PROBE2(vfs, namecache, removecnp, miss, dvp, cnp);
 	counter_u64_add(nummisszap, 1);
 	return (0);
 }
@@ -1448,8 +1451,10 @@ cache_lookup(struct vnode *dvp, struct vnode **vpp, struct componentname *cnp,
 	if (__predict_false(cnp->cn_namelen == 1 && cnp->cn_nameptr[0] == '.'))
 		return (cache_lookup_dot(dvp, vpp, cnp, tsp, ticksp));
 
-	if ((cnp->cn_flags & MAKEENTRY) == 0)
-		return (cache_lookup_nomakeentry(dvp, vpp, cnp, tsp, ticksp));
+	if ((cnp->cn_flags & MAKEENTRY) == 0) {
+		cache_remove_cnp(dvp, cnp);
+		return (0);
+	}
 
 	try_smr = true;
 	if (cnp->cn_nameiop == CREATE)
@@ -2331,6 +2336,27 @@ cache_purge_negative(struct vnode *vp)
 	mtx_unlock(vlp);
 	TAILQ_FOREACH_SAFE(ncp, &ncps, nc_dst, nnp) {
 		cache_free(ncp);
+	}
+}
+
+void
+cache_rename(struct vnode *fdvp, struct vnode *fvp, struct vnode *tdvp,
+    struct vnode *tvp, struct componentname *fcnp, struct componentname *tcnp)
+{
+
+	ASSERT_VOP_IN_SEQC(fdvp);
+	ASSERT_VOP_IN_SEQC(fvp);
+	ASSERT_VOP_IN_SEQC(tdvp);
+	if (tvp != NULL)
+		ASSERT_VOP_IN_SEQC(tvp);
+
+	cache_purge(fvp);
+	if (tvp != NULL) {
+		cache_purge(tvp);
+		KASSERT(!cache_remove_cnp(tdvp, tcnp),
+		    ("%s: lingering negative entry", __func__));
+	} else {
+		cache_remove_cnp(tdvp, tcnp);
 	}
 }
 
