@@ -40,14 +40,17 @@
 #include <sys/queue.h>
 #include <sys/_uio.h>
 
+enum nameiop { LOOKUP, CREATE, DELETE, RENAME };
+
 struct componentname {
 	/*
 	 * Arguments to lookup.
 	 */
-	u_long	cn_nameiop;	/* namei operation */
+	u_int64_t cn_origflags;	/* flags to namei */
 	u_int64_t cn_flags;	/* flags to namei */
 	struct	thread *cn_thread;/* thread requesting lookup */
 	struct	ucred *cn_cred;	/* credentials */
+	enum nameiop cn_nameiop;	/* namei operation */
 	int	cn_lkflags;	/* Lock flags LK_EXCLUSIVE or LK_SHARED */
 	/*
 	 * Shared between lookup and commit routines.
@@ -115,13 +118,10 @@ int	cache_fplookup(struct nameidata *ndp, enum cache_fpl_status *status,
     struct pwd **pwdp);
 
 /*
- * namei operations
+ * Flags for namei.
+ *
+ * If modifying the list make sure to check whether NDVALIDATE needs updating.
  */
-#define	LOOKUP		0	/* perform name lookup only */
-#define	CREATE		1	/* setup for file creation */
-#define	DELETE		2	/* setup for file deletion */
-#define	RENAME		3	/* setup for file renaming */
-#define	OPMASK		3	/* mask for operation */
 /*
  * namei operational modifier flags, stored in ni_cnd.flags
  */
@@ -251,6 +251,12 @@ void NDFREE(struct nameidata *, const u_int);
 	else								\
 		NDFREE(_ndp, flags);					\
 } while (0)
+
+#ifdef INVARIANTS
+void NDVALIDATE(struct nameidata *);
+#else
+#define NDVALIDATE(ndp)	do { } while (0)
+#endif
 
 int	namei(struct nameidata *ndp);
 int	lookup(struct nameidata *ndp);

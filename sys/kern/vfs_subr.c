@@ -3437,6 +3437,33 @@ vdrop_deactivate(struct vnode *vp)
 	vdbatch_enqueue(vp);
 }
 
+static void __noinline
+vdropl_final(struct vnode *vp)
+{
+
+	ASSERT_VI_LOCKED(vp, __func__);
+	VNPASS(VN_IS_DOOMED(vp), vp);
+	/*
+	 * Set the VHOLD_NO_SMR flag.
+	 *
+	 * We may be racing against vhold_smr. If they win we can just pretend
+	 * we never got this far, they will vdrop later.
+	 */
+	if (__predict_false(!atomic_cmpset_int(&vp->v_holdcnt, 0, VHOLD_NO_SMR))) {
+		vn_freevnodes_inc();
+		VI_UNLOCK(vp);
+		/*
+		 * We lost the aforementioned race. Any subsequent access is
+		 * invalid as they might have managed to vdropl on their own.
+		 */
+		return;
+	}
+	/*
+	 * Don't bump freevnodes as this one is going away.
+	 */
+	freevnode(vp);
+}
+
 void
 vdrop(struct vnode *vp)
 {
@@ -3469,25 +3496,7 @@ vdropl(struct vnode *vp)
 		 */
 		return;
 	}
-	/*
-	 * Set the VHOLD_NO_SMR flag.
-	 *
-	 * We may be racing against vhold_smr. If they win we can just pretend
-	 * we never got this far, they will vdrop later.
-	 */
-	if (__predict_false(!atomic_cmpset_int(&vp->v_holdcnt, 0, VHOLD_NO_SMR))) {
-		vn_freevnodes_inc();
-		VI_UNLOCK(vp);
-		/*
-		 * We lost the aforementioned race. Any subsequent access is
-		 * invalid as they might have managed to vdropl on their own.
-		 */
-		return;
-	}
-	/*
-	 * Don't bump freevnodes as this one is going away.
-	 */
-	freevnode(vp);
+	vdropl_final(vp);
 }
 
 /*
@@ -5032,8 +5041,6 @@ vn_isdisk(struct vnode *vp)
 /*
  * VOP_FPLOOKUP_VEXEC routines are subject to special circumstances, see
  * the comment above cache_fplookup for details.
- *
- * We never deny as priv_check_cred calls are not yet supported, see vaccess.
  */
 int
 vaccess_vexec_smr(mode_t file_mode, uid_t file_uid, gid_t file_gid, struct ucred *cred)
@@ -5045,20 +5052,32 @@ vaccess_vexec_smr(mode_t file_mode, uid_t file_uid, gid_t file_gid, struct ucred
 	if (cred->cr_uid == file_uid) {
 		if (file_mode & S_IXUSR)
 			return (0);
-		return (EAGAIN);
+		goto out_error;
 	}
 
 	/* Otherwise, check the groups (first match) */
 	if (groupmember(file_gid, cred)) {
 		if (file_mode & S_IXGRP)
 			return (0);
-		return (EAGAIN);
+		goto out_error;
 	}
 
 	/* Otherwise, check everyone else. */
 	if (file_mode & S_IXOTH)
 		return (0);
-	return (EAGAIN);
+out_error:
+	/*
+	 * Permission check failed.
+	 *
+	 * vaccess() calls priv_check_cred which in turn can descent into MAC
+	 * modules overriding this result. It's quite unclear what semantics
+	 * are allowed for them to operate, thus for safety we don't call them
+	 * from within the SMR section. This also means if any such modules
+	 * are present, we have to let the regular lookup decide.
+	 */
+	if (__predict_false(mac_priv_check_fp_flag || mac_priv_grant_fp_flag))
+		return (EAGAIN);
+	return (EACCES);
 }
 
 /*
