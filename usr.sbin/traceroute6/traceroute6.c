@@ -568,15 +568,10 @@ main(int argc, char *argv[])
 	case IPPROTO_ICMPV6:
 		sndsock = rcvsock;
 		break;
-	case IPPROTO_UDP:
-		if ((sndsock = socket(AF_INET6, SOCK_RAW, IPPROTO_UDP)) < 0) {
-			perror("socket(SOCK_RAW)");
-			exit(5);
-		}
-		break;
 	case IPPROTO_NONE:
 	case IPPROTO_SCTP:
 	case IPPROTO_TCP:
+	case IPPROTO_UDP:
 		if ((sndsock = socket(AF_INET6, SOCK_RAW, useproto)) < 0) {
 			perror("socket(SOCK_RAW)");
 			exit(5);
@@ -682,8 +677,6 @@ main(int argc, char *argv[])
 		    minlen, MAXPACKET);
 		exit(1);
 	}
-	if (useproto == IPPROTO_UDP)
-		datalen -= sizeof(struct udphdr);
 	if ((useproto == IPPROTO_SCTP) && (datalen & 3)) {
 		fprintf(stderr, 
 		    "traceroute6: packet size must be a multiple of 4.\n");
