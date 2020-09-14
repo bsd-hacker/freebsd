@@ -134,16 +134,6 @@ userret(struct thread *td, struct trapframe *frame)
 	KTRUSERRET(td);
 #endif
 
-	td_softdep_cleanup(td);
-	MPASS(td->td_su == NULL);
-
-	/*
-	 * If this thread tickled GEOM, we need to wait for the giggling to
-	 * stop before we return to userland
-	 */
-	if (__predict_false(td->td_pflags & TDP_GEOM))
-		g_waitidle();
-
 	/*
 	 * Charge system time if profiling.
 	 */
@@ -195,8 +185,6 @@ userret(struct thread *td, struct trapframe *frame)
 	    ("userret: Returning with preallocated vnode"));
 	KASSERT((td->td_flags & (TDF_SBDRY | TDF_SEINTR | TDF_SERESTART)) == 0,
 	    ("userret: Returning with stop signals deferred"));
-	KASSERT(td->td_su == NULL,
-	    ("userret: Returning with SU cleanup request not handled"));
 	KASSERT(td->td_vslock_sz == 0,
 	    ("userret: Returning with vslock-wired space"));
 #ifdef VIMAGE
@@ -285,6 +273,16 @@ ast(struct trapframe *framep)
 			ktrcsw(0, 1, __func__);
 #endif
 	}
+
+	td_softdep_cleanup(td);
+	MPASS(td->td_su == NULL);
+
+	/*
+	 * If this thread tickled GEOM, we need to wait for the giggling to
+	 * stop before we return to userland
+	 */
+	if (__predict_false(td->td_pflags & TDP_GEOM))
+		g_waitidle();
 
 #ifdef DIAGNOSTIC
 	if (p->p_numthreads == 1 && (flags & TDF_NEEDSIGCHK) == 0) {
