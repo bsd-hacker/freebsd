@@ -215,7 +215,11 @@ nameicap_cleanup(struct nameidata *ndp, bool clean_latch)
 /*
  * For dotdot lookups in capability mode, only allow the component
  * lookup to succeed if the resulting directory was already traversed
- * during the operation.  Also fail dotdot lookups for non-local
+ * during the operation.  This catches situations where already
+ * traversed directory is moved to different parent, and then we walk
+ * over it with dotdots.
+ *
+ * Also allow to force failure of dotdot lookups for non-local
  * filesystems, where external agents might assist local lookups to
  * escape the compartment.
  */
@@ -1244,6 +1248,8 @@ success:
 			goto bad2;
 		}
 	}
+	if (ndp->ni_vp != NULL && ndp->ni_vp->v_type == VDIR)
+		nameicap_tracker_add(ndp, ndp->ni_vp);
 	return (0);
 
 bad2:
