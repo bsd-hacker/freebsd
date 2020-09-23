@@ -295,9 +295,6 @@ static u_long __exclusive_cache_line	numcache;/* number of cache entries allocat
 u_int ncsizefactor = 2;
 SYSCTL_UINT(_vfs, OID_AUTO, ncsizefactor, CTLFLAG_RW, &ncsizefactor, 0,
     "Size factor for namecache");
-static u_int __read_mostly	ncpurgeminvnodes;
-SYSCTL_UINT(_vfs, OID_AUTO, ncpurgeminvnodes, CTLFLAG_RW, &ncpurgeminvnodes, 0,
-    "Number of vnodes below which purgevfs ignores the request");
 static u_int __read_mostly	ncsize; /* the size as computed on creation or resizing */
 
 struct nchstats	nchstats;		/* cache effectiveness statistics */
@@ -490,20 +487,6 @@ static int vn_fullpath_dir(struct vnode *vp, struct vnode *rdir, char *buf,
     char **retbuf, size_t *len, bool slash_prefixed, size_t addend);
 
 static MALLOC_DEFINE(M_VFSCACHE, "vfscache", "VFS name cache entries");
-
-static int cache_yield;
-SYSCTL_INT(_vfs_cache, OID_AUTO, yield, CTLFLAG_RD, &cache_yield, 0,
-    "Number of times cache called yield");
-
-static void __noinline
-cache_maybe_yield(void)
-{
-
-	if (should_yield()) {
-		cache_yield++;
-		kern_yield(PRI_USER);
-	}
-}
 
 static inline void
 cache_assert_vlp_locked(struct mtx *vlp)
@@ -841,7 +824,7 @@ cache_negative_insert(struct namecache *ncp)
 	mtx_lock(&neglist->nl_lock);
 	TAILQ_INSERT_TAIL(&neglist->nl_list, ncp, nc_dst);
 	mtx_unlock(&neglist->nl_lock);
-	atomic_add_rel_long(&numneg, 1);
+	atomic_add_long(&numneg, 1);
 }
 
 static void
@@ -887,7 +870,7 @@ cache_negative_remove(struct namecache *ncp)
 		mtx_unlock(&neglist->nl_lock);
 	if (hot_locked)
 		mtx_unlock(&ncneg_hot.nl_lock);
-	atomic_subtract_rel_long(&numneg, 1);
+	atomic_subtract_long(&numneg, 1);
 }
 
 static void
@@ -1030,7 +1013,7 @@ cache_zap_locked(struct namecache *ncp)
 			counter_u64_add(numcachehv, -1);
 		}
 	}
-	atomic_subtract_rel_long(&numcache, 1);
+	atomic_subtract_long(&numcache, 1);
 }
 
 static void
@@ -1210,51 +1193,6 @@ cache_zap_locked_bucket(struct namecache *ncp, struct componentname *cnp,
 	dvp = ncp->nc_dvp;
 	mtx_unlock(blp);
 	return (cache_zap_unlocked_bucket(ncp, cnp, dvp, dvlp, vlp, hash, blp));
-}
-
-static int
-cache_zap_locked_bucket_kl(struct namecache *ncp, struct mtx *blp,
-    struct mtx **vlpp1, struct mtx **vlpp2)
-{
-	struct mtx *dvlp, *vlp;
-
-	cache_assert_bucket_locked(ncp);
-
-	dvlp = VP2VNODELOCK(ncp->nc_dvp);
-	vlp = NULL;
-	if (!(ncp->nc_flag & NCF_NEGATIVE))
-		vlp = VP2VNODELOCK(ncp->nc_vp);
-	cache_sort_vnodes(&dvlp, &vlp);
-
-	if (*vlpp1 == dvlp && *vlpp2 == vlp) {
-		cache_zap_locked(ncp);
-		cache_unlock_vnodes(dvlp, vlp);
-		*vlpp1 = NULL;
-		*vlpp2 = NULL;
-		return (0);
-	}
-
-	if (*vlpp1 != NULL)
-		mtx_unlock(*vlpp1);
-	if (*vlpp2 != NULL)
-		mtx_unlock(*vlpp2);
-	*vlpp1 = NULL;
-	*vlpp2 = NULL;
-
-	if (cache_trylock_vnodes(dvlp, vlp) == 0) {
-		cache_zap_locked(ncp);
-		cache_unlock_vnodes(dvlp, vlp);
-		return (0);
-	}
-
-	mtx_unlock(blp);
-	*vlpp1 = dvlp;
-	*vlpp2 = vlp;
-	if (*vlpp1 != NULL)
-		mtx_lock(*vlpp1);
-	mtx_lock(*vlpp2);
-	mtx_lock(blp);
-	return (EAGAIN);
 }
 
 static __noinline int
@@ -1959,7 +1897,7 @@ cache_enter_time(struct vnode *dvp, struct vnode *vp, struct componentname *cnp,
 	 */
 	lnumcache = atomic_fetchadd_long(&numcache, 1) + 1;
 	if (__predict_false(lnumcache >= ncsize)) {
-		atomic_add_long(&numcache, -1);
+		atomic_subtract_long(&numcache, 1);
 		counter_u64_add(numdrops, 1);
 		return;
 	}
@@ -2125,7 +2063,7 @@ cache_enter_time(struct vnode *dvp, struct vnode *vp, struct componentname *cnp,
 	return;
 out_unlock_free:
 	cache_enter_unlock(&cel);
-	atomic_add_long(&numcache, -1);
+	atomic_subtract_long(&numcache, 1);
 	cache_free(ncp);
 	return;
 }
@@ -2201,7 +2139,6 @@ nchinit(void *dummy __unused)
 	    M_WAITOK | M_ZERO);
 	for (i = 0; i < numvnodelocks; i++)
 		mtx_init(&vnodelocks[i], "ncvn", NULL, MTX_DUPOK | MTX_RECURSE);
-	ncpurgeminvnodes = numbucketlocks * 2;
 
 	neglists = malloc(sizeof(*neglists) * numneglists, M_VFSCACHE,
 	    M_WAITOK | M_ZERO);
@@ -2316,14 +2253,26 @@ retry:
 	}
 }
 
+/*
+ * Opportunistic check to see if there is anything to do.
+ */
+static bool
+cache_has_entries(struct vnode *vp)
+{
+
+	if (LIST_EMPTY(&vp->v_cache_src) && TAILQ_EMPTY(&vp->v_cache_dst) &&
+	    vp->v_cache_dd == NULL)
+		return (false);
+	return (true);
+}
+
 void
 cache_purge(struct vnode *vp)
 {
 	struct mtx *vlp;
 
 	SDT_PROBE1(vfs, namecache, purge, done, vp);
-	if (LIST_EMPTY(&vp->v_cache_src) && TAILQ_EMPTY(&vp->v_cache_dst) &&
-	    vp->v_cache_dd == NULL)
+	if (!cache_has_entries(vp))
 		return;
 	vlp = VP2VNODELOCK(vp);
 	mtx_lock(vlp);
@@ -2416,51 +2365,24 @@ cache_rename(struct vnode *fdvp, struct vnode *fvp, struct vnode *tdvp,
  * Flush all entries referencing a particular filesystem.
  */
 void
-cache_purgevfs(struct mount *mp, bool force)
+cache_purgevfs(struct mount *mp)
 {
-	TAILQ_HEAD(, namecache) ncps;
-	struct mtx *vlp1, *vlp2;
-	struct mtx *blp;
-	struct nchashhead *bucket;
-	struct namecache *ncp, *nnp;
-	u_long i, j, n_nchash;
-	int error;
+	struct vnode *vp, *mvp;
 
-	/* Scan hash tables for applicable entries */
 	SDT_PROBE1(vfs, namecache, purgevfs, done, mp);
-	if (!force && mp->mnt_nvnodelistsize <= ncpurgeminvnodes)
-		return;
-	TAILQ_INIT(&ncps);
-	n_nchash = nchash + 1;
-	vlp1 = vlp2 = NULL;
-	for (i = 0; i < numbucketlocks; i++) {
-		blp = (struct mtx *)&bucketlocks[i];
-		mtx_lock(blp);
-		for (j = i; j < n_nchash; j += numbucketlocks) {
-retry:
-			bucket = &nchashtbl[j];
-			CK_SLIST_FOREACH_SAFE(ncp, bucket, nc_hash, nnp) {
-				cache_assert_bucket_locked(ncp);
-				if (ncp->nc_dvp->v_mount != mp)
-					continue;
-				error = cache_zap_locked_bucket_kl(ncp, blp,
-				    &vlp1, &vlp2);
-				if (error != 0)
-					goto retry;
-				TAILQ_INSERT_HEAD(&ncps, ncp, nc_dst);
-			}
+	/*
+	 * Somewhat wasteful iteration over all vnodes. Would be better to
+	 * support filtering and avoid the interlock to begin with.
+	 */
+	MNT_VNODE_FOREACH_ALL(vp, mp, mvp) {
+		if (!cache_has_entries(vp)) {
+			VI_UNLOCK(vp);
+			continue;
 		}
-		mtx_unlock(blp);
-		if (vlp1 == NULL && vlp2 == NULL)
-			cache_maybe_yield();
-	}
-	if (vlp1 != NULL)
-		mtx_unlock(vlp1);
-	if (vlp2 != NULL)
-		mtx_unlock(vlp2);
-
-	TAILQ_FOREACH_SAFE(ncp, &ncps, nc_dst, nnp) {
-		cache_free(ncp);
+		vholdl(vp);
+		VI_UNLOCK(vp);
+		cache_purge(vp);
+		vdrop(vp);
 	}
 }
 
