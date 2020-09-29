@@ -196,6 +196,9 @@ alloc_nm_rxq_hwq(struct vi_info *vi, struct sge_nm_rxq *nm_rxq, int cong)
 
 	nm_rxq->fl_cntxt_id = be16toh(c.fl0id);
 	nm_rxq->fl_pidx = nm_rxq->fl_cidx = 0;
+	nm_rxq->fl_db_saved = 0;
+	/* matches the X_FETCHBURSTMAX_512B or X_FETCHBURSTMAX_256B above. */
+	nm_rxq->fl_db_threshold = chip_id(sc) <= CHELSIO_T5 ? 8 : 4;
 	MPASS(nm_rxq->fl_sidx == na->num_rx_desc);
 	cntxt_id = nm_rxq->fl_cntxt_id - sc->sge.eq_start;
 	if (cntxt_id >= sc->sge.neq) {
@@ -536,8 +539,11 @@ cxgbe_netmap_on(struct adapter *sc, struct vi_info *vi, struct ifnet *ifp,
 	MPASS(vi->nnmtxq > 0);
 
 	if ((vi->flags & VI_INIT_DONE) == 0 ||
-	    (ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
+	    (ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) {
+		if_printf(ifp, "cannot enable netmap operation because "
+		    "interface is not UP.\n");
 		return (EAGAIN);
+	}
 
 	rxb = &sc->sge.rx_buf_info[0];
 	for (i = 0; i < SW_ZONE_SIZES; i++, rxb++) {
@@ -1060,7 +1066,7 @@ cxgbe_netmap_rxsync(struct netmap_kring *kring, int flags)
 				fl_pidx = 0;
 				slot = &ring->slot[0];
 			}
-			if (++dbinc == 8 && n >= 32) {
+			if (++dbinc == nm_rxq->fl_db_threshold) {
 				wmb();
 				if (starve_fl)
 					nm_rxq->fl_db_saved += dbinc;
