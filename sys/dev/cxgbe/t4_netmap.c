@@ -216,9 +216,6 @@ alloc_nm_rxq_hwq(struct vi_info *vi, struct sge_nm_rxq *nm_rxq, int cong)
 		param = V_FW_PARAMS_MNEM(FW_PARAMS_MNEM_DMAQ) |
 		    V_FW_PARAMS_PARAM_X(FW_PARAMS_PARAM_DMAQ_CONM_CTXT) |
 		    V_FW_PARAMS_PARAM_YZ(nm_rxq->iq_cntxt_id);
-		param = V_FW_PARAMS_MNEM(FW_PARAMS_MNEM_DMAQ) |
-		    V_FW_PARAMS_PARAM_X(FW_PARAMS_PARAM_DMAQ_CONM_CTXT) |
-		    V_FW_PARAMS_PARAM_YZ(nm_rxq->iq_cntxt_id);
 		if (cong == 0)
 			val = 1 << 19;
 		else {
@@ -330,6 +327,22 @@ alloc_nm_txq_hwq(struct vi_info *vi, struct sge_nm_txq *nm_txq)
 			nm_txq->udb_qid = 0;
 		}
 		nm_txq->udb = (volatile void *)udb;
+	}
+
+	if (sc->params.fw_vers < FW_VERSION32(1, 25, 1, 0)) {
+		uint32_t param, val;
+
+		param = V_FW_PARAMS_MNEM(FW_PARAMS_MNEM_DMAQ) |
+		    V_FW_PARAMS_PARAM_X(FW_PARAMS_PARAM_DMAQ_EQ_SCHEDCLASS_ETH) |
+		    V_FW_PARAMS_PARAM_YZ(nm_txq->cntxt_id);
+		val = 0xff;
+		rc = -t4_set_params(sc, sc->mbox, sc->pf, 0, 1, &param, &val);
+		if (rc != 0) {
+			device_printf(vi->dev,
+			    "failed to bind netmap txq %d to class 0xff: %d\n",
+			    nm_txq->cntxt_id, rc);
+			rc = 0;
+		}
 	}
 
 	return (rc);
