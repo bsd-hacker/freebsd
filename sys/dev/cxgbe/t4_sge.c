@@ -542,6 +542,28 @@ t4_sge_modload(void)
 		tscale = 1;
 	}
 
+	if (largest_rx_cluster != MCLBYTES &&
+#if MJUMPAGESIZE != MCLBYTES
+	    largest_rx_cluster != MJUMPAGESIZE &&
+#endif
+	    largest_rx_cluster != MJUM9BYTES &&
+	    largest_rx_cluster != MJUM16BYTES) {
+		printf("Invalid hw.cxgbe.largest_rx_cluster value (%d),"
+		    " using %d instead.\n", largest_rx_cluster, MJUM16BYTES);
+		largest_rx_cluster = MJUM16BYTES;
+	}
+
+	if (safest_rx_cluster != MCLBYTES &&
+#if MJUMPAGESIZE != MCLBYTES
+	    safest_rx_cluster != MJUMPAGESIZE &&
+#endif
+	    safest_rx_cluster != MJUM9BYTES &&
+	    safest_rx_cluster != MJUM16BYTES) {
+		printf("Invalid hw.cxgbe.safest_rx_cluster value (%d),"
+		    " using %d instead.\n", safest_rx_cluster, MJUMPAGESIZE);
+		safest_rx_cluster = MJUMPAGESIZE;
+	}
+
 	extfree_refs = counter_u64_alloc(M_WAITOK);
 	extfree_rels = counter_u64_alloc(M_WAITOK);
 	pullups = counter_u64_alloc(M_WAITOK);
@@ -941,7 +963,7 @@ t4_sge_sysctls(struct adapter *sc, struct sysctl_ctx_list *ctx,
 	struct sge_params *sp = &sc->params.sge;
 
 	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "buffer_sizes",
-	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    sysctl_bufsizes, "A", "freelist buffer sizes");
 
 	SYSCTL_ADD_INT(ctx, children, OID_AUTO, "fl_pktshift", CTLFLAG_RD,
@@ -2382,10 +2404,10 @@ set_mbuf_eo_tsclk_tsoff(struct mbuf *m, uint8_t tsclk_tsoff)
 }
 
 static inline int
-needs_eo(struct cxgbe_snd_tag *cst)
+needs_eo(struct m_snd_tag *mst)
 {
 
-	return (cst != NULL && cst->type == IF_SND_TAG_TYPE_RATE_LIMIT);
+	return (mst != NULL && mst->type == IF_SND_TAG_TYPE_RATE_LIMIT);
 }
 #endif
 
@@ -2694,7 +2716,7 @@ parse_pkt(struct mbuf **mp, bool vm_wr)
 	struct tcphdr *tcp;
 #endif
 #if defined(KERN_TLS) || defined(RATELIMIT)
-	struct cxgbe_snd_tag *cst;
+	struct m_snd_tag *mst;
 #endif
 	uint16_t eh_type;
 	uint8_t cflags;
@@ -2718,12 +2740,12 @@ restart:
 	nsegs = count_mbuf_nsegs(m0, 0, &cflags);
 #if defined(KERN_TLS) || defined(RATELIMIT)
 	if (m0->m_pkthdr.csum_flags & CSUM_SND_TAG)
-		cst = mst_to_cst(m0->m_pkthdr.snd_tag);
+		mst = m0->m_pkthdr.snd_tag;
 	else
-		cst = NULL;
+		mst = NULL;
 #endif
 #ifdef KERN_TLS
-	if (cst != NULL && cst->type == IF_SND_TAG_TYPE_TLS) {
+	if (mst != NULL && mst->type == IF_SND_TAG_TYPE_TLS) {
 		int len16;
 
 		cflags |= MC_TLS;
@@ -2772,17 +2794,17 @@ restart:
 	 * checksumming is enabled.  needs_outer_l4_csum happens to check for
 	 * all the right things.
 	 */
-	if (__predict_false(needs_eo(cst) && !needs_outer_l4_csum(m0))) {
+	if (__predict_false(needs_eo(mst) && !needs_outer_l4_csum(m0))) {
 		m_snd_tag_rele(m0->m_pkthdr.snd_tag);
 		m0->m_pkthdr.snd_tag = NULL;
 		m0->m_pkthdr.csum_flags &= ~CSUM_SND_TAG;
-		cst = NULL;
+		mst = NULL;
 	}
 #endif
 
 	if (!needs_hwcsum(m0)
 #ifdef RATELIMIT
-   		 && !needs_eo(cst)
+   		 && !needs_eo(mst)
 #endif
 	)
 		return (0);
@@ -2901,7 +2923,7 @@ restart:
 #endif
 	}
 #ifdef RATELIMIT
-	if (needs_eo(cst)) {
+	if (needs_eo(mst)) {
 		u_int immhdrs;
 
 		/* EO WRs have the headers in the WR and not the GL. */
@@ -3676,13 +3698,13 @@ add_iq_sysctls(struct sysctl_ctx_list *ctx, struct sysctl_oid *oid,
 	SYSCTL_ADD_INT(ctx, children, OID_AUTO, "dmalen", CTLFLAG_RD, NULL,
 	    iq->qsize * IQ_ESIZE, "descriptor ring size in bytes");
 	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "abs_id",
-	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_NEEDGIANT, &iq->abs_id, 0,
+	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, &iq->abs_id, 0,
 	    sysctl_uint16, "I", "absolute id of the queue");
 	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "cntxt_id",
-	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_NEEDGIANT, &iq->cntxt_id, 0,
+	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, &iq->cntxt_id, 0,
 	    sysctl_uint16, "I", "SGE context id of the queue");
 	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "cidx",
-	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_NEEDGIANT, &iq->cidx, 0,
+	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, &iq->cidx, 0,
 	    sysctl_uint16, "I", "consumer index");
 }
 
@@ -3702,7 +3724,7 @@ add_fl_sysctls(struct adapter *sc, struct sysctl_ctx_list *ctx,
 	    fl->sidx * EQ_ESIZE + sc->params.sge.spg_len,
 	    "desc ring size in bytes");
 	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "cntxt_id",
-	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_NEEDGIANT, &fl->cntxt_id, 0,
+	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, &fl->cntxt_id, 0,
 	    sysctl_uint16, "I", "SGE context id of the freelist");
 	SYSCTL_ADD_UINT(ctx, children, OID_AUTO, "padding", CTLFLAG_RD, NULL,
 	    fl_pad ? 1 : 0, "padding enabled");
@@ -3966,13 +3988,13 @@ alloc_nm_rxq(struct vi_info *vi, struct sge_nm_rxq *nm_rxq, int intr_idx,
 	children = SYSCTL_CHILDREN(oid);
 
 	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "abs_id",
-	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_NEEDGIANT, &nm_rxq->iq_abs_id,
+	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, &nm_rxq->iq_abs_id,
 	    0, sysctl_uint16, "I", "absolute id of the queue");
 	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "cntxt_id",
-	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_NEEDGIANT, &nm_rxq->iq_cntxt_id,
+	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, &nm_rxq->iq_cntxt_id,
 	    0, sysctl_uint16, "I", "SGE context id of the queue");
 	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "cidx",
-	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_NEEDGIANT, &nm_rxq->iq_cidx, 0,
+	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, &nm_rxq->iq_cidx, 0,
 	    sysctl_uint16, "I", "consumer index");
 
 	children = SYSCTL_CHILDREN(oid);
@@ -3981,7 +4003,7 @@ alloc_nm_rxq(struct vi_info *vi, struct sge_nm_rxq *nm_rxq, int intr_idx,
 	children = SYSCTL_CHILDREN(oid);
 
 	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "cntxt_id",
-	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_NEEDGIANT, &nm_rxq->fl_cntxt_id,
+	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, &nm_rxq->fl_cntxt_id,
 	    0, sysctl_uint16, "I", "SGE context id of the freelist");
 	SYSCTL_ADD_UINT(ctx, children, OID_AUTO, "cidx", CTLFLAG_RD,
 	    &nm_rxq->fl_cidx, 0, "consumer index");
@@ -4049,10 +4071,10 @@ alloc_nm_txq(struct vi_info *vi, struct sge_nm_txq *nm_txq, int iqidx, int idx,
 	SYSCTL_ADD_UINT(&vi->ctx, children, OID_AUTO, "cntxt_id", CTLFLAG_RD,
 	    &nm_txq->cntxt_id, 0, "SGE context id of the queue");
 	SYSCTL_ADD_PROC(&vi->ctx, children, OID_AUTO, "cidx",
-	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_NEEDGIANT, &nm_txq->cidx, 0,
+	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, &nm_txq->cidx, 0,
 	    sysctl_uint16, "I", "consumer index");
 	SYSCTL_ADD_PROC(&vi->ctx, children, OID_AUTO, "pidx",
-	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_NEEDGIANT, &nm_txq->pidx, 0,
+	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, &nm_txq->pidx, 0,
 	    sysctl_uint16, "I", "producer index");
 
 	return (rc);
@@ -4370,10 +4392,10 @@ alloc_wrq(struct adapter *sc, struct vi_info *vi, struct sge_wrq *wrq,
 	SYSCTL_ADD_UINT(ctx, children, OID_AUTO, "cntxt_id", CTLFLAG_RD,
 	    &wrq->eq.cntxt_id, 0, "SGE context id of the queue");
 	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "cidx",
-	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_NEEDGIANT, &wrq->eq.cidx, 0,
+	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, &wrq->eq.cidx, 0,
 	    sysctl_uint16, "I", "consumer index");
 	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "pidx",
-	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_NEEDGIANT, &wrq->eq.pidx, 0,
+	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, &wrq->eq.pidx, 0,
 	    sysctl_uint16, "I", "producer index");
 	SYSCTL_ADD_INT(ctx, children, OID_AUTO, "sidx", CTLFLAG_RD, NULL,
 	    wrq->eq.sidx, "status page index");
@@ -4473,16 +4495,16 @@ alloc_txq(struct vi_info *vi, struct sge_txq *txq, int idx,
 	SYSCTL_ADD_UINT(&vi->ctx, children, OID_AUTO, "cntxt_id", CTLFLAG_RD,
 	    &eq->cntxt_id, 0, "SGE context id of the queue");
 	SYSCTL_ADD_PROC(&vi->ctx, children, OID_AUTO, "cidx",
-	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_NEEDGIANT, &eq->cidx, 0,
+	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, &eq->cidx, 0,
 	    sysctl_uint16, "I", "consumer index");
 	SYSCTL_ADD_PROC(&vi->ctx, children, OID_AUTO, "pidx",
-	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_NEEDGIANT, &eq->pidx, 0,
+	    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, &eq->pidx, 0,
 	    sysctl_uint16, "I", "producer index");
 	SYSCTL_ADD_INT(&vi->ctx, children, OID_AUTO, "sidx", CTLFLAG_RD, NULL,
 	    eq->sidx, "status page index");
 
 	SYSCTL_ADD_PROC(&vi->ctx, children, OID_AUTO, "tc",
-	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, vi, idx, sysctl_tc,
+	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, vi, idx, sysctl_tc,
 	    "I", "traffic class (-1 means none)");
 
 	SYSCTL_ADD_UQUAD(&vi->ctx, children, OID_AUTO, "txcsum", CTLFLAG_RD,
@@ -6462,7 +6484,7 @@ ethofld_tx(struct cxgbe_rate_tag *cst)
 		cst->tx_credits -= next_credits;
 		cst->tx_nocompl += next_credits;
 		compl = cst->ncompl == 0 || cst->tx_nocompl >= cst->tx_total / 2;
-		ETHER_BPF_MTAP(cst->com.com.ifp, m);
+		ETHER_BPF_MTAP(cst->com.ifp, m);
 		write_ethofld_wr(cst, wr, m, compl);
 		commit_wrq_wr(cst->eo_txq, wr, &cookie);
 		if (compl) {
@@ -6483,7 +6505,7 @@ ethofld_tx(struct cxgbe_rate_tag *cst)
 		 */
 		m->m_pkthdr.snd_tag = NULL;
 		m->m_pkthdr.csum_flags &= ~CSUM_SND_TAG;
-		m_snd_tag_rele(&cst->com.com);
+		m_snd_tag_rele(&cst->com);
 
 		mbufq_enqueue(&cst->pending_fwack, m);
 	}
@@ -6537,10 +6559,10 @@ ethofld_transmit(struct ifnet *ifp, struct mbuf *m0)
 	 * ethofld_tx() in case we are sending the final mbuf after
 	 * the inp was freed.
 	 */
-	m_snd_tag_ref(&cst->com.com);
+	m_snd_tag_ref(&cst->com);
 	ethofld_tx(cst);
 	mtx_unlock(&cst->lock);
-	m_snd_tag_rele(&cst->com.com);
+	m_snd_tag_rele(&cst->com);
 	return (0);
 
 done:
@@ -6611,12 +6633,12 @@ ethofld_fw4_ack(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m0
 		 * As with ethofld_transmit(), hold an extra reference
 		 * so that the tag is stable across ethold_tx().
 		 */
-		m_snd_tag_ref(&cst->com.com);
+		m_snd_tag_ref(&cst->com);
 		m = mbufq_first(&cst->pending_tx);
 		if (m != NULL && cst->tx_credits >= mbuf_eo_len16(m))
 			ethofld_tx(cst);
 		mtx_unlock(&cst->lock);
-		m_snd_tag_rele(&cst->com.com);
+		m_snd_tag_rele(&cst->com);
 	} else {
 		/*
 		 * There shouldn't be any pending packets if the tag

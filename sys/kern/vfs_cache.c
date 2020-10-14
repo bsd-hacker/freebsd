@@ -3189,6 +3189,7 @@ struct cache_fpl {
 	int line;
 	enum cache_fpl_status status:8;
 	bool in_smr;
+	bool fsearch;
 };
 
 static void
@@ -3346,10 +3347,6 @@ cache_can_fplookup(struct cache_fpl *fpl)
 		cache_fpl_aborted(fpl);
 		return (false);
 	}
-	if (ndp->ni_dirfd != AT_FDCWD) {
-		cache_fpl_aborted(fpl);
-		return (false);
-	}
 	if (IN_CAPABILITY_MODE(td)) {
 		cache_fpl_aborted(fpl);
 		return (false);
@@ -3363,6 +3360,23 @@ cache_can_fplookup(struct cache_fpl *fpl)
 		return (false);
 	}
 	return (true);
+}
+
+static int
+cache_fplookup_dirfd(struct cache_fpl *fpl, struct vnode **vpp)
+{
+	struct nameidata *ndp;
+	int error;
+	bool fsearch;
+
+	ndp = fpl->ndp;
+	error = fgetvp_lookup_smr(ndp->ni_dirfd, ndp, vpp, &fsearch);
+	if (__predict_false(error != 0)) {
+		cache_fpl_smr_exit(fpl);
+		return (cache_fpl_aborted(fpl));
+	}
+	fpl->fsearch = fsearch;
+	return (0);
 }
 
 static bool
@@ -3484,25 +3498,24 @@ cache_fplookup_partial_setup(struct cache_fpl *fpl)
 
 	ndp = fpl->ndp;
 	cnp = fpl->cnp;
+	pwd = fpl->pwd;
 	dvp = fpl->dvp;
 	dvp_seqc = fpl->dvp_seqc;
 
-	dvs = vget_prep_smr(dvp);
-	if (__predict_false(dvs == VGET_NONE)) {
+	if (!pwd_hold_smr(pwd)) {
 		cache_fpl_smr_exit(fpl);
 		return (cache_fpl_aborted(fpl));
 	}
 
+	dvs = vget_prep_smr(dvp);
 	cache_fpl_smr_exit(fpl);
-
-	vget_finish_ref(dvp, dvs);
-	if (!vn_seqc_consistent(dvp, dvp_seqc)) {
-		vrele(dvp);
+	if (__predict_false(dvs == VGET_NONE)) {
+		pwd_drop(pwd);
 		return (cache_fpl_aborted(fpl));
 	}
 
-	pwd = pwd_hold(curthread);
-	if (fpl->pwd != pwd) {
+	vget_finish_ref(dvp, dvs);
+	if (!vn_seqc_consistent(dvp, dvp_seqc)) {
 		vrele(dvp);
 		pwd_drop(pwd);
 		return (cache_fpl_aborted(fpl));
@@ -3948,10 +3961,10 @@ cache_fplookup_need_climb_mount(struct cache_fpl *fpl)
 /*
  * Parse the path.
  *
- * The code is mostly copy-pasted from regular lookup, see lookup().
- * The structure is maintained along with comments for easier maintenance.
- * Deduplicating the code will become feasible after fast path lookup
- * becomes more feature-complete.
+ * The code was originally copy-pasted from regular lookup and despite
+ * clean ups leaves performance on the table. Any modifications here
+ * must take into account that in case off fallback the resulting
+ * nameidata state has to be compatible with the original.
  */
 static int
 cache_fplookup_parse(struct cache_fpl *fpl)
@@ -4041,32 +4054,74 @@ cache_fplookup_parse_advance(struct cache_fpl *fpl)
 	}
 }
 
+/*
+ * See the API contract for VOP_FPLOOKUP_VEXEC.
+ */
 static int __noinline
 cache_fplookup_failed_vexec(struct cache_fpl *fpl, int error)
 {
+	struct componentname *cnp;
+	struct vnode *dvp;
+	seqc_t dvp_seqc;
+
+	cnp = fpl->cnp;
+	dvp = fpl->dvp;
+	dvp_seqc = fpl->dvp_seqc;
 
 	/*
 	 * Hack: they may be looking up foo/bar, where foo is a
 	 * regular file. In such a case we need to turn ENOTDIR,
 	 * but we may happen to get here with a different error.
 	 */
-	if (fpl->dvp->v_type != VDIR) {
+	if (dvp->v_type != VDIR) {
+		/*
+		 * The check here is predominantly to catch
+		 * EOPNOTSUPP from dead_vnodeops. If the vnode
+		 * gets doomed past this point it is going to
+		 * fail seqc verification.
+		 */
+		if (VN_IS_DOOMED(dvp)) {
+			return (cache_fpl_aborted(fpl));
+		}
 		error = ENOTDIR;
+	}
+
+	/*
+	 * Hack: handle O_SEARCH.
+	 *
+	 * Open Group Base Specifications Issue 7, 2018 edition states:
+	 * If the access mode of the open file description associated with the
+	 * file descriptor is not O_SEARCH, the function shall check whether
+	 * directory searches are permitted using the current permissions of
+	 * the directory underlying the file descriptor. If the access mode is
+	 * O_SEARCH, the function shall not perform the check.
+	 *
+	 * Regular lookup tests for the NOEXECCHECK flag for every path
+	 * component to decide whether to do the permission check. However,
+	 * since most lookups never have the flag (and when they do it is only
+	 * present for the first path component), lockless lookup only acts on
+	 * it if there is a permission problem. Here the flag is represented
+	 * with a boolean so that we don't have to clear it on the way out.
+	 *
+	 * For simplicity this always aborts.
+	 * TODO: check if this is the first lookup and ignore the permission
+	 * problem. Note the flag has to survive fallback (if it happens to be
+	 * performed).
+	 */
+	if (fpl->fsearch) {
+		return (cache_fpl_aborted(fpl));
 	}
 
 	switch (error) {
 	case EAGAIN:
-		/*
-		 * Can happen when racing against vgone.
-		 * */
-	case EOPNOTSUPP:
-		cache_fpl_partial(fpl);
+		if (!vn_seqc_consistent(dvp, dvp_seqc)) {
+			error = cache_fpl_aborted(fpl);
+		} else {
+			cache_fpl_partial(fpl);
+		}
 		break;
 	default:
-		/*
-		 * See the API contract for VOP_FPLOOKUP_VEXEC.
-		 */
-		if (!vn_seqc_consistent(fpl->dvp, fpl->dvp_seqc)) {
+		if (!vn_seqc_consistent(dvp, dvp_seqc)) {
 			error = cache_fpl_aborted(fpl);
 		} else {
 			cache_fpl_smr_exit(fpl);
@@ -4295,6 +4350,7 @@ cache_fplookup(struct nameidata *ndp, enum cache_fpl_status *status,
 	cache_fpl_checkpoint(&fpl, &orig);
 
 	cache_fpl_smr_enter_initial(&fpl);
+	fpl.fsearch = false;
 	pwd = pwd_get_smr();
 	fpl.pwd = pwd;
 	ndp->ni_rootdir = pwd->pwd_rdir;
@@ -4305,13 +4361,20 @@ cache_fplookup(struct nameidata *ndp, enum cache_fpl_status *status,
 	if (cnp->cn_pnbuf[0] == '/') {
 		cache_fpl_handle_root(ndp, &dvp);
 	} else {
-		MPASS(ndp->ni_dirfd == AT_FDCWD);
-		dvp = pwd->pwd_cdir;
+		if (ndp->ni_dirfd == AT_FDCWD) {
+			dvp = pwd->pwd_cdir;
+		} else {
+			error = cache_fplookup_dirfd(&fpl, &dvp);
+			if (__predict_false(error != 0)) {
+				goto out;
+			}
+		}
 	}
 
 	SDT_PROBE4(vfs, namei, lookup, entry, dvp, cnp->cn_pnbuf, cnp->cn_flags, true);
 
 	error = cache_fplookup_impl(dvp, &fpl);
+out:
 	cache_fpl_smr_assert_not_entered(&fpl);
 	SDT_PROBE3(vfs, fplookup, lookup, done, ndp, fpl.line, fpl.status);
 

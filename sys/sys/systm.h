@@ -124,6 +124,7 @@ void	vpanic(const char *, __va_list) __dead2 __printflike(1, 0);
 
 
 #if defined(_STANDALONE)
+struct ucred;
 /*
  * Until we have more experience with KASSERTS that are called
  * from the boot loader, they are off. The bootloader does this
@@ -204,21 +205,7 @@ void	kassert_panic(const char *fmt, ...)  __printflike(1, 2);
 })
 #define	SCHEDULER_STOPPED() SCHEDULER_STOPPED_TD(curthread)
 
-/*
- * XXX the hints declarations are even more misplaced than most declarations
- * in this file, since they are needed in one file (per arch) and only used
- * in two files.
- * XXX most of these variables should be const.
- */
 extern int osreldate;
-extern bool dynamic_kenv;
-extern struct mtx kenv_lock;
-extern char *kern_envp;
-extern char *md_envp;
-extern char static_env[];
-extern char static_hints[];	/* by config for now */
-
-extern char **kenvp;
 
 extern const void *zero_region;	/* address space maps to a zeroed page	*/
 
@@ -268,7 +255,6 @@ void	*phashinit_flags(int count, struct malloc_type *type, u_long *nentries,
     int flags);
 void	g_waitidle(void);
 
-void	cpu_boot(int);
 void	cpu_flush_dcache(void *, size_t);
 void	cpu_rootconf(void);
 void	critical_enter_KBI(void);

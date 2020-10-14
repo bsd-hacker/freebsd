@@ -639,7 +639,7 @@ vm_page_dump_index_to_pa(int bit)
 		    dump_avail[i] / PAGE_SIZE;
 		if (bit < tot)
 			return ((vm_paddr_t)bit * PAGE_SIZE +
-			    dump_avail[i] & ~PAGE_MASK);
+			    (dump_avail[i] & ~PAGE_MASK));
 		bit -= tot;
 	}
 	return ((vm_paddr_t)NULL);
@@ -700,6 +700,7 @@ int vm_page_insert (vm_page_t, vm_object_t, vm_pindex_t);
 void vm_page_invalid(vm_page_t m);
 void vm_page_launder(vm_page_t m);
 vm_page_t vm_page_lookup(vm_object_t, vm_pindex_t);
+vm_page_t vm_page_lookup_unlocked(vm_object_t, vm_pindex_t);
 vm_page_t vm_page_next(vm_page_t m);
 void vm_page_pqbatch_drain(void);
 void vm_page_pqbatch_submit(vm_page_t m, uint8_t queue);
