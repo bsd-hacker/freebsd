@@ -96,30 +96,31 @@ int
 cpu_fetch_syscall_args(struct thread *td)
 {
 	struct proc *p;
-	register_t *ap;
+	register_t *ap, *dst_ap;
 	struct syscall_args *sa;
-	int nap;
 
-	nap = NARGREG;
 	p = td->td_proc;
 	sa = &td->td_sa;
 	ap = &td->td_frame->tf_a[0];
+	dst_ap = &sa->args[0];
 
 	sa->code = td->td_frame->tf_t[0];
 
-	if (sa->code == SYS_syscall || sa->code == SYS___syscall) {
+	if (__predict_false(sa->code == SYS_syscall || sa->code == SYS___syscall)) {
 		sa->code = *ap++;
-		nap--;
+	} else {
+		*dst_ap++ = *ap++;
 	}
 
-	if (sa->code >= p->p_sysent->sv_size)
+	if (__predict_false(sa->code >= p->p_sysent->sv_size))
 		sa->callp = &p->p_sysent->sv_table[0];
 	else
 		sa->callp = &p->p_sysent->sv_table[sa->code];
 
-	memcpy(sa->args, ap, nap * sizeof(register_t));
-	if (sa->callp->sy_narg > nap)
-		panic("TODO: Could we have more then %d args?", NARGREG);
+	KASSERT(sa->callp->sy_narg <= nitems(sa->args),
+	    ("Syscall %d takes too many arguments", sa->code));
+
+	memcpy(dst_ap, ap, (NARGREG - 1) * sizeof(register_t));
 
 	td->td_retval[0] = 0;
 	td->td_retval[1] = 0;
@@ -157,19 +158,18 @@ dump_regs(struct trapframe *frame)
 }
 
 static void
-svc_handler(struct trapframe *frame)
+ecall_handler(void)
 {
 	struct thread *td;
 
 	td = curthread;
-	td->td_frame = frame;
 
 	syscallenter(td);
 	syscallret(td);
 }
 
 static void
-data_abort(struct trapframe *frame, int usermode)
+page_fault_handler(struct trapframe *frame, int usermode)
 {
 	struct vm_map *map;
 	uint64_t stval;
@@ -217,8 +217,7 @@ data_abort(struct trapframe *frame, int usermode)
 
 	va = trunc_page(stval);
 
-	if ((frame->tf_scause == EXCP_FAULT_STORE) ||
-	    (frame->tf_scause == EXCP_STORE_PAGE_FAULT)) {
+	if (frame->tf_scause == EXCP_STORE_PAGE_FAULT) {
 		ftype = VM_PROT_WRITE;
 	} else if (frame->tf_scause == EXCP_INST_PAGE_FAULT) {
 		ftype = VM_PROT_EXECUTE;
@@ -287,7 +286,8 @@ do_trap_supervisor(struct trapframe *frame)
 		break;
 	case EXCP_STORE_PAGE_FAULT:
 	case EXCP_LOAD_PAGE_FAULT:
-		data_abort(frame, 0);
+	case EXCP_INST_PAGE_FAULT:
+		page_fault_handler(frame, 0);
 		break;
 	case EXCP_BREAKPOINT:
 #ifdef KDTRACE_HOOKS
@@ -321,8 +321,10 @@ do_trap_user(struct trapframe *frame)
 	struct pcb *pcb;
 
 	td = curthread;
-	td->td_frame = frame;
 	pcb = td->td_pcb;
+
+	KASSERT(td->td_frame == frame,
+	    ("%s: td_frame %p != frame %p", __func__, td->td_frame, frame));
 
 	/* Ensure we came from usermode, interrupts disabled */
 	KASSERT((csr_read(sstatus) & (SSTATUS_SPP | SSTATUS_SIE)) == 0,
@@ -343,14 +345,18 @@ do_trap_user(struct trapframe *frame)
 	case EXCP_FAULT_LOAD:
 	case EXCP_FAULT_STORE:
 	case EXCP_FAULT_FETCH:
+		call_trapsignal(td, SIGBUS, BUS_ADRERR, (void *)frame->tf_sepc,
+		    exception);
+		userret(td, frame);
+		break;
 	case EXCP_STORE_PAGE_FAULT:
 	case EXCP_LOAD_PAGE_FAULT:
 	case EXCP_INST_PAGE_FAULT:
-		data_abort(frame, 1);
+		page_fault_handler(frame, 1);
 		break;
 	case EXCP_USER_ECALL:
 		frame->tf_sepc += 4;	/* Next instruction */
-		svc_handler(frame);
+		ecall_handler();
 		break;
 	case EXCP_ILLEGAL_INSTRUCTION:
 #ifdef FPE

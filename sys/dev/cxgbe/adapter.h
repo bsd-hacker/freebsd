@@ -314,6 +314,8 @@ struct port_info {
  	struct port_stats stats;
 	u_int tnl_cong_drops;
 	u_int tx_parse_error;
+	int fcs_reg;
+	uint64_t fcs_base;
 	u_long	tx_toe_tls_records;
 	u_long	tx_toe_tls_octets;
 	u_long	rx_toe_tls_records;
@@ -1202,7 +1204,6 @@ int update_mac_settings(struct ifnet *, int);
 int adapter_full_init(struct adapter *);
 int adapter_full_uninit(struct adapter *);
 uint64_t cxgbe_get_counter(struct ifnet *, ift_counter);
-void cxgbe_snd_tag_init(struct cxgbe_snd_tag *, struct ifnet *, int);
 int vi_full_init(struct vi_info *);
 int vi_full_uninit(struct vi_info *);
 void vi_sysctls(struct vi_info *);
