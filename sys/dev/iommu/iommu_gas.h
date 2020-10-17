@@ -1,8 +1,11 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
- * Copyright (c) 2003 Alan L. Cox <alc@cs.rice.edu>
+ * Copyright (c) 2013 The FreeBSD Foundation
  * All rights reserved.
+ *
+ * This software was developed by Konstantin Belousov <kib@FreeBSD.org>
+ * under sponsorship from the FreeBSD Foundation.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -16,7 +19,7 @@
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
  * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
@@ -24,57 +27,34 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
+ *
+ * $FreeBSD$
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
+#ifndef _DEV_IOMMU_IOMMU_GAS_H_
+#define _DEV_IOMMU_IOMMU_GAS_H_
 
-#include <sys/param.h>
-#include <sys/lock.h>
-#include <sys/malloc.h>
-#include <sys/mutex.h>
-#include <sys/systm.h>
-#include <sys/vmmeter.h>
-#include <vm/vm.h>
-#include <vm/vm_param.h>
-#include <vm/vm_page.h>
-#include <vm/vm_pageout.h>
-#include <vm/vm_dumpset.h>
-#include <vm/uma.h>
-#include <vm/uma_int.h>
-#include <machine/md_var.h>
+/* Map flags */
+#define	IOMMU_MF_CANWAIT	0x0001
+#define	IOMMU_MF_CANSPLIT	0x0002
+#define	IOMMU_MF_RMRR		0x0004
 
-void *
-uma_small_alloc(uma_zone_t zone, vm_size_t bytes, int domain, u_int8_t *flags,
-    int wait)
-{
-	vm_page_t m;
-	vm_paddr_t pa;
-	void *va;
+#define	IOMMU_PGF_WAITOK	0x0001
+#define	IOMMU_PGF_ZERO		0x0002
+#define	IOMMU_PGF_ALLOC		0x0004
+#define	IOMMU_PGF_NOALLOC	0x0008
+#define	IOMMU_PGF_OBJL		0x0010
 
-	*flags = UMA_SLAB_PRIV;
-	m = vm_page_alloc_domain(NULL, 0, domain,
-	    malloc2vm_flags(wait) | VM_ALLOC_NOOBJ | VM_ALLOC_WIRED);
-	if (m == NULL)
-		return (NULL);
-	pa = m->phys_addr;
-	if ((wait & M_NODUMP) == 0)
-		dump_add_page(pa);
-	va = (void *)PHYS_TO_DMAP(pa);
-	if ((wait & M_ZERO) && (m->flags & PG_ZERO) == 0)
-		pagezero(va);
-	return (va);
-}
+#define	IOMMU_MAP_ENTRY_PLACE	0x0001	/* Fake entry */
+#define	IOMMU_MAP_ENTRY_RMRR	0x0002	/* Permanent, not linked by
+					   dmamap_link */
+#define	IOMMU_MAP_ENTRY_MAP	0x0004	/* Busdma created, linked by
+					   dmamap_link */
+#define	IOMMU_MAP_ENTRY_UNMAPPED	0x0010	/* No backing pages */
+#define	IOMMU_MAP_ENTRY_QI_NF	0x0020	/* qi task, do not free entry */
+#define	IOMMU_MAP_ENTRY_READ	0x1000	/* Read permitted */
+#define	IOMMU_MAP_ENTRY_WRITE	0x2000	/* Write permitted */
+#define	IOMMU_MAP_ENTRY_SNOOP	0x4000	/* Snoop */
+#define	IOMMU_MAP_ENTRY_TM	0x8000	/* Transient */
 
-void
-uma_small_free(void *mem, vm_size_t size, u_int8_t flags)
-{
-	vm_page_t m;
-	vm_paddr_t pa;
-
-	pa = DMAP_TO_PHYS((vm_offset_t)mem);
-	dump_drop_page(pa);
-	m = PHYS_TO_VM_PAGE(pa);
-	vm_page_unwire_noq(m);
-	vm_page_free(m);
-}
+#endif /* !_DEV_IOMMU_IOMMU_GAS_H_ */
