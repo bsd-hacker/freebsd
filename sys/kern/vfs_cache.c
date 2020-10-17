@@ -79,6 +79,9 @@ __FBSDID("$FreeBSD$");
 
 #include <vm/uma.h>
 
+static SYSCTL_NODE(_vfs, OID_AUTO, cache, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "Name cache");
+
 SDT_PROVIDER_DECLARE(vfs);
 SDT_PROBE_DEFINE3(vfs, namecache, enter, done, "struct vnode *", "char *",
     "struct vnode *");
@@ -277,6 +280,21 @@ cache_ncp_canuse(struct namecache *ncp)
 
 VFS_SMR_DECLARE;
 
+static SYSCTL_NODE(_vfs_cache, OID_AUTO, param, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "Name cache parameters");
+
+static u_int __read_mostly	ncsize; /* the size as computed on creation or resizing */
+SYSCTL_UINT(_vfs_cache_param, OID_AUTO, size, CTLFLAG_RW, &ncsize, 0,
+    "Total namecache capacity");
+
+u_int ncsizefactor = 2;
+SYSCTL_UINT(_vfs_cache_param, OID_AUTO, sizefactor, CTLFLAG_RW, &ncsizefactor, 0,
+    "Size factor for namecache");
+
+static u_long __read_mostly	ncnegfactor = 5; /* ratio of negative entries */
+SYSCTL_ULONG(_vfs_cache_param, OID_AUTO, negfactor, CTLFLAG_RW, &ncnegfactor, 0,
+    "Ratio of negative namecache entries");
+
 /*
  * Structures associated with name caching.
  */
@@ -286,15 +304,8 @@ static __read_mostly CK_SLIST_HEAD(nchashhead, namecache) *nchashtbl;/* Hash Tab
 static u_long __read_mostly	nchash;			/* size of hash table */
 SYSCTL_ULONG(_debug, OID_AUTO, nchash, CTLFLAG_RD, &nchash, 0,
     "Size of namecache hash table");
-static u_long __read_mostly	ncnegfactor = 5; /* ratio of negative entries */
-SYSCTL_ULONG(_vfs, OID_AUTO, ncnegfactor, CTLFLAG_RW, &ncnegfactor, 0,
-    "Ratio of negative namecache entries");
 static u_long __exclusive_cache_line	numneg;	/* number of negative entries allocated */
 static u_long __exclusive_cache_line	numcache;/* number of cache entries allocated */
-u_int ncsizefactor = 2;
-SYSCTL_UINT(_vfs, OID_AUTO, ncsizefactor, CTLFLAG_RW, &ncsizefactor, 0,
-    "Size factor for namecache");
-static u_int __read_mostly	ncsize; /* the size as computed on creation or resizing */
 
 struct nchstats	nchstats;		/* cache effectiveness statistics */
 
@@ -433,43 +444,58 @@ SYSCTL_INT(_debug_sizeof, OID_AUTO, namecache, CTLFLAG_RD, SYSCTL_NULL_INT_PTR,
 /*
  * The new name cache statistics
  */
-static SYSCTL_NODE(_vfs, OID_AUTO, cache, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+static SYSCTL_NODE(_vfs_cache, OID_AUTO, stats, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
     "Name cache statistics");
-#define STATNODE_ULONG(name, descr)					\
-	SYSCTL_ULONG(_vfs_cache, OID_AUTO, name, CTLFLAG_RD, &name, 0, descr);
-#define STATNODE_COUNTER(name, descr)					\
-	static COUNTER_U64_DEFINE_EARLY(name);				\
-	SYSCTL_COUNTER_U64(_vfs_cache, OID_AUTO, name, CTLFLAG_RD, &name, \
+
+#define STATNODE_ULONG(name, varname, descr)					\
+	SYSCTL_ULONG(_vfs_cache_stats, OID_AUTO, name, CTLFLAG_RD, &varname, 0, descr);
+#define STATNODE_COUNTER(name, varname, descr)					\
+	static COUNTER_U64_DEFINE_EARLY(varname);				\
+	SYSCTL_COUNTER_U64(_vfs_cache_stats, OID_AUTO, name, CTLFLAG_RD, &varname, \
 	    descr);
-STATNODE_ULONG(numneg, "Number of negative cache entries");
-STATNODE_ULONG(numcache, "Number of cache entries");
-STATNODE_COUNTER(numcachehv, "Number of namecache entries with vnodes held");
-STATNODE_COUNTER(numdrops, "Number of dropped entries due to reaching the limit");
-STATNODE_COUNTER(dothits, "Number of '.' hits");
-STATNODE_COUNTER(dotdothits, "Number of '..' hits");
-STATNODE_COUNTER(nummiss, "Number of cache misses");
-STATNODE_COUNTER(nummisszap, "Number of cache misses we do not want to cache");
-STATNODE_COUNTER(numposzaps,
+STATNODE_ULONG(neg, numneg, "Number of negative cache entries");
+STATNODE_ULONG(count, numcache, "Number of cache entries");
+STATNODE_COUNTER(heldvnodes, numcachehv, "Number of namecache entries with vnodes held");
+STATNODE_COUNTER(drops, numdrops, "Number of dropped entries due to reaching the limit");
+STATNODE_COUNTER(dothits, dothits, "Number of '.' hits");
+STATNODE_COUNTER(dotdothis, dotdothits, "Number of '..' hits");
+STATNODE_COUNTER(miss, nummiss, "Number of cache misses");
+STATNODE_COUNTER(misszap, nummisszap, "Number of cache misses we do not want to cache");
+STATNODE_COUNTER(posszaps, numposzaps,
     "Number of cache hits (positive) we do not want to cache");
-STATNODE_COUNTER(numposhits, "Number of cache hits (positive)");
-STATNODE_COUNTER(numnegzaps,
+STATNODE_COUNTER(poshits, numposhits, "Number of cache hits (positive)");
+STATNODE_COUNTER(negzaps, numnegzaps,
     "Number of cache hits (negative) we do not want to cache");
-STATNODE_COUNTER(numneghits, "Number of cache hits (negative)");
+STATNODE_COUNTER(neghits, numneghits, "Number of cache hits (negative)");
 /* These count for vn_getcwd(), too. */
-STATNODE_COUNTER(numfullpathcalls, "Number of fullpath search calls");
-STATNODE_COUNTER(numfullpathfail1, "Number of fullpath search errors (ENOTDIR)");
-STATNODE_COUNTER(numfullpathfail2,
+STATNODE_COUNTER(fullpathcalls, numfullpathcalls, "Number of fullpath search calls");
+STATNODE_COUNTER(fullpathfail1, numfullpathfail1, "Number of fullpath search errors (ENOTDIR)");
+STATNODE_COUNTER(fullpathfail2, numfullpathfail2,
     "Number of fullpath search errors (VOP_VPTOCNP failures)");
-STATNODE_COUNTER(numfullpathfail4, "Number of fullpath search errors (ENOMEM)");
-STATNODE_COUNTER(numfullpathfound, "Number of successful fullpath calls");
-STATNODE_COUNTER(zap_and_exit_bucket_relock_success,
+STATNODE_COUNTER(fullpathfail4, numfullpathfail4, "Number of fullpath search errors (ENOMEM)");
+STATNODE_COUNTER(fullpathfound, numfullpathfound, "Number of successful fullpath calls");
+
+/*
+ * Debug or developer statistics.
+ */
+static SYSCTL_NODE(_vfs_cache, OID_AUTO, debug, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "Name cache debugging");
+#define DEBUGNODE_ULONG(name, descr)					\
+	SYSCTL_ULONG(_vfs_cache_debug, OID_AUTO, name, CTLFLAG_RD, &name, 0, descr);
+#define DEBUGNODE_COUNTER(name, descr)					\
+	static COUNTER_U64_DEFINE_EARLY(name);				\
+	SYSCTL_COUNTER_U64(_vfs_cache_debug, OID_AUTO, name, CTLFLAG_RD, &name, \
+	    descr);
+DEBUGNODE_COUNTER(zap_and_exit_bucket_relock_success,
     "Number of successful removals after relocking");
-static long zap_and_exit_bucket_fail; STATNODE_ULONG(zap_and_exit_bucket_fail,
+static long zap_and_exit_bucket_fail;
+DEBUGNODE_ULONG(zap_and_exit_bucket_fail,
     "Number of times zap_and_exit failed to lock");
-static long zap_and_exit_bucket_fail2; STATNODE_ULONG(zap_and_exit_bucket_fail2,
+static long zap_and_exit_bucket_fail2;
+DEBUGNODE_ULONG(zap_and_exit_bucket_fail2,
     "Number of times zap_and_exit failed to lock");
 static long cache_lock_vnodes_cel_3_failures;
-STATNODE_ULONG(cache_lock_vnodes_cel_3_failures,
+DEBUGNODE_ULONG(cache_lock_vnodes_cel_3_failures,
     "Number of times 3-way vnode locking failed");
 
 static void cache_zap_locked(struct namecache *ncp);
@@ -803,6 +829,11 @@ SYSCTL_COUNTER_U64(_vfs_cache_neg, OID_AUTO, evict_skipped_empty, CTLFLAG_RD,
     &neg_evict_skipped_empty,
     "Number of times evicting failed due to lack of entries");
 
+static COUNTER_U64_DEFINE_EARLY(neg_evict_skipped_missed);
+SYSCTL_COUNTER_U64(_vfs_cache_neg, OID_AUTO, evict_skipped_missed, CTLFLAG_RD,
+    &neg_evict_skipped_missed,
+    "Number of times evicting failed due to target entry disappearing");
+
 static COUNTER_U64_DEFINE_EARLY(neg_evict_skipped_contended);
 SYSCTL_COUNTER_U64(_vfs_cache_neg, OID_AUTO, evict_skipped_contended, CTLFLAG_RD,
     &neg_evict_skipped_contended,
@@ -1008,8 +1039,11 @@ cache_neg_evict(void)
 	struct namecache *ncp, *ncp2;
 	struct neglist *nl;
 	struct negstate *ns;
+	struct vnode *dvp;
 	struct mtx *dvlp;
 	struct mtx *blp;
+	uint32_t hash;
+	u_char nlen;
 
 	nl = cache_neg_evict_select();
 	if (nl == NULL) {
@@ -1033,25 +1067,30 @@ cache_neg_evict(void)
 		return;
 	}
 	ns = NCP2NEGSTATE(ncp);
-	dvlp = VP2VNODELOCK(ncp->nc_dvp);
-	blp = NCP2BUCKETLOCK(ncp);
+	nlen = ncp->nc_nlen;
+	dvp = ncp->nc_dvp;
+	hash = cache_get_hash(ncp->nc_name, nlen, dvp);
+	dvlp = VP2VNODELOCK(dvp);
+	blp = HASH2BUCKETLOCK(hash);
 	mtx_unlock(&nl->nl_lock);
 	mtx_unlock(&nl->nl_evict_lock);
 	mtx_lock(dvlp);
 	mtx_lock(blp);
 	/*
-	 * Enter SMR to safely check the negative list.
-	 * Even if the found pointer matches, the entry may now be reallocated
-	 * and used by a different vnode.
+	 * Note that since all locks were dropped above, the entry may be
+	 * gone or reallocated to be something else.
 	 */
-	vfs_smr_enter();
-	ncp2 = TAILQ_FIRST(&nl->nl_list);
-	if (ncp != ncp2 || dvlp != VP2VNODELOCK(ncp2->nc_dvp) ||
-	    blp != NCP2BUCKETLOCK(ncp2)) {
-		vfs_smr_exit();
+	CK_SLIST_FOREACH(ncp2, (NCHHASH(hash)), nc_hash) {
+		if (ncp2 == ncp && ncp2->nc_dvp == dvp &&
+		    ncp2->nc_nlen == nlen && (ncp2->nc_flag & NCF_NEGATIVE) != 0)
+			break;
+	}
+	if (ncp2 == NULL) {
+		counter_u64_add(neg_evict_skipped_missed, 1);
 		ncp = NULL;
 	} else {
-		vfs_smr_exit();
+		MPASS(dvlp == VP2VNODELOCK(ncp->nc_dvp));
+		MPASS(blp == NCP2BUCKETLOCK(ncp));
 		SDT_PROBE2(vfs, namecache, evict_negative, done, ncp->nc_dvp,
 		    ncp->nc_name);
 		cache_zap_locked(ncp);
@@ -3802,16 +3841,53 @@ cache_fplookup_dotdot(struct cache_fpl *fpl)
 	return (0);
 }
 
+static int __noinline
+cache_fplookup_neg(struct cache_fpl *fpl, struct namecache *ncp, uint32_t hash)
+{
+	struct negstate *ns;
+	struct vnode *dvp;
+	u_char nc_flag;
+	bool neg_hot;
+
+	dvp = fpl->dvp;
+	nc_flag = atomic_load_char(&ncp->nc_flag);
+	MPASS((nc_flag & NCF_NEGATIVE) != 0);
+	/*
+	 * If they want to create an entry we need to replace this one.
+	 */
+	if (__predict_false(fpl->cnp->cn_nameiop != LOOKUP)) {
+		/*
+		 * TODO
+		 * This should call something similar to
+		 * cache_fplookup_final_modifying.
+		 */
+		return (cache_fpl_partial(fpl));
+	}
+	ns = NCP2NEGSTATE(ncp);
+	neg_hot = ((ns->neg_flag & NEG_HOT) != 0);
+	if (__predict_false(!cache_ncp_canuse(ncp))) {
+		return (cache_fpl_partial(fpl));
+	}
+	if (__predict_false((nc_flag & NCF_WHITE) != 0)) {
+		return (cache_fpl_partial(fpl));
+	}
+	if (!neg_hot) {
+		return (cache_fplookup_negative_promote(fpl, ncp, hash));
+	}
+	SDT_PROBE2(vfs, namecache, lookup, hit__negative, dvp, ncp->nc_name);
+	counter_u64_add(numneghits, 1);
+	cache_fpl_smr_exit(fpl);
+	return (cache_fpl_handled(fpl, ENOENT));
+}
+
 static int
 cache_fplookup_next(struct cache_fpl *fpl)
 {
 	struct componentname *cnp;
 	struct namecache *ncp;
-	struct negstate *ns;
 	struct vnode *dvp, *tvp;
 	u_char nc_flag;
 	uint32_t hash;
-	bool neg_hot;
 
 	cnp = fpl->cnp;
 	dvp = fpl->dvp;
@@ -3840,28 +3916,7 @@ cache_fplookup_next(struct cache_fpl *fpl)
 	tvp = atomic_load_ptr(&ncp->nc_vp);
 	nc_flag = atomic_load_char(&ncp->nc_flag);
 	if ((nc_flag & NCF_NEGATIVE) != 0) {
-		/*
-		 * If they want to create an entry we need to replace this one.
-		 */
-		if (__predict_false(fpl->cnp->cn_nameiop != LOOKUP)) {
-			return (cache_fpl_partial(fpl));
-		}
-		ns = NCP2NEGSTATE(ncp);
-		neg_hot = ((ns->neg_flag & NEG_HOT) != 0);
-		if (__predict_false(!cache_ncp_canuse(ncp))) {
-			return (cache_fpl_partial(fpl));
-		}
-		if (__predict_false((nc_flag & NCF_WHITE) != 0)) {
-			return (cache_fpl_partial(fpl));
-		}
-		if (!neg_hot) {
-			return (cache_fplookup_negative_promote(fpl, ncp, hash));
-		}
-		SDT_PROBE2(vfs, namecache, lookup, hit__negative, dvp,
-		    ncp->nc_name);
-		counter_u64_add(numneghits, 1);
-		cache_fpl_smr_exit(fpl);
-		return (cache_fpl_handled(fpl, ENOENT));
+		return (cache_fplookup_neg(fpl, ncp, hash));
 	}
 
 	if (__predict_false(!cache_ncp_canuse(ncp))) {
