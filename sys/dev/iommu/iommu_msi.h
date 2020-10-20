@@ -1,9 +1,10 @@
 /*-
- * Copyright (c) 2010-2011 Juniper Networks, Inc.
- * All rights reserved.
+ * SPDX-License-Identifier: BSD-2-Clause
  *
- * This software was developed by Robert N. M. Watson under contract
- * to Juniper Networks, Inc.
+ * Copyright (c) 2020 Andrew Turner
+ *
+ * This work was supported by Innovate UK project 105694, "Digital Security
+ * by Design (DSbD) Technology Platform Prototype".
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,33 +30,17 @@
  * $FreeBSD$
  */
 
-#ifndef _NETINET6_IN6_RSS_H_
-#define	_NETINET6_IN6_RSS_H_
+#ifndef _DEV_IOMMU_IOMMU_MSI_H_
+#define _DEV_IOMMU_IOMMU_MSI_H_
 
-#include <netinet/in.h>		/* in_addr_t */
+#include <dev/iommu/iommu_types.h>
 
-/*
- * Network stack interface to generate a hash for a protocol tuple.
- */
-uint32_t	rss_hash_ip6_4tuple(const struct in6_addr *src, u_short srcport,
-		    const struct in6_addr *dst, u_short dstport);
-uint32_t	rss_hash_ip6_2tuple(const struct in6_addr *src,
-		    const struct in6_addr *dst);
+struct iommu_unit;
+struct iommu_domain;
+struct iommu_ctx;
 
-/*
- * Functions to calculate a software RSS hash for a given mbuf or
- * packet detail.
- */
-int		rss_mbuf_software_hash_v6(const struct mbuf *m, int dir,
-		    uint32_t *hashval, uint32_t *hashtype);
-int		rss_proto_software_hash_v6(const struct in6_addr *src,
-		    const struct in6_addr *dst, u_short src_port,
-		    u_short dst_port, int proto, uint32_t *hashval,
-		    uint32_t *hashtype);
-struct mbuf *	rss_soft_m2cpuid_v6(struct mbuf *m, uintptr_t source,
-		    u_int *cpuid);
-uint32_t	xps_proto_software_hash_v6(const struct in6_addr *s,
-		    const struct in6_addr *d, u_short sp, u_short dp,
-		    int proto, uint32_t *hashtype);
+void iommu_translate_msi(struct iommu_domain *domain, uint64_t *addr);
+int iommu_map_msi(struct iommu_ctx *ctx, iommu_gaddr_t size, int offset,
+    u_int eflags, u_int flags, vm_page_t *ma);
 
-#endif /* !_NETINET6_IN6_RSS_H_ */
+#endif /* !_DEV_IOMMU_IOMMU_MSI_H_ */

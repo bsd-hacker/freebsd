@@ -1142,6 +1142,7 @@ crypto_kregister(u_int32_t driverid, int kalg, u_int32_t flags)
 				, kalg
 				, flags
 			);
+		gone_in_dev(cap->cc_dev, 14, "asymmetric crypto");
 		err = 0;
 	} else
 		err = EINVAL;
@@ -1539,7 +1540,7 @@ again:
 		 * match), then skip.
 		 */
 		cap = crypto_drivers[hid];
-		if (cap->cc_dev == NULL ||
+		if (cap == NULL ||
 		    (cap->cc_flags & match) == 0)
 			continue;
 
@@ -1879,15 +1880,18 @@ crypto_kdone(struct cryptkop *krp)
 
 	if (krp->krp_status != 0)
 		CRYPTOSTAT_INC(cs_kerrs);
-	CRYPTO_DRIVER_LOCK();
 	cap = krp->krp_cap;
-	KASSERT(cap->cc_koperations > 0, ("cc_koperations == 0"));
-	cap->cc_koperations--;
-	if (cap->cc_koperations == 0 && cap->cc_flags & CRYPTOCAP_F_CLEANUP)
-		wakeup(cap);
-	CRYPTO_DRIVER_UNLOCK();
-	krp->krp_cap = NULL;
-	cap_rele(cap);
+	if (cap != NULL) {
+		CRYPTO_DRIVER_LOCK();
+		KASSERT(cap->cc_koperations > 0, ("cc_koperations == 0"));
+		cap->cc_koperations--;
+		if (cap->cc_koperations == 0 &&
+		    cap->cc_flags & CRYPTOCAP_F_CLEANUP)
+			wakeup(cap);
+		CRYPTO_DRIVER_UNLOCK();
+		krp->krp_cap = NULL;
+		cap_rele(cap);
+	}
 
 	ret_worker = CRYPTO_RETW(0);
 
