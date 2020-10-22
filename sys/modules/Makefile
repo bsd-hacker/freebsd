@@ -154,6 +154,7 @@ SUBDIR=	\
 	${_if_gif} \
 	${_if_gre} \
 	${_if_me} \
+	if_infiniband \
 	if_lagg \
 	${_if_ndis} \
 	${_if_stf} \
@@ -274,6 +275,7 @@ SUBDIR=	\
 	${_nvram} \
 	oce \
 	${_ocs_fc} \
+	${_ossl} \
 	otus \
 	${_otusfw} \
 	ow \
@@ -626,6 +628,7 @@ _nctgpio=	nctgpio
 _ndis=		ndis
 _ntb=		ntb
 _ocs_fc=	ocs_fc
+_ossl=		ossl
 _pccard=	pccard
 .if ${MK_OFED} != "no" || defined(ALL_MODULES)
 _rdma=		rdma
