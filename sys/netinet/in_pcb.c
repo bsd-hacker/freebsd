@@ -3330,37 +3330,22 @@ in_pcbattach_txrtlmt(struct inpcb *inp, struct ifnet *ifp,
 	if (*st != NULL)
 		return (EINVAL);
 
-	if (ifp->if_snd_tag_alloc == NULL) {
-		error = EOPNOTSUPP;
-	} else {
-		error = ifp->if_snd_tag_alloc(ifp, &params, &inp->inp_snd_tag);
-
+	error = m_snd_tag_alloc(ifp, &params, st);
 #ifdef INET
-		if (error == 0) {
-			counter_u64_add(rate_limit_set_ok, 1);
-			counter_u64_add(rate_limit_active, 1);
-		} else
-			counter_u64_add(rate_limit_alloc_fail, 1);
+	if (error == 0) {
+		counter_u64_add(rate_limit_set_ok, 1);
+		counter_u64_add(rate_limit_active, 1);
+	} else if (error != EOPNOTSUPP)
+		  counter_u64_add(rate_limit_alloc_fail, 1);
 #endif
-	}
 	return (error);
 }
 
 void
-in_pcbdetach_tag(struct ifnet *ifp, struct m_snd_tag *mst)
+in_pcbdetach_tag(struct m_snd_tag *mst)
 {
-	if (ifp == NULL)
-		return;
 
-	/*
-	 * If the device was detached while we still had reference(s)
-	 * on the ifp, we assume if_snd_tag_free() was replaced with
-	 * stubs.
-	 */
-	ifp->if_snd_tag_free(mst);
-
-	/* release reference count on network interface */
-	if_rele(ifp);
+	m_snd_tag_rele(mst);
 #ifdef INET
 	counter_u64_add(rate_limit_active, -1);
 #endif

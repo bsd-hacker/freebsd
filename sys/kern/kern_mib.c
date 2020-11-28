@@ -146,8 +146,29 @@ char kernelname[MAXPATHLEN] = PATH_KERNEL;	/* XXX bloat */
 SYSCTL_STRING(_kern, KERN_BOOTFILE, bootfile, CTLFLAG_RW | CTLFLAG_MPSAFE,
     kernelname, sizeof kernelname, "Name of kernel file booted");
 
-SYSCTL_INT(_kern, KERN_MAXPHYS, maxphys, CTLFLAG_RD | CTLFLAG_CAPRD,
-    SYSCTL_NULL_INT_PTR, MAXPHYS, "Maximum block I/O access size");
+#ifdef COMPAT_FREEBSD12
+static int
+sysctl_maxphys(SYSCTL_HANDLER_ARGS)
+{
+	u_long lvalue;
+	int ivalue;
+
+	lvalue = maxphys;
+	if (sizeof(int) == sizeof(u_long) || req->oldlen >= sizeof(u_long))
+		return (sysctl_handle_long(oidp, &lvalue, 0, req));
+	if (lvalue > INT_MAX)
+		return (sysctl_handle_long(oidp, &lvalue, 0, req));
+	ivalue = lvalue;
+	return (sysctl_handle_int(oidp, &ivalue, 0, req));
+}
+SYSCTL_PROC(_kern, KERN_MAXPHYS, maxphys, CTLTYPE_LONG | CTLFLAG_RDTUN |
+    CTLFLAG_NOFETCH | CTLFLAG_CAPRD | CTLFLAG_MPSAFE,
+    NULL, 0, sysctl_maxphys, "UL", "Maximum block I/O access size");
+#else
+SYSCTL_ULONG(_kern, KERN_MAXPHYS, maxphys,
+    CTLFLAG_RDTUN | CTLFLAG_NOFETCH | CTLFLAG_CAPRD,
+    &maxphys, 0, "Maximum block I/O access size");
+#endif
 
 SYSCTL_INT(_hw, HW_NCPU, ncpu, CTLFLAG_RD|CTLFLAG_CAPRD,
     &mp_ncpus, 0, "Number of active CPUs");
@@ -652,6 +673,11 @@ SYSCTL_INT(_user, USER_STREAM_MAX, stream_max, CTLFLAG_RD,
     SYSCTL_NULL_INT_PTR, 0, "Min Maximum number of streams a process may have open at one time");
 SYSCTL_INT(_user, USER_TZNAME_MAX, tzname_max, CTLFLAG_RD,
     SYSCTL_NULL_INT_PTR, 0, "Min Maximum number of types supported for timezone names");
+
+static char localbase[MAXPATHLEN] = "";
+
+SYSCTL_STRING(_user, USER_LOCALBASE, localbase, CTLFLAG_RWTUN,
+    localbase, sizeof(localbase), "Prefix used to install and locate add-on packages");
 
 #include <sys/vnode.h>
 SYSCTL_INT(_debug_sizeof, OID_AUTO, vnode, CTLFLAG_RD,

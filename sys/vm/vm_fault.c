@@ -115,7 +115,6 @@ __FBSDID("$FreeBSD$");
 #define PFFOR 4
 
 #define	VM_FAULT_READ_DEFAULT	(1 + VM_FAULT_READ_AHEAD_INIT)
-#define	VM_FAULT_READ_MAX	(1 + VM_FAULT_READ_AHEAD_MAX)
 
 #define	VM_FAULT_DONTNEED_MIN	1048576
 
@@ -542,7 +541,8 @@ vm_fault_populate(struct faultstate *fs)
 	    pidx += npages, m = vm_page_next(&m[npages - 1])) {
 		vaddr = fs->entry->start + IDX_TO_OFF(pidx) - fs->entry->offset;
 #if defined(__aarch64__) || defined(__amd64__) || (defined(__arm__) && \
-    __ARM_ARCH >= 6) || defined(__i386__) || defined(__riscv)
+    __ARM_ARCH >= 6) || defined(__i386__) || defined(__riscv) || \
+    defined(__powerpc64__)
 		psind = m->psind;
 		if (psind > 0 && ((vaddr & (pagesizes[psind] - 1)) != 0 ||
 		    pidx + OFF_TO_IDX(pagesizes[psind]) - 1 > pager_last ||

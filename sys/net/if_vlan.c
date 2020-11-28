@@ -1782,10 +1782,10 @@ vlan_capabilities(struct ifvlan *ifv)
 	 * this ever changes, then a new IFCAP_VLAN_TXTLS can be
 	 * defined.
 	 */
-	if (p->if_capabilities & IFCAP_TXTLS)
-		cap |= p->if_capabilities & IFCAP_TXTLS;
-	if (p->if_capenable & IFCAP_TXTLS)
-		ena |= mena & IFCAP_TXTLS;
+	if (p->if_capabilities & (IFCAP_TXTLS | IFCAP_TXTLS_RTLMT))
+		cap |= p->if_capabilities & (IFCAP_TXTLS | IFCAP_TXTLS_RTLMT);
+	if (p->if_capenable & (IFCAP_TXTLS | IFCAP_TXTLS_RTLMT))
+		ena |= mena & (IFCAP_TXTLS | IFCAP_TXTLS_RTLMT);
 
 	ifp->if_capabilities = cap;
 	ifp->if_capenable = ena;
@@ -2047,7 +2047,7 @@ vlan_snd_tag_alloc(struct ifnet *ifp,
 		parent = PARENT(ifv);
 	else
 		parent = NULL;
-	if (parent == NULL || parent->if_snd_tag_alloc == NULL) {
+	if (parent == NULL) {
 		NET_EPOCH_EXIT(et);
 		return (EOPNOTSUPP);
 	}
@@ -2060,7 +2060,7 @@ vlan_snd_tag_alloc(struct ifnet *ifp,
 		return (ENOMEM);
 	}
 
-	error = parent->if_snd_tag_alloc(parent, params, &vst->tag);
+	error = m_snd_tag_alloc(parent, params, &vst->tag);
 	if_rele(parent);
 	if (error) {
 		free(vst, M_VLAN);

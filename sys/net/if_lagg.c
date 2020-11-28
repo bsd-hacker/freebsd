@@ -1145,7 +1145,8 @@ lagg_port_output(struct ifnet *ifp, struct mbuf *m,
 	switch (dst->sa_family) {
 		case pseudo_AF_HDRCMPLT:
 		case AF_UNSPEC:
-			return ((*lp->lp_output)(ifp, m, dst, ro));
+			if (lp != NULL)
+				return ((*lp->lp_output)(ifp, m, dst, ro));
 	}
 
 	/* drop any other frames */
@@ -1762,6 +1763,7 @@ lookup_snd_tag_port(struct ifnet *ifp, uint32_t flowid, uint32_t flowtype,
 	struct lagg_port *lp;
 	struct lagg_lb *lb;
 	uint32_t hash, p;
+	int err;
 
 	sc = ifp->if_softc;
 
@@ -1782,7 +1784,7 @@ lookup_snd_tag_port(struct ifnet *ifp, uint32_t flowid, uint32_t flowtype,
 		    flowtype == M_HASHTYPE_NONE)
 			return (NULL);
 		hash = flowid >> sc->flowid_shift;
-		return (lacp_select_tx_port_by_hash(sc, hash, numa_domain));
+		return (lacp_select_tx_port_by_hash(sc, hash, numa_domain, &err));
 	default:
 		return (NULL);
 	}
@@ -1808,7 +1810,7 @@ lagg_snd_tag_alloc(struct ifnet *ifp,
 		LAGG_RUNLOCK();
 		return (EOPNOTSUPP);
 	}
-	if (lp->lp_ifp == NULL || lp->lp_ifp->if_snd_tag_alloc == NULL) {
+	if (lp->lp_ifp == NULL) {
 		LAGG_RUNLOCK();
 		return (EOPNOTSUPP);
 	}
@@ -1822,7 +1824,7 @@ lagg_snd_tag_alloc(struct ifnet *ifp,
 		return (ENOMEM);
 	}
 
-	error = lp_ifp->if_snd_tag_alloc(lp_ifp, params, &lst->tag);
+	error = m_snd_tag_alloc(lp_ifp, params, &lst->tag);
 	if_rele(lp_ifp);
 	if (error) {
 		free(lst, M_LAGG);
@@ -2579,12 +2581,13 @@ static int
 lagg_lacp_start(struct lagg_softc *sc, struct mbuf *m)
 {
 	struct lagg_port *lp;
+	int err;
 
-	lp = lacp_select_tx_port(sc, m);
+	lp = lacp_select_tx_port(sc, m, &err);
 	if (lp == NULL) {
 		if_inc_counter(sc->sc_ifp, IFCOUNTER_OERRORS, 1);
 		m_freem(m);
-		return (ENETDOWN);
+		return (err);
 	}
 
 	/* Send mbuf */

@@ -1135,6 +1135,7 @@ nvme_ctrlr_start_config_hook(void *arg)
 fail:
 		nvme_ctrlr_fail(ctrlr);
 		config_intrhook_disestablish(&ctrlr->config_hook);
+		ctrlr->config_hook.ich_arg = NULL;
 		return;
 	}
 
@@ -1152,6 +1153,7 @@ fail:
 
 	nvme_sysctl_initialize_ctrlr(ctrlr);
 	config_intrhook_disestablish(&ctrlr->config_hook);
+	ctrlr->config_hook.ich_arg = NULL;
 
 	ctrlr->is_initialized = 1;
 	nvme_notify_new_controller(ctrlr);
@@ -1246,13 +1248,13 @@ nvme_ctrlr_passthrough_cmd(struct nvme_controller *ctrlr,
 	if (pt->len > 0) {
 		/*
 		 * vmapbuf calls vm_fault_quick_hold_pages which only maps full
-		 * pages. Ensure this request has fewer than MAXPHYS bytes when
+		 * pages. Ensure this request has fewer than maxphys bytes when
 		 * extended to full pages.
 		 */
 		addr = (vm_offset_t)pt->buf;
 		end = round_page(addr + pt->len);
 		addr = trunc_page(addr);
-		if (end - addr > MAXPHYS)
+		if (end - addr > maxphys)
 			return EIO;
 
 		if (pt->len > ctrlr->max_xfer_size) {
@@ -1365,7 +1367,7 @@ nvme_ctrlr_construct(struct nvme_controller *ctrlr, device_t dev)
 	struct make_dev_args	md_args;
 	uint32_t	cap_lo;
 	uint32_t	cap_hi;
-	uint32_t	to;
+	uint32_t	to, vs, pmrcap;
 	uint8_t		mpsmin;
 	int		status, timeout_period;
 
@@ -1375,14 +1377,53 @@ nvme_ctrlr_construct(struct nvme_controller *ctrlr, device_t dev)
 	if (bus_get_domain(dev, &ctrlr->domain) != 0)
 		ctrlr->domain = 0;
 
+	cap_lo = nvme_mmio_read_4(ctrlr, cap_lo);
+	if (bootverbose) {
+		device_printf(dev, "CapLo: 0x%08x: MQES %u%s%s%s%s, TO %u\n",
+		    cap_lo, NVME_CAP_LO_MQES(cap_lo),
+		    NVME_CAP_LO_CQR(cap_lo) ? ", CQR" : "",
+		    NVME_CAP_LO_AMS(cap_lo) ? ", AMS" : "",
+		    (NVME_CAP_LO_AMS(cap_lo) & 0x1) ? " WRRwUPC" : "",
+		    (NVME_CAP_LO_AMS(cap_lo) & 0x2) ? " VS" : "",
+		    NVME_CAP_LO_TO(cap_lo));
+	}
 	cap_hi = nvme_mmio_read_4(ctrlr, cap_hi);
+	if (bootverbose) {
+		device_printf(dev, "CapHi: 0x%08x: DSTRD %u%s, CSS %x%s, "
+		    "MPSMIN %u, MPSMAX %u%s%s\n", cap_hi,
+		    NVME_CAP_HI_DSTRD(cap_hi),
+		    NVME_CAP_HI_NSSRS(cap_hi) ? ", NSSRS" : "",
+		    NVME_CAP_HI_CSS(cap_hi),
+		    NVME_CAP_HI_BPS(cap_hi) ? ", BPS" : "",
+		    NVME_CAP_HI_MPSMIN(cap_hi),
+		    NVME_CAP_HI_MPSMAX(cap_hi),
+		    NVME_CAP_HI_PMRS(cap_hi) ? ", PMRS" : "",
+		    NVME_CAP_HI_CMBS(cap_hi) ? ", CMBS" : "");
+	}
+	if (bootverbose) {
+		vs = nvme_mmio_read_4(ctrlr, vs);
+		device_printf(dev, "Version: 0x%08x: %d.%d\n", vs,
+		    NVME_MAJOR(vs), NVME_MINOR(vs));
+	}
+	if (bootverbose && NVME_CAP_HI_PMRS(cap_hi)) {
+		pmrcap = nvme_mmio_read_4(ctrlr, pmrcap);
+		device_printf(dev, "PMRCap: 0x%08x: BIR %u%s%s, PMRTU %u, "
+		    "PMRWBM %x, PMRTO %u%s\n", pmrcap,
+		    NVME_PMRCAP_BIR(pmrcap),
+		    NVME_PMRCAP_RDS(pmrcap) ? ", RDS" : "",
+		    NVME_PMRCAP_WDS(pmrcap) ? ", WDS" : "",
+		    NVME_PMRCAP_PMRTU(pmrcap),
+		    NVME_PMRCAP_PMRWBM(pmrcap),
+		    NVME_PMRCAP_PMRTO(pmrcap),
+		    NVME_PMRCAP_CMSS(pmrcap) ? ", CMSS" : "");
+	}
+
 	ctrlr->dstrd = NVME_CAP_HI_DSTRD(cap_hi) + 2;
 
 	mpsmin = NVME_CAP_HI_MPSMIN(cap_hi);
 	ctrlr->min_page_size = 1 << (12 + mpsmin);
 
 	/* Get ready timeout value from controller, in units of 500ms. */
-	cap_lo = nvme_mmio_read_4(ctrlr, cap_lo);
 	to = NVME_CAP_LO_TO(cap_lo) + 1;
 	ctrlr->ready_timeout_in_ms = to * 500;
 

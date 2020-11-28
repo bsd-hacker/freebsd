@@ -4,7 +4,7 @@ BMAKE(1)                FreeBSD General Commands Manual               BMAKE(1)
      [1mbmake [22m-- maintain program dependencies
 
 [1mSYNOPSIS[0m
-     [1mbmake [22m[[1m-BeikNnqrstWwX[22m] [[1m-C [4m[22mdirectory[24m] [[1m-D [4m[22mvariable[24m] [[1m-d [4m[22mflags[24m]
+     [1mbmake [22m[[1m-BeikNnqrSstWwX[22m] [[1m-C [4m[22mdirectory[24m] [[1m-D [4m[22mvariable[24m] [[1m-d [4m[22mflags[24m]
            [[1m-f [4m[22mmakefile[24m] [[1m-I [4m[22mdirectory[24m] [[1m-J [4m[22mprivate[24m] [[1m-j [4m[22mmax_jobs[24m]
            [[1m-m [4m[22mdirectory[24m] [[1m-T [4m[22mfile[24m] [[1m-V [4m[22mvariable[24m] [[1m-v [4m[22mvariable[24m]
            [[4mvariable=value[24m] [[4mtarget[24m [4m...[24m]
@@ -204,6 +204,9 @@ BMAKE(1)                FreeBSD General Commands Manual               BMAKE(1)
              are up-to-date and 1, otherwise.
 
      [1m-r      [22mDo not use the built-in rules specified in the system makefile.
+
+     [1m-S      [22mStop processing if an error is encountered.  This is the default
+             behavior and the opposite of [1m-k[22m.
 
      [1m-s      [22mDo not echo any commands as they are executed.  Equivalent to
              specifying `[1m@[22m' before each command line in the makefile.
@@ -718,6 +721,12 @@ BMAKE(1)                FreeBSD General Commands Manual               BMAKE(1)
                      the specified directory if it exists, and set `[4m.OBJDIR[24m'
                      and `PWD' to that directory before executing any targets.
 
+                     Except in the case of an explicit `[1m.OBJDIR[22m' target, [1mbmake[0m
+                     will check that the specified directory is writable and
+                     ignore it if not.  This check can be skipped by setting
+                     the environment variable `MAKE_OBJDIR_CHECK_WRITABLE' to
+                     "no".
+
      [4m.PARSEDIR[24m       A path to the directory of the current `[4mMakefile[24m' being
                      parsed.
 
@@ -1197,11 +1206,11 @@ BMAKE(1)                FreeBSD General Commands Manual               BMAKE(1)
 
      [4mExpression[24m may also be an arithmetic or string comparison.  Variable
      expansion is performed on both sides of the comparison, after which the
-     integral values are compared.  A value is interpreted as hexadecimal if
+     numerical values are compared.  A value is interpreted as hexadecimal if
      it is preceded by 0x, otherwise it is decimal; octal numbers are not sup-
      ported.  The standard C relational operators are all supported.  If after
      variable expansion, either the left or right hand side of a `[1m==[22m' or `[1m!=[22m'
-     operator is not an integral value, then string comparison is performed
+     operator is not a numerical value, then string comparison is performed
      between the expanded variables.  If no relational operator is given, it
      is assumed that the expanded variable is being compared against 0, or an
      empty string in the case of a string comparison.
@@ -1568,4 +1577,4 @@ BMAKE(1)                FreeBSD General Commands Manual               BMAKE(1)
 
      There is no way of escaping a space character in a filename.
 
-FreeBSD 11.3                    August 28, 2020                   FreeBSD 11.3
+FreeBSD 11.3                   November 14, 2020                  FreeBSD 11.3

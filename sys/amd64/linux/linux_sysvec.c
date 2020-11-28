@@ -231,7 +231,7 @@ linux_set_syscall_retval(struct thread *td, int error)
 		break;
 
 	default:
-		frame->tf_rax = linux_to_bsd_errno(error);
+		frame->tf_rax = bsd_to_linux_errno(error);
 		frame->tf_r10 = frame->tf_rcx;
 		break;
 	}
@@ -780,6 +780,9 @@ struct sysentvec elf_linux_sysvec = {
 	.sv_schedtail	= linux_schedtail,
 	.sv_thread_detach = linux_thread_detach,
 	.sv_trap	= linux_vsyscall,
+	.sv_onexec	= linux_on_exec,
+	.sv_onexit	= linux_on_exit,
+	.sv_ontdexit	= linux_thread_dtor,
 };
 
 static void
