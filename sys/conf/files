@@ -1312,8 +1312,8 @@ dev/ath/ath_rate/sample/sample.c	optional ath_rate_sample \
 dev/ath/ath_dfs/null/dfs_null.c	optional ath \
 	compile-with "${NORMAL_C} -I$S/dev/ath"
 #
-dev/backlight/backlight_if.m		optional backlight
-dev/backlight/backlight.c		optional backlight
+dev/backlight/backlight_if.m		optional backlight | compat_linuxkpi
+dev/backlight/backlight.c		optional backlight | compat_linuxkpi
 dev/bce/if_bce.c			optional bce
 dev/bfe/if_bfe.c			optional bfe
 dev/bge/if_bge.c			optional bge
@@ -1516,7 +1516,7 @@ t4fw.fwo		optional cxgbe					\
 	no-implicit-rule						\
 	clean		"t4fw.fwo"
 t4fw.fw			optional cxgbe					\
-	dependency	"$S/dev/cxgbe/firmware/t4fw-1.25.0.0.bin"	\
+	dependency	"$S/dev/cxgbe/firmware/t4fw-1.25.0.40.bin"	\
 	compile-with	"${CP} ${.ALLSRC} ${.TARGET}"			\
 	no-obj no-implicit-rule						\
 	clean		"t4fw.fw"
@@ -1550,7 +1550,7 @@ t5fw.fwo		optional cxgbe					\
 	no-implicit-rule						\
 	clean		"t5fw.fwo"
 t5fw.fw			optional cxgbe					\
-	dependency	"$S/dev/cxgbe/firmware/t5fw-1.25.0.0.bin"	\
+	dependency	"$S/dev/cxgbe/firmware/t5fw-1.25.0.40.bin"	\
 	compile-with	"${CP} ${.ALLSRC} ${.TARGET}"			\
 	no-obj no-implicit-rule						\
 	clean		"t5fw.fw"
@@ -1584,7 +1584,7 @@ t6fw.fwo		optional cxgbe					\
 	no-implicit-rule						\
 	clean		"t6fw.fwo"
 t6fw.fw			optional cxgbe					\
-	dependency	"$S/dev/cxgbe/firmware/t6fw-1.25.0.0.bin"	\
+	dependency	"$S/dev/cxgbe/firmware/t6fw-1.25.0.40.bin"	\
 	compile-with	"${CP} ${.ALLSRC} ${.TARGET}"			\
 	no-obj no-implicit-rule						\
 	clean		"t6fw.fw"
@@ -2834,6 +2834,8 @@ dev/re/if_re.c			optional re
 dev/rl/if_rl.c			optional rl pci
 dev/rndtest/rndtest.c		optional rndtest
 #
+dev/rtsx/rtsx.c			optional rtsx pci
+#
 dev/rtwn/if_rtwn.c		optional rtwn
 dev/rtwn/if_rtwn_beacon.c	optional rtwn
 dev/rtwn/if_rtwn_calib.c	optional rtwn
@@ -3777,6 +3779,7 @@ kern/ksched.c			optional _kposix_priority_scheduling
 kern/kern_acct.c		standard
 kern/kern_alq.c			optional alq
 kern/kern_clock.c		standard
+kern/kern_clocksource.c		standard
 kern/kern_condvar.c		standard
 kern/kern_conf.c		standard
 kern/kern_cons.c		standard
@@ -4174,13 +4177,14 @@ net/route/nhop_utils.c		standard
 net/route/route_ctl.c		standard
 net/route/route_ddb.c		optional ddb
 net/route/route_helpers.c	standard
+net/route/route_ifaddrs.c	standard
 net/route/route_tables.c	standard
 net/route/route_temporal.c	standard
 net/rss_config.c		optional inet rss | inet6 rss
 net/rtsock.c			standard
 net/slcompress.c		optional netgraph_vjc | sppp | \
 					 netgraph_sppp
-net/toeplitz.c			optional inet rss | inet6 rss
+net/toeplitz.c			optional inet rss | inet6 rss | route_mpath
 net/vnet.c			optional vimage
 net80211/ieee80211.c		optional wlan
 net80211/ieee80211_acl.c	optional wlan wlan_acl
@@ -4527,6 +4531,8 @@ nlm/sm_inter_xdr.c		optional nfslockd | nfsd
 # Linux Kernel Programming Interface
 compat/linuxkpi/common/src/linux_kmod.c		optional compat_linuxkpi \
 	compile-with "${LINUXKPI_C}"
+compat/linuxkpi/common/src/linux_acpi.c		optional compat_linuxkpi acpi \
+	compile-with "${LINUXKPI_C}"
 compat/linuxkpi/common/src/linux_compat.c	optional compat_linuxkpi \
 	compile-with "${LINUXKPI_C}"
 compat/linuxkpi/common/src/linux_current.c	optional compat_linuxkpi \
@@ -4571,6 +4577,7 @@ compat/lindebugfs/lindebugfs.c			optional lindebugfs \
 	compile-with "${LINUXKPI_C}"
 
 # OpenFabrics Enterprise Distribution (Infiniband)
+net/if_infiniband.c					optional ofed | lagg
 ofed/drivers/infiniband/core/ib_addr.c			optional ofed	\
 	compile-with "${OFED_C}"
 ofed/drivers/infiniband/core/ib_agent.c			optional ofed	\

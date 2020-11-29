@@ -890,7 +890,8 @@ zvol_cdev_open(struct cdev *dev, int flags, int fmt, struct thread *td)
 	if (flags & (FSYNC | FDSYNC)) {
 		zsd = &zv->zv_zso->zso_dev;
 		zsd->zsd_sync_cnt++;
-		if (zsd->zsd_sync_cnt == 1)
+		if (zsd->zsd_sync_cnt == 1 &&
+		    (zv->zv_flags & ZVOL_WRITTEN_TO) != 0)
 			zil_async_to_sync(zv->zv_zilog, ZVOL_OBJ);
 	}
 
@@ -1190,7 +1191,7 @@ zvol_rename_minor(zvol_state_t *zv, const char *newname)
 		args.mda_si_drv2 = zv;
 		if (make_dev_s(&args, &dev, "%s/%s", ZVOL_DRIVER, newname)
 		    == 0) {
-			dev->si_iosize_max = MAXPHYS;
+			dev->si_iosize_max = maxphys;
 			zsd->zsd_cdev = dev;
 		}
 	}
@@ -1326,7 +1327,7 @@ zvol_create_minor_impl(const char *name)
 			dmu_objset_disown(os, B_TRUE, FTAG);
 			goto out_giant;
 		}
-		dev->si_iosize_max = MAXPHYS;
+		dev->si_iosize_max = maxphys;
 		zsd->zsd_cdev = dev;
 	}
 	(void) strlcpy(zv->zv_name, name, MAXPATHLEN);

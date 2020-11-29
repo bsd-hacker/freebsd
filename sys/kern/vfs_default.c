@@ -663,6 +663,7 @@ vop_stdgetwritemount(ap)
 	} */ *ap;
 {
 	struct mount *mp;
+	struct mount_pcpu *mpcpu;
 	struct vnode *vp;
 
 	/*
@@ -680,12 +681,12 @@ vop_stdgetwritemount(ap)
 		*(ap->a_mpp) = NULL;
 		return (0);
 	}
-	if (vfs_op_thread_enter(mp)) {
+	if (vfs_op_thread_enter(mp, mpcpu)) {
 		if (mp == vp->v_mount) {
-			vfs_mp_count_add_pcpu(mp, ref, 1);
-			vfs_op_thread_exit(mp);
+			vfs_mp_count_add_pcpu(mpcpu, ref, 1);
+			vfs_op_thread_exit(mp, mpcpu);
 		} else {
-			vfs_op_thread_exit(mp);
+			vfs_op_thread_exit(mp, mpcpu);
 			mp = NULL;
 		}
 	} else {
@@ -819,7 +820,7 @@ vop_stdvptocnp(struct vop_vptocnp_args *ap)
 {
 	struct vnode *vp = ap->a_vp;
 	struct vnode **dvp = ap->a_vpp;
-	struct ucred *cred = ap->a_cred;
+	struct ucred *cred;
 	char *buf = ap->a_buf;
 	size_t *buflen = ap->a_buflen;
 	char *dirbuf, *cpos;
@@ -836,6 +837,7 @@ vop_stdvptocnp(struct vop_vptocnp_args *ap)
 	error = 0;
 	covered = 0;
 	td = curthread;
+	cred = td->td_ucred;
 
 	if (vp->v_type != VDIR)
 		return (ENOENT);
@@ -972,8 +974,8 @@ vop_stdallocate(struct vop_allocate_args *ap)
 	iosize = vap->va_blocksize;
 	if (iosize == 0)
 		iosize = BLKDEV_IOSIZE;
-	if (iosize > MAXPHYS)
-		iosize = MAXPHYS;
+	if (iosize > maxphys)
+		iosize = maxphys;
 	buf = malloc(iosize, M_TEMP, M_WAITOK);
 
 #ifdef __notyet__

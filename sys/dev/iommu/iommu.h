@@ -67,6 +67,7 @@ struct iommu_map_entry {
 
 struct iommu_unit {
 	struct mtx lock;
+	device_t dev;
 	int unit;
 
 	int dma_enabled;
@@ -111,6 +112,9 @@ struct iommu_domain {
 	iommu_gaddr_t end;		/* (c) Highest address + 1 in
 					   the guest AS */
 	struct iommu_map_entry *first_place, *last_place; /* (d) */
+	struct iommu_map_entry *msi_entry; /* (d) Arch-specific */
+	iommu_gaddr_t msi_base;		/* (d) Arch-specific */
+	vm_paddr_t msi_phys;		/* (d) Arch-specific */
 	u_int flags;			/* (u) */
 };
 
@@ -194,7 +198,7 @@ void iommu_gas_free_region(struct iommu_domain *domain,
 int iommu_gas_map_region(struct iommu_domain *domain,
     struct iommu_map_entry *entry, u_int eflags, u_int flags, vm_page_t *ma);
 int iommu_gas_reserve_region(struct iommu_domain *domain, iommu_gaddr_t start,
-    iommu_gaddr_t end);
+    iommu_gaddr_t end, struct iommu_map_entry **entry0);
 
 void iommu_set_buswide_ctx(struct iommu_unit *unit, u_int busno);
 bool iommu_is_buswide_ctx(struct iommu_unit *unit, u_int busno);

@@ -117,9 +117,9 @@ static	struct mtx crypto_drivers_mtx;		/* lock on driver table */
 struct cryptocap {
 	device_t	cc_dev;
 	uint32_t	cc_hid;
-	u_int32_t	cc_sessions;		/* (d) # of sessions */
-	u_int32_t	cc_koperations;		/* (d) # os asym operations */
-	u_int8_t	cc_kalg[CRK_ALGORITHM_MAX + 1];
+	uint32_t	cc_sessions;		/* (d) # of sessions */
+	uint32_t	cc_koperations;		/* (d) # os asym operations */
+	uint8_t		cc_kalg[CRK_ALGORITHM_MAX + 1];
 
 	int		cc_flags;		/* (d) flags */
 #define CRYPTOCAP_F_CLEANUP	0x80000000	/* needs resource cleanup */
@@ -173,8 +173,8 @@ struct crypto_ret_worker {
 	TAILQ_HEAD(,cryptop) crp_ret_q;		/* callback queue for symetric jobs */
 	TAILQ_HEAD(,cryptkop) crp_ret_kq;	/* callback queue for asym jobs */
 
-	u_int32_t reorder_ops;		/* total ordered sym jobs received */
-	u_int32_t reorder_cur_seq;	/* current sym job dispatched */
+	uint32_t reorder_ops;		/* total ordered sym jobs received */
+	uint32_t reorder_cur_seq;	/* current sym job dispatched */
 
 	struct proc *cryptoretproc;
 };
@@ -286,7 +286,9 @@ keybuf_init(void)
 }
 
 /* It'd be nice if we could store these in some kind of secure memory... */
-struct keybuf * get_keybuf(void) {
+struct keybuf *
+get_keybuf(void)
+{
 
         return (keybuf);
 }
@@ -411,8 +413,8 @@ crypto_terminate(struct proc **pp, void *q)
 }
 
 static void
-hmac_init_pad(struct auth_hash *axf, const char *key, int klen, void *auth_ctx,
-    uint8_t padval)
+hmac_init_pad(const struct auth_hash *axf, const char *key, int klen,
+    void *auth_ctx, uint8_t padval)
 {
 	uint8_t hmac_key[HMAC_MAX_BLOCK_LEN];
 	u_int i;
@@ -442,7 +444,7 @@ hmac_init_pad(struct auth_hash *axf, const char *key, int klen, void *auth_ctx,
 }
 
 void
-hmac_init_ipad(struct auth_hash *axf, const char *key, int klen,
+hmac_init_ipad(const struct auth_hash *axf, const char *key, int klen,
     void *auth_ctx)
 {
 
@@ -450,7 +452,7 @@ hmac_init_ipad(struct auth_hash *axf, const char *key, int klen,
 }
 
 void
-hmac_init_opad(struct auth_hash *axf, const char *key, int klen,
+hmac_init_opad(const struct auth_hash *axf, const char *key, int klen,
     void *auth_ctx)
 {
 
@@ -611,7 +613,7 @@ crypto_cipher(const struct crypto_session_params *csp)
 }
 
 static struct cryptocap *
-crypto_checkdriver(u_int32_t hid)
+crypto_checkdriver(uint32_t hid)
 {
 
 	return (hid >= crypto_drivers_size ? NULL : crypto_drivers[hid]);
@@ -1119,7 +1121,7 @@ crypto_getcaps(int hid)
  * is called once for each algorithm supported a driver.
  */
 int
-crypto_kregister(u_int32_t driverid, int kalg, u_int32_t flags)
+crypto_kregister(uint32_t driverid, int kalg, uint32_t flags)
 {
 	struct cryptocap *cap;
 	int err;
@@ -1142,6 +1144,7 @@ crypto_kregister(u_int32_t driverid, int kalg, u_int32_t flags)
 				, kalg
 				, flags
 			);
+		gone_in_dev(cap->cc_dev, 14, "asymmetric crypto");
 		err = 0;
 	} else
 		err = EINVAL;
@@ -1158,7 +1161,7 @@ crypto_kregister(u_int32_t driverid, int kalg, u_int32_t flags)
  * requests.
  */
 int
-crypto_unregister_all(u_int32_t driverid)
+crypto_unregister_all(uint32_t driverid)
 {
 	struct cryptocap *cap;
 
@@ -1189,7 +1192,7 @@ crypto_unregister_all(u_int32_t driverid)
  * the driver is now ready for cryptop's and/or cryptokop's.
  */
 int
-crypto_unblock(u_int32_t driverid, int what)
+crypto_unblock(uint32_t driverid, int what)
 {
 	struct cryptocap *cap;
 	int err;
@@ -1539,7 +1542,7 @@ again:
 		 * match), then skip.
 		 */
 		cap = crypto_drivers[hid];
-		if (cap->cc_dev == NULL ||
+		if (cap == NULL ||
 		    (cap->cc_flags & match) == 0)
 			continue;
 
@@ -1879,15 +1882,18 @@ crypto_kdone(struct cryptkop *krp)
 
 	if (krp->krp_status != 0)
 		CRYPTOSTAT_INC(cs_kerrs);
-	CRYPTO_DRIVER_LOCK();
 	cap = krp->krp_cap;
-	KASSERT(cap->cc_koperations > 0, ("cc_koperations == 0"));
-	cap->cc_koperations--;
-	if (cap->cc_koperations == 0 && cap->cc_flags & CRYPTOCAP_F_CLEANUP)
-		wakeup(cap);
-	CRYPTO_DRIVER_UNLOCK();
-	krp->krp_cap = NULL;
-	cap_rele(cap);
+	if (cap != NULL) {
+		CRYPTO_DRIVER_LOCK();
+		KASSERT(cap->cc_koperations > 0, ("cc_koperations == 0"));
+		cap->cc_koperations--;
+		if (cap->cc_koperations == 0 &&
+		    cap->cc_flags & CRYPTOCAP_F_CLEANUP)
+			wakeup(cap);
+		CRYPTO_DRIVER_UNLOCK();
+		krp->krp_cap = NULL;
+		cap_rele(cap);
+	}
 
 	ret_worker = CRYPTO_RETW(0);
 

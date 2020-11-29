@@ -102,9 +102,11 @@ __FBSDID("$FreeBSD$");
  */
 #define	CTLBLK_HALF_IO_SIZE	(512 * 1024)
 #define	CTLBLK_MAX_IO_SIZE	(CTLBLK_HALF_IO_SIZE * 2)
-#define	CTLBLK_MAX_SEG		MAXPHYS
-#define	CTLBLK_HALF_SEGS	MAX(CTLBLK_HALF_IO_SIZE / CTLBLK_MAX_SEG, 1)
+#define	CTLBLK_MIN_SEG		(128 * 1024)
+#define	CTLBLK_MAX_SEG		MIN(CTLBLK_HALF_IO_SIZE, maxphys)
+#define	CTLBLK_HALF_SEGS	MAX(CTLBLK_HALF_IO_SIZE / CTLBLK_MIN_SEG, 1)
 #define	CTLBLK_MAX_SEGS		(CTLBLK_HALF_SEGS * 2)
+#define	CTLBLK_NUM_SEGS		(CTLBLK_MAX_IO_SIZE / CTLBLK_MAX_SEG)
 
 #ifdef CTLBLK_DEBUG
 #define DPRINTF(fmt, args...) \
@@ -189,7 +191,8 @@ struct ctl_be_block_softc {
 	int				 num_luns;
 	SLIST_HEAD(, ctl_be_block_lun)	 lun_list;
 	uma_zone_t			 beio_zone;
-	uma_zone_t			 buf_zone;
+	uma_zone_t			 bufmin_zone;
+	uma_zone_t			 bufmax_zone;
 };
 
 static struct ctl_be_block_softc backend_block_softc;
@@ -299,6 +302,34 @@ static struct ctl_backend_driver ctl_be_block_driver =
 MALLOC_DEFINE(M_CTLBLK, "ctlblock", "Memory used for CTL block backend");
 CTL_BACKEND_DECLARE(cbb, ctl_be_block_driver);
 
+static void
+ctl_alloc_seg(struct ctl_be_block_softc *softc, struct ctl_sg_entry *sg,
+    size_t len)
+{
+
+	if (len <= CTLBLK_MIN_SEG) {
+		sg->addr = uma_zalloc(softc->bufmin_zone, M_WAITOK);
+	} else {
+		KASSERT(len <= CTLBLK_MAX_SEG,
+		    ("Too large alloc %zu > %lu", len, CTLBLK_MAX_SEG));
+		sg->addr = uma_zalloc(softc->bufmax_zone, M_WAITOK);
+	}
+	sg->len = len;
+}
+
+static void
+ctl_free_seg(struct ctl_be_block_softc *softc, struct ctl_sg_entry *sg)
+{
+
+	if (sg->len <= CTLBLK_MIN_SEG) {
+		uma_zfree(softc->bufmin_zone, sg->addr);
+	} else {
+		KASSERT(sg->len <= CTLBLK_MAX_SEG,
+		    ("Too large free %zu > %lu", sg->len, CTLBLK_MAX_SEG));
+		uma_zfree(softc->bufmax_zone, sg->addr);
+	}
+}
+
 static struct ctl_be_block_io *
 ctl_alloc_beio(struct ctl_be_block_softc *softc)
 {
@@ -317,12 +348,12 @@ ctl_real_free_beio(struct ctl_be_block_io *beio)
 	int i;
 
 	for (i = 0; i < beio->num_segs; i++) {
-		uma_zfree(softc->buf_zone, beio->sg_segs[i].addr);
+		ctl_free_seg(softc, &beio->sg_segs[i]);
 
 		/* For compare we had two equal S/G lists. */
 		if (beio->two_sglists) {
-			uma_zfree(softc->buf_zone,
-			    beio->sg_segs[i + CTLBLK_HALF_SEGS].addr);
+			ctl_free_seg(softc,
+			    &beio->sg_segs[i + CTLBLK_HALF_SEGS]);
 		}
 	}
 
@@ -1140,8 +1171,7 @@ ctl_be_block_dispatch_dev(struct ctl_be_block_lun *be_lun,
 
 	/*
 	 * We have to limit our I/O size to the maximum supported by the
-	 * backend device.  Hopefully it is MAXPHYS.  If the driver doesn't
-	 * set it properly, use DFLTPHYS.
+	 * backend device.
 	 */
 	if (csw) {
 		max_iosize = dev->si_iosize_max;
@@ -1316,7 +1346,7 @@ ctl_be_block_cw_dispatch_ws(struct ctl_be_block_lun *be_lun,
 	else
 		pbo = 0;
 	len_left = (uint64_t)lbalen->len * cbe_lun->blocksize;
-	for (i = 0, lba = 0; i < CTLBLK_MAX_SEGS && len_left > 0; i++) {
+	for (i = 0, lba = 0; i < CTLBLK_NUM_SEGS && len_left > 0; i++) {
 		/*
 		 * Setup the S/G entry for this chunk.
 		 */
@@ -1330,8 +1360,7 @@ ctl_be_block_cw_dispatch_ws(struct ctl_be_block_lun *be_lun,
 				seglen -= seglen % cbe_lun->blocksize;
 		} else
 			seglen -= seglen % cbe_lun->blocksize;
-		beio->sg_segs[i].len = seglen;
-		beio->sg_segs[i].addr = uma_zalloc(softc->buf_zone, M_WAITOK);
+		ctl_alloc_seg(softc, &beio->sg_segs[i], seglen);
 
 		DPRINTF("segment %d addr %p len %zd\n", i,
 			beio->sg_segs[i].addr, beio->sg_segs[i].len);
@@ -1603,18 +1632,17 @@ ctl_be_block_dispatch(struct ctl_be_block_lun *be_lun,
 		/*
 		 * Setup the S/G entry for this chunk.
 		 */
-		beio->sg_segs[i].len = min(CTLBLK_MAX_SEG, len_left);
-		beio->sg_segs[i].addr = uma_zalloc(softc->buf_zone, M_WAITOK);
+		ctl_alloc_seg(softc, &beio->sg_segs[i],
+		    MIN(CTLBLK_MAX_SEG, len_left));
 
 		DPRINTF("segment %d addr %p len %zd\n", i,
 			beio->sg_segs[i].addr, beio->sg_segs[i].len);
 
 		/* Set up second segment for compare operation. */
 		if (beio->two_sglists) {
-			beio->sg_segs[i + CTLBLK_HALF_SEGS].len =
-			    beio->sg_segs[i].len;
-			beio->sg_segs[i + CTLBLK_HALF_SEGS].addr =
-			    uma_zalloc(softc->buf_zone, M_WAITOK);
+			ctl_alloc_seg(softc,
+			    &beio->sg_segs[i + CTLBLK_HALF_SEGS],
+			    beio->sg_segs[i].len);
 		}
 
 		beio->num_segs++;
@@ -1932,8 +1960,8 @@ ctl_be_block_open_dev(struct ctl_be_block_lun *be_lun, struct ctl_lun_req *req)
 		maxio = dev->si_iosize_max;
 		if (maxio <= 0)
 			maxio = DFLTPHYS;
-		if (maxio > CTLBLK_MAX_IO_SIZE)
-			maxio = CTLBLK_MAX_IO_SIZE;
+		if (maxio > CTLBLK_MAX_SEG)
+			maxio = CTLBLK_MAX_SEG;
 	}
 	be_lun->lun_flush = ctl_be_block_flush_dev;
 	be_lun->getattr = ctl_be_block_getattr_dev;
@@ -2776,8 +2804,11 @@ ctl_be_block_init(void)
 	mtx_init(&softc->lock, "ctlblock", NULL, MTX_DEF);
 	softc->beio_zone = uma_zcreate("beio", sizeof(struct ctl_be_block_io),
 	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, 0);
-	softc->buf_zone = uma_zcreate("ctlblock", CTLBLK_MAX_SEG,
+	softc->bufmin_zone = uma_zcreate("ctlblockmin", CTLBLK_MIN_SEG,
 	    NULL, NULL, NULL, NULL, /*align*/ 0, /*flags*/0);
+	if (CTLBLK_MIN_SEG < CTLBLK_MAX_SEG)
+		softc->bufmax_zone = uma_zcreate("ctlblockmax", CTLBLK_MAX_SEG,
+		    NULL, NULL, NULL, NULL, /*align*/ 0, /*flags*/0);
 	SLIST_INIT(&softc->lun_list);
 	return (0);
 }
@@ -2802,7 +2833,9 @@ ctl_be_block_shutdown(void)
 		mtx_lock(&softc->lock);
 	}
 	mtx_unlock(&softc->lock);
-	uma_zdestroy(softc->buf_zone);
+	uma_zdestroy(softc->bufmin_zone);
+	if (CTLBLK_MIN_SEG < CTLBLK_MAX_SEG)
+		uma_zdestroy(softc->bufmax_zone);
 	uma_zdestroy(softc->beio_zone);
 	mtx_destroy(&softc->lock);
 	sx_destroy(&softc->modify_lock);

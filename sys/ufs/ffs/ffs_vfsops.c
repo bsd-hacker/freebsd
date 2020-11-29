@@ -1055,8 +1055,8 @@ ffs_mountfs(odevvp, mp, td)
 	BO_UNLOCK(&odevvp->v_bufobj);
 	if (dev->si_iosize_max != 0)
 		mp->mnt_iosize_max = dev->si_iosize_max;
-	if (mp->mnt_iosize_max > MAXPHYS)
-		mp->mnt_iosize_max = MAXPHYS;
+	if (mp->mnt_iosize_max > maxphys)
+		mp->mnt_iosize_max = maxphys;
 	if ((SBLOCKSIZE % cp->provider->sectorsize) != 0) {
 		error = EINVAL;
 		vfs_mount_error(mp,
@@ -1070,10 +1070,6 @@ ffs_mountfs(odevvp, mp, td)
 		loc = STDSB_NOHASHFAIL;
 	if ((error = ffs_sbget(devvp, &fs, loc, M_UFSMNT, ffs_use_bread)) != 0)
 		goto out;
-	/* none of these types of check-hashes are maintained by this kernel */
-	fs->fs_metackhash &= ~(CK_INDIR | CK_DIR);
-	/* no support for any undefined flags */
-	fs->fs_flags &= FS_SUPPORTED;
 	fs->fs_flags &= ~FS_UNCLEAN;
 	if (fs->fs_clean == 0) {
 		fs->fs_flags |= FS_UNCLEAN;
@@ -1865,8 +1861,14 @@ loop:
 #ifdef QUOTA
 		qsyncvp(vp);
 #endif
-		if ((error = ffs_syncvnode(vp, waitfor, 0)) != 0)
-			allerror = error;
+		for (;;) {
+			error = ffs_syncvnode(vp, waitfor, 0);
+			if (error == ERELOOKUP)
+				continue;
+			if (error != 0)
+				allerror = error;
+			break;
+		}
 		vput(vp);
 	}
 	/*
@@ -2005,6 +2007,9 @@ ffs_vgetf(mp, ino, flags, vpp, ffs_flags)
 	ip->i_nextclustercg = -1;
 	ip->i_flag = fs->fs_magic == FS_UFS1_MAGIC ? 0 : IN_UFS2;
 	ip->i_mode = 0; /* ensure error cases below throw away vnode */
+#ifdef DIAGNOSTIC
+	ufs_init_trackers(ip);
+#endif
 #ifdef QUOTA
 	{
 		int i;
