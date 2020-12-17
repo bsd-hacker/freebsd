@@ -107,7 +107,7 @@ __read_mostly uma_zone_t pwd_zone;
 VFS_SMR_DECLARE;
 
 static int	closefp(struct filedesc *fdp, int fd, struct file *fp,
-		    struct thread *td, int holdleaders);
+		    struct thread *td, bool holdleaders, bool audit);
 static int	fd_first_free(struct filedesc *fdp, int low, int size);
 static void	fdgrowtable(struct filedesc *fdp, int nfd);
 static void	fdgrowtable_exp(struct filedesc *fdp, int nfd);
@@ -307,6 +307,7 @@ fdfree(struct filedesc *fdp, int fd)
 {
 	struct filedescent *fde;
 
+	FILEDESC_XLOCK_ASSERT(fdp);
 	fde = &fdp->fd_ofiles[fd];
 #ifdef CAPABILITIES
 	seqc_write_begin(&fde->fde_seqc);
@@ -998,7 +999,7 @@ kern_dup(struct thread *td, u_int mode, int flags, int old, int new)
 	error = 0;
 
 	if (delfp != NULL) {
-		(void) closefp(fdp, new, delfp, td, 1);
+		(void) closefp(fdp, new, delfp, td, true, false);
 		FILEDESC_UNLOCK_ASSERT(fdp);
 	} else {
 unlock:
@@ -1239,28 +1240,13 @@ fgetown(struct sigio **sigiop)
 	return (pgid);
 }
 
-/*
- * Function drops the filedesc lock on return.
- */
 static int
-closefp(struct filedesc *fdp, int fd, struct file *fp, struct thread *td,
-    int holdleaders)
+closefp_impl(struct filedesc *fdp, int fd, struct file *fp, struct thread *td,
+    bool audit)
 {
 	int error;
 
 	FILEDESC_XLOCK_ASSERT(fdp);
-
-	if (holdleaders) {
-		if (td->td_proc->p_fdtol != NULL) {
-			/*
-			 * Ask fdfree() to sleep to ensure that all relevant
-			 * process leaders can be traversed in closef().
-			 */
-			fdp->fd_holdleaderscount++;
-		} else {
-			holdleaders = 0;
-		}
-	}
 
 	/*
 	 * We now hold the fp reference that used to be owned by the
@@ -1278,6 +1264,10 @@ closefp(struct filedesc *fdp, int fd, struct file *fp, struct thread *td,
 		mq_fdclose(td, fd, fp);
 	FILEDESC_XUNLOCK(fdp);
 
+#ifdef AUDIT
+	if (AUDITING_TD(td) && audit)
+		audit_sysclose(td, fd, fp);
+#endif
 	error = closef(fp, td);
 
 	/*
@@ -1288,6 +1278,30 @@ closefp(struct filedesc *fdp, int fd, struct file *fp, struct thread *td,
 	if (error == ERESTART)
 		error = EINTR;
 
+	return (error);
+}
+
+static int
+closefp_hl(struct filedesc *fdp, int fd, struct file *fp, struct thread *td,
+    bool holdleaders, bool audit)
+{
+	int error;
+
+	FILEDESC_XLOCK_ASSERT(fdp);
+
+	if (holdleaders) {
+		if (td->td_proc->p_fdtol != NULL) {
+			/*
+			 * Ask fdfree() to sleep to ensure that all relevant
+			 * process leaders can be traversed in closef().
+			 */
+			fdp->fd_holdleaderscount++;
+		} else {
+			holdleaders = false;
+		}
+	}
+
+	error = closefp_impl(fdp, fd, fp, td, audit);
 	if (holdleaders) {
 		FILEDESC_XLOCK(fdp);
 		fdp->fd_holdleaderscount--;
@@ -1299,6 +1313,20 @@ closefp(struct filedesc *fdp, int fd, struct file *fp, struct thread *td,
 		FILEDESC_XUNLOCK(fdp);
 	}
 	return (error);
+}
+
+static int
+closefp(struct filedesc *fdp, int fd, struct file *fp, struct thread *td,
+    bool holdleaders, bool audit)
+{
+
+	FILEDESC_XLOCK_ASSERT(fdp);
+
+	if (__predict_false(td->td_proc->p_fdtol != NULL)) {
+		return (closefp_hl(fdp, fd, fp, td, holdleaders, audit));
+	} else {
+		return (closefp_impl(fdp, fd, fp, td, audit));
+	}
 }
 
 /*
@@ -1325,8 +1353,6 @@ kern_close(struct thread *td, int fd)
 
 	fdp = td->td_proc->p_fd;
 
-	AUDIT_SYSCLOSE(td, fd);
-
 	FILEDESC_XLOCK(fdp);
 	if ((fp = fget_locked(fdp, fd)) == NULL) {
 		FILEDESC_XUNLOCK(fdp);
@@ -1335,18 +1361,16 @@ kern_close(struct thread *td, int fd)
 	fdfree(fdp, fd);
 
 	/* closefp() drops the FILEDESC lock for us. */
-	return (closefp(fdp, fd, fp, td, 1));
+	return (closefp(fdp, fd, fp, td, true, true));
 }
 
 int
 kern_close_range(struct thread *td, u_int lowfd, u_int highfd)
 {
 	struct filedesc *fdp;
-	int fd, ret, lastfile;
-
-	ret = 0;
-	fdp = td->td_proc->p_fd;
-	FILEDESC_SLOCK(fdp);
+	const struct fdescenttbl *fdt;
+	struct file *fp;
+	int fd;
 
 	/*
 	 * Check this prior to clamping; closefrom(3) with only fd 0, 1, and 2
@@ -1355,30 +1379,36 @@ kern_close_range(struct thread *td, u_int lowfd, u_int highfd)
 	 * be a usage error as all fd above 3 are in-fact already closed.
 	 */
 	if (highfd < lowfd) {
-		ret = EINVAL;
-		goto out;
+		return (EINVAL);
 	}
 
-	/*
-	 * If lastfile == -1, we're dealing with either a fresh file
-	 * table or one in which every fd has been closed.  Just return
-	 * successful; there's nothing left to do.
-	 */
-	lastfile = fdlastfile(fdp);
-	if (lastfile == -1)
-		goto out;
-	/* Clamped to [lowfd, lastfile] */
-	highfd = MIN(highfd, lastfile);
-	for (fd = lowfd; fd <= highfd; fd++) {
-		if (fdp->fd_ofiles[fd].fde_file != NULL) {
-			FILEDESC_SUNLOCK(fdp);
-			(void)kern_close(td, fd);
-			FILEDESC_SLOCK(fdp);
-		}
+	fdp = td->td_proc->p_fd;
+	FILEDESC_XLOCK(fdp);
+	fdt = atomic_load_ptr(&fdp->fd_files);
+	highfd = MIN(highfd, fdt->fdt_nfiles - 1);
+	fd = lowfd;
+	if (__predict_false(fd > highfd)) {
+		goto out_locked;
 	}
-out:
-	FILEDESC_SUNLOCK(fdp);
-	return (ret);
+	for (;;) {
+		fp = fdt->fdt_ofiles[fd].fde_file;
+		if (fp == NULL) {
+			if (fd == highfd)
+				goto out_locked;
+		} else {
+			fdfree(fdp, fd);
+			(void) closefp(fdp, fd, fp, td, true, true);
+			if (fd == highfd)
+				goto out_unlocked;
+			FILEDESC_XLOCK(fdp);
+			fdt = atomic_load_ptr(&fdp->fd_files);
+		}
+		fd++;
+	}
+out_locked:
+	FILEDESC_XUNLOCK(fdp);
+out_unlocked:
+	return (0);
 }
 
 #ifndef _SYS_SYSPROTO_H_
@@ -2649,7 +2679,7 @@ fdcloseexec(struct thread *td)
 		    (fde->fde_flags & UF_EXCLOSE))) {
 			FILEDESC_XLOCK(fdp);
 			fdfree(fdp, i);
-			(void) closefp(fdp, i, fp, td, 0);
+			(void) closefp(fdp, i, fp, td, false, false);
 			FILEDESC_UNLOCK_ASSERT(fdp);
 		}
 	}
